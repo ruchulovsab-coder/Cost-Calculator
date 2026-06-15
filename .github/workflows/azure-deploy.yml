@@ -46,16 +46,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check Azure IDs are configured
+        env:
+          V_CLIENT: ${{ vars.AZURE_CLIENT_ID }}
+          V_TENANT: ${{ vars.AZURE_TENANT_ID }}
+          V_SUB: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          S_CLIENT: ${{ secrets.AZURE_CLIENT_ID }}
+          S_TENANT: ${{ secrets.AZURE_TENANT_ID }}
+          S_SUB: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
+          echo "Character lengths the runner sees (a real GUID is 36; 0 means empty):"
+          echo "  Variables tab -> CLIENT=${#V_CLIENT}  TENANT=${#V_TENANT}  SUB=${#V_SUB}"
+          echo "  Secrets   tab -> CLIENT=${#S_CLIENT}  TENANT=${#S_TENANT}  SUB=${#S_SUB}"
           missing=""
           [ -z "$AZURE_CLIENT_ID" ]       && missing="$missing AZURE_CLIENT_ID"
           [ -z "$AZURE_TENANT_ID" ]       && missing="$missing AZURE_TENANT_ID"
           [ -z "$AZURE_SUBSCRIPTION_ID" ] && missing="$missing AZURE_SUBSCRIPTION_ID"
           if [ -n "$missing" ]; then
-            echo "::error::Missing Azure IDs:$missing"
+            echo "::error::Missing/empty Azure IDs:$missing"
             echo "Add them at: https://github.com/${{ github.repository }}/settings/variables/actions"
-            echo "(Variables tab OR Secrets tab — either works now. Names must match exactly.)"
-            echo "Get the values by running STEP 4 of DEPLOY.md in Azure Cloud Shell."
+            echo "They must be REPOSITORY variables/secrets (not Environment-scoped)."
             exit 1
           fi
           echo "All three Azure IDs are present."
