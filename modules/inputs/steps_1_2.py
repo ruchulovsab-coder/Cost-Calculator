@@ -351,13 +351,14 @@ def render_step2() -> bool:
         "info",
     )
     from config.settings import ALL_ROLES
-    st.selectbox(
+    _pr = st.selectbox(
         "Assign patching effort to role:",
         options=ALL_ROLES,
         index=ALL_ROLES.index(st.session_state.get("patching_role", "L2")),
-        key="patching_role",
+        key="patching_role_w",
         help="Patching hours are added to this role's monthly hours.",
     )
+    st.session_state["patching_role"] = _pr
 
     if not all_valid:
         callout(

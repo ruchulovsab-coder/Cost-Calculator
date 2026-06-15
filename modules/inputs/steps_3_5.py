@@ -18,13 +18,16 @@ def render_step3() -> bool:
     page_header(3, "Server Patching Effort",
                 "Define patching scope, method, and per-server effort.")
 
+    # Widgets write to plain (non-widget) keys via the *_w proxy so values survive
+    # navigation to later steps (Streamlit evicts unrendered widget keys).
     included = st.radio(
         "**Is Server Patching Included in Scope?**",
         options=["Yes", "No"],
         index=0 if st.session_state.get("patching_included") == "Yes" else 1,
-        key="patching_included",
+        key="patching_included_w",
         horizontal=True,
     )
+    st.session_state["patching_included"] = included
 
     if included == "No":
         callout("Patching excluded. Patching effort = 0 hours.", "info")
@@ -34,22 +37,24 @@ def render_step3() -> bool:
 
     c1, c2 = st.columns(2)
     with c1:
-        st.number_input(
+        servers = st.number_input(
             "**Number of Servers to be Patched**",
             min_value=1, step=1,
             value=max(1, int(st.session_state.get("num_servers", 20))),
-            key="num_servers",
+            key="num_servers_w",
             help="Total server count in patching scope. Default: 20.",
         )
+        st.session_state["num_servers"] = servers
     with c2:
         method = st.radio(
             "**Patching Method**",
             options=["Manual", "Tool-Based"],
             index=0 if st.session_state.get("patching_method") == "Manual" else 1,
-            key="patching_method",
+            key="patching_method_w",
             horizontal=True,
             help="Manual default: 45 min/server. Automated (Tool-Based) default: 30 min/server.",
         )
+        st.session_state["patching_method"] = method
 
     if method == "Manual":
         section_hdr("Manual Patching Configuration")
@@ -57,26 +62,26 @@ def render_step3() -> bool:
             "**Effort Per Server (Minutes)**",
             min_value=0.0, step=5.0, format="%.0f",
             value=float(st.session_state.get("manual_effort_per_server", PATCHING_EFFORT_DEFAULTS["Manual"])),
-            key="manual_effort_per_server",
+            key="manual_effort_per_server_w",
             help="Average minutes to manually patch one server end-to-end. Default: 45.",
         )
-        result = calc_patching_effort(True, st.session_state.num_servers, "Manual",
-                                      manual_effort_per_server=effort)
+        st.session_state["manual_effort_per_server"] = effort
+        result = calc_patching_effort(True, servers, "Manual", manual_effort_per_server=effort)
     else:
         section_hdr("Automated (Tool-Based) Patching Configuration")
         effort = st.number_input(
             "**Effort Per Server (Minutes)**",
             min_value=0.0, step=5.0, format="%.0f",
             value=float(st.session_state.get("auto_effort_per_server", PATCHING_EFFORT_DEFAULTS["Tool-Based"])),
-            key="auto_effort_per_server",
+            key="auto_effort_per_server_w",
             help="Average minutes of effort per server for tool-based patching "
                  "(orchestration, verification, exception handling). Default: 30.",
         )
-        result = calc_patching_effort(True, st.session_state.num_servers, "Tool-Based",
-                                      auto_effort_per_server=effort)
+        st.session_state["auto_effort_per_server"] = effort
+        result = calc_patching_effort(True, servers, "Tool-Based", auto_effort_per_server=effort)
 
     callout(
-        f"📊 <strong>Patching Effort:</strong> {st.session_state.num_servers} servers × "
+        f"📊 <strong>Patching Effort:</strong> {servers} servers × "
         f"{effort:.0f} min = <strong>{result['hours']:.1f} hours/month</strong>",
         "success",
     )
@@ -305,9 +310,10 @@ def render_step5() -> bool:
         "**Contingency Percentage (%)**",
         min_value=0.0, max_value=50.0, step=1.0,
         value=float(st.session_state.get("contingency_pct", 10.0)),
-        key="contingency_pct",
+        key="contingency_pct_w",
         help="Buffer for unplanned work. Typical range: 10–20%.",
     )
+    st.session_state["contingency_pct"] = contingency_pct
     if contingency_pct > 30:
         callout("⚠️ Contingency above 30% is unusually high. Please confirm.", "warning")
 

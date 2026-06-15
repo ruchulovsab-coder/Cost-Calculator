@@ -39,10 +39,12 @@ def render_step6() -> bool:
         "**Support Coverage Model** *(required)*",
         options=model_options,
         index=default_idx,
-        key="coverage_model",
+        key="coverage_model_w",
         horizontal=True,
         help="Coverage window determines shift multiplier for L1 and L2 FTE only.",
     )
+    # Persist to a plain (non-widget) key so it survives navigation to later steps.
+    st.session_state["coverage_model"] = model
 
     custom_hpd = st.session_state.get("custom_hours_per_day", 8)
     custom_dpw = st.session_state.get("custom_days_per_week", 5)
@@ -51,10 +53,12 @@ def render_step6() -> bool:
         cc1, cc2 = st.columns(2)
         with cc1:
             custom_hpd = st.number_input("Hours Per Day", min_value=1, max_value=24, step=1,
-                                         value=int(custom_hpd), key="custom_hours_per_day")
+                                         value=int(custom_hpd), key="custom_hours_per_day_w")
+            st.session_state["custom_hours_per_day"] = custom_hpd
         with cc2:
             custom_dpw = st.number_input("Days Per Week", min_value=1, max_value=7, step=1,
-                                         value=int(custom_dpw), key="custom_days_per_week")
+                                         value=int(custom_dpw), key="custom_days_per_week_w")
+            st.session_state["custom_days_per_week"] = custom_dpw
 
     multiplier = calc_coverage_multiplier(model, custom_hpd, custom_dpw)
     st.session_state["_coverage_multiplier"] = multiplier
@@ -75,17 +79,19 @@ def render_step6() -> bool:
             "**Monthly Working Hours Per FTE** *(required)*",
             min_value=1.0, max_value=300.0, step=1.0,
             value=float(st.session_state.get("monthly_working_hours") or 160.0),
-            key="monthly_working_hours",
+            key="monthly_working_hours_w",
             help="Total available hours per FTE per month. Standard: 160 hrs (8 hrs × 20 working days).",
         )
+        st.session_state["monthly_working_hours"] = monthly_hrs
     with pc2:
         utilisation = st.number_input(
             "**Productive Utilisation (%)** *(required)*",
             min_value=10.0, max_value=100.0, step=1.0,
             value=float(st.session_state.get("productive_utilisation") or 75.0),
-            key="productive_utilisation",
+            key="productive_utilisation_w",
             help="% of working hours spent on billable delivery. Typical: 75%.",
         )
+        st.session_state["productive_utilisation"] = utilisation
 
     if utilisation < 60:
         callout("⚠️ Utilisation below 60% will significantly increase FTE estimates.", "warning")
