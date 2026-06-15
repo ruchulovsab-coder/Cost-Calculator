@@ -17,10 +17,11 @@ except ImportError:
     PLOTLY_OK = False
 
 from modules.inputs.steps_1_2 import page_header, section_hdr, callout
-from modules.calculations.engine import convert_to_currency
-from modules.state.session_manager import run_model
+import copy
+from modules.calculations.engine import convert_to_currency, compute_full_model
+from modules.state.session_manager import run_model, build_model_state
 from config.settings import (
-    ALL_ROLES, CATEGORY_SUBLABELS, CURRENCY_SYMBOLS, REPORTING_CURRENCIES,
+    ALL_ROLES, CATEGORY_SUBLABELS, CURRENCY_SYMBOLS, REPORTING_CURRENCIES, COVERAGE_MODELS,
 )
 from utils.formatters import fmt_currency, fmt_pct, fmt_hours
 
@@ -142,6 +143,57 @@ def _render_cost_inputs():
     st.session_state["exchange_rates"] = fx
     if cur != "INR" and not fx.get(cur):
         callout(f"⚠️ Enter an exchange rate for {cur} above to convert the output.", "warning")
+
+
+def _render_what_if(base_model, conv, currency):
+    """Live sensitivity panel. Recomputes a modified copy of the state without
+    mutating the user's saved inputs."""
+    st.divider()
+    section_hdr("🔮 What-If Analysis")
+    callout("Drag the drivers below to see live impact on cost and price. "
+            "These adjustments do <strong>not</strong> change your saved inputs.", "info")
+
+    base_state = build_model_state()
+    c1, c2 = st.columns(2)
+    with c1:
+        vol_scale = st.slider("Ticket volume scale (×)", 0.5, 3.0, 1.0, 0.1, key="wi_vol")
+        margin = st.slider("Target gross margin (%)", 0.0, 80.0,
+                           float(base_state.get("target_margin_pct", 20) or 20), 0.5, key="wi_margin")
+    with c2:
+        cont = st.slider("Contingency (%)", 0.0, 50.0,
+                         float(base_state.get("contingency_pct", 10) or 10), 1.0, key="wi_cont")
+        cov_models = list(COVERAGE_MODELS.keys())
+        cur_cov = base_state.get("coverage_model") or "8×5"
+        cov = st.selectbox("Coverage model", cov_models,
+                           index=cov_models.index(cur_cov) if cur_cov in cov_models else 0, key="wi_cov")
+
+    s = copy.deepcopy(base_state)
+    s["target_margin_pct"] = margin
+    s["contingency_pct"] = cont
+    s["coverage_model"] = cov
+    if vol_scale != 1.0:
+        for cat in ("alerts", "service_requests", "incidents", "changes"):
+            for row in (s.get(cat) or {}).values():
+                row["count"] = round(row.get("count", 0) * vol_scale)
+
+    try:
+        wm = compute_full_model(s)
+    except ValueError as e:
+        callout(f"❌ {e}", "error")
+        return
+
+    base_dc = conv(base_model["cost_result"]["total_delivery_cost"])
+    base_sp = conv(base_model["price_result"]["selling_price"])
+    new_dc = conv(wm["cost_result"]["total_delivery_cost"])
+    new_sp = conv(wm["price_result"]["selling_price"])
+
+    w1, w2, w3 = st.columns(3)
+    w1.metric("Total FTE", f"{wm['total_fte']:.1f}",
+              delta=f"{wm['total_fte'] - base_model['total_fte']:+.1f}")
+    w2.metric(f"Delivery Cost ({currency})", fmt_currency(new_dc, currency),
+              delta=f"{new_dc - base_dc:+,.0f}")
+    w3.metric(f"Selling Price ({currency})", fmt_currency(new_sp, currency),
+              delta=f"{new_sp - base_sp:+,.0f}")
 
 
 def render_step8() -> bool:
@@ -351,5 +403,7 @@ def render_step8() -> bool:
     st.markdown(f"""
     <table class="styled-table"><thead><tr><th>Component</th><th class="r">INR</th><th class="r">{currency}</th></tr></thead>
       <tbody>{fin_rows}</tbody></table>""", unsafe_allow_html=True)
+
+    _render_what_if(model, conv, currency)
 
     return True

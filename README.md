@@ -60,6 +60,40 @@ Excel (.xlsx) with columns: **Country, Location, Genus, Hourly Rate, Rate Curren
 
 Sample rate card included: `sample_rate_card.xlsx`
 
+Step 7 lets you pick any **country / location** present in the card (defaults to
+India). Rates quoted in a non-INR currency are converted to INR using the
+exchange rates you enter on Step 8.
+
+## Multi-Currency Reporting
+
+All internal calculations are in INR. On Step 8 you can choose a **reporting
+currency** (default INR) and the output dashboard, Excel report and PDF proposal
+display the final figures in that currency, using `1 <CUR> = X INR` rates you
+provide.
+
+## Outputs
+
+- **Excel report** — multi-sheet workbook (exec summary, effort, FTE, costs, audit)
+- **PDF proposal** — client-facing branded quote
+- **Scenario comparison** — save scenarios in-session and compare effort / FTE /
+  cost / price side by side (or import/export as JSON)
+- **What-If analysis** — live sliders on the dashboard for volume, margin,
+  contingency and coverage
+
+## Architecture
+
+`modules/calculations/engine.py::compute_full_model(state)` is the single pure
+pipeline (effort → role hours → FTE → cost → price). The dashboard, exports,
+scenario comparison and tests all call it, so displayed and exported numbers
+cannot drift apart.
+
+## Testing
+
+```bash
+pip install -r requirements.txt
+pytest
+```
+
 ---
 
 ## Extending

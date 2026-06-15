@@ -75,6 +75,7 @@ from modules.inputs.steps_6_7 import render_step6, render_step7
 from modules.outputs.dashboard import render_step8
 from modules.outputs.scenario_comparison import render_scenario_sidebar, render_comparison
 from modules.outputs.excel_export import generate_excel_report
+from modules.outputs.pdf_export import generate_pdf_report
 
 # ── Step manifest ──────────────────────────────────────────────────────────────
 STEPS = [
@@ -188,6 +189,19 @@ if render_fn:
                 except Exception as e:
                     st.error(f"Excel error: {e}")
             with ec2:
+                try:
+                    pdf = generate_pdf_report()
+                    st.download_button(
+                        "⬇️ Download PDF Proposal",
+                        data=pdf,
+                        file_name="IT_MS_Proposal.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        key="dl_pdf",
+                    )
+                except Exception as e:
+                    st.error(f"PDF error: {e}")
+            with ec3:
                 if st.button("📊 Compare Scenarios", type="secondary", key="btn_compare"):
                     st.session_state.current_step = 9
                     st.rerun()

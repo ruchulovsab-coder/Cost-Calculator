@@ -302,6 +302,39 @@ def export_scenario(name: str, description: str) -> dict:
     }
 
 
+def save_scenario_to_session(name: str, description: str) -> dict:
+    """Capture the current inputs as a named scenario kept in-session, so it can be
+    compared without round-tripping through a downloaded file."""
+    scen = export_scenario(name, description)
+    saved = st.session_state.setdefault("saved_scenarios", [])
+    # Replace an existing scenario with the same name, else append.
+    for i, s in enumerate(saved):
+        if s.get("meta", {}).get("name") == name:
+            saved[i] = scen
+            break
+    else:
+        saved.append(scen)
+    st.session_state["_last_scenario"] = scen
+    return scen
+
+
+def model_from_inputs(inputs: dict) -> dict:
+    """Recompute the full model from a scenario's stored inputs (used by the
+    comparison view). Rebuilds role rates from the stored rate card + location."""
+    import pandas as pd
+    from modules.calculations.engine import compute_full_model, resolve_role_rates
+    state = dict(inputs)
+    df = inputs.get("rate_card_df")
+    if isinstance(df, list):
+        df = pd.DataFrame(df) if df else None
+    fx = inputs.get("exchange_rates", {}) or {}
+    state["role_rates_inr"] = resolve_role_rates(
+        df, inputs.get("role_genus", {}) or {},
+        inputs.get("delivery_country"), inputs.get("delivery_location"), fx,
+    )
+    return compute_full_model(state)
+
+
 def load_scenario(data: dict):
     import pandas as pd
     for key, val in data.get("inputs", {}).items():
