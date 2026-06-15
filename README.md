@@ -24,18 +24,19 @@ Push-to-deploy to Azure via GitHub Actions (OIDC, no stored secrets). See **[DEP
 
 ---
 
-## 8-Step Flow
+## Step Flow
 
 | Step | Name | Purpose |
 |------|------|---------|
-| 1 | Workload Volumetrics | Monthly alert/ticket volumes + avg effort minutes |
-| 2 | Resolution Split | L1/L2/L3 % per ticket category + overhead roles + patching role |
-| 3 | Patching | Server patching scope and method |
-| 4 | Additional Activities | Other monthly operational hours |
+| 1 | Workload Volumetrics | Monthly alert/ticket volumes |
+| 2 | Resolution Split | L1/L2/L3 % + severity distribution + effort minutes + overhead roles + patching role |
+| 3 | Patching | Server count + method (per-server effort model) |
+| 4 | Additional Activities | Auto-derived (toggle) + custom monthly operational hours |
 | 5 | Effort Summary | Contingency buffer + role hours preview |
 | 6 | Coverage & FTE | Coverage model, shift multiplier, FTE calculation |
-| 7 | Rate Card & Mapping | Upload Genus rate card, select location, map roles |
-| 8 | Cost, Pricing & Dashboard | Full cost model + output dashboard + export |
+| 7 | Rate Card & Mapping | Upload Genus rate card, pick country/location, map roles to grades |
+| 8 | Cost, Pricing & Dashboard | Expenses, margin, reporting currency, Raw/Rounded FTE toggle, dashboard, Excel/PDF export, what-if |
+| 9 | Scenario Comparison | Compare saved/uploaded scenarios side by side |
 
 ---
 
@@ -53,13 +54,17 @@ Push-to-deploy to Azure via GitHub Actions (OIDC, no stored secrets). See **[DEP
 - `Final FTE = CEILING(Raw FTE, 0.5)`
 - Minimum 0.5 FTE for any role with hours > 0
 - Coverage multiplier (L1/L2 only): `FTE = Raw FTE × (weekly_coverage_hours ÷ 40)`
+- Step 8 has a **Raw vs Rounded FTE** toggle: costing/Executive Summary can be
+  shown on the exact (raw) FTE or the rounded delivery FTE.
 
 ### Cost → Price
 ```
-Role Cost     = Hours × Hourly Rate (converted to INR)
-Delivery Cost = Σ Role Costs + Transition Cost + Expenses + SLA Provision
+Role Cost     = Billed Hours × Hourly Rate (INR)   # Billed Hours = FTE × monthly working hours
+Delivery Cost = Σ Role Costs + Additional Expenses + SLA Provision
 Selling Price = Delivery Cost ÷ (1 − Margin%)
 ```
+Transition / onboarding cost is **one-time** and reported separately — it is **not**
+included in the monthly delivery cost.
 
 ---
 
@@ -72,10 +77,10 @@ All defaults are **editable recommendations**.
 
 **Auto-derived additional activities** (Step 4) — each has an **Auto** toggle (on by
 default) and a tooltip/expander showing its formula. Monthly hours = (Σ terms) ÷ 60:
-- **Scheduled Maintenance** = 10 min × servers
-- **RCA** = 15 min × incidents + 1 × alerts + 0.5 × service requests + 3 × changes
-- **Problem Management** = 6 min × incidents + 0.5 × alerts + 0.3 × service requests + 1.5 × changes
-- **Documentation & KB** = 3 min × servers + 3 × incidents + 1 × service requests + 4 × changes
+- **Scheduled Maintenance** = 30 min × servers
+- **RCA** = 360 min × incidents
+- **Problem Management** = 600 min × incidents
+- **Documentation & KB** = 30 min × servers + 120 × incidents + 15 × service requests + 120 × changes
 
 Switch **Auto** off on any row to enter your own value. Coefficients live in
 `config.settings.ACTIVITY_FORMULAS` / `PATCHING_EFFORT_DEFAULTS`.
@@ -116,7 +121,7 @@ cannot drift apart.
 ## Testing
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 pytest
 ```
 
@@ -125,6 +130,9 @@ pytest
 ## Extending
 
 All configuration in `config/settings.py`:
+- App/brand name → `APP_NAME`, `ORG_NAME`
 - New roles → `ALL_ROLES` + `GRADE_ELIGIBILITY`
 - New coverage models → `COVERAGE_MODELS`
-- New currencies → `DEFAULT_CURRENCIES`
+- Reporting currencies + symbols → `REPORTING_CURRENCIES`, `CURRENCY_SYMBOLS`
+- Patching defaults → `PATCHING_EFFORT_DEFAULTS`, `DEFAULT_NUM_SERVERS`
+- Auto-derived activity formulas → `ACTIVITY_FORMULAS`
