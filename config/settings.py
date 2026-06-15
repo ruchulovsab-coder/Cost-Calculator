@@ -114,41 +114,77 @@ DEFAULT_RESOLUTION_PCT = {
 OVERHEAD_ROLES   = ["Architect", "SDM", "SSDM"]
 RESOLUTION_ROLES = ["L1", "L2", "L3"]
 
+# ── Server patching effort defaults ───────────────────────────────────────────
+# Effort is modelled as (minutes per server × server count). All values are
+# user-editable; these are the recommended starting points.
+DEFAULT_NUM_SERVERS       = 20
+PATCHING_EFFORT_DEFAULTS  = {"Manual": 45.0, "Tool-Based": 30.0}  # minutes/server
+
+# ── Auto-derived additional-activity effort formulas ──────────────────────────
+# For each activity the monthly effort (hours) = (Σ driver_quantity × per_unit_min) ÷ 60.
+# Drivers: "servers" (from patching server count) and the four ticket volumes
+# (alerts, incidents, service_requests, changes). These produce recommended
+# defaults only — users can switch "Auto" off and enter their own value.
+ACTIVITY_FORMULAS = {
+    "Scheduled Maintenance": {
+        "drivers": {"servers": 10.0},
+        "text": "10 min × servers",
+    },
+    "Root Cause Analysis (RCA)": {
+        "drivers": {"incidents": 15.0, "alerts": 1.0, "service_requests": 0.5, "changes": 3.0},
+        "text": "15 min × incidents + 1 min × alerts + 0.5 min × service requests + 3 min × changes",
+    },
+    "Problem Management": {
+        "drivers": {"incidents": 6.0, "alerts": 0.5, "service_requests": 0.3, "changes": 1.5},
+        "text": "6 min × incidents + 0.5 min × alerts + 0.3 min × service requests + 1.5 min × changes",
+    },
+    "Documentation & Knowledge Base": {
+        "drivers": {"servers": 3.0, "incidents": 3.0, "service_requests": 1.0, "changes": 4.0},
+        "text": "3 min × servers + 3 min × incidents + 1 min × service requests + 4 min × changes",
+    },
+}
+
 DEFAULT_ADDITIONAL_ACTIVITIES = [
     {
         "name": "Scheduled Maintenance",
         "hours": 0.0,
         "custom": False,
+        "auto": True,
         "dist": {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Root Cause Analysis (RCA)",
         "hours": 0.0,
         "custom": False,
+        "auto": True,
         "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Problem Management",
         "hours": 0.0,
         "custom": False,
+        "auto": True,
         "dist": {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0, "SSDM": 0.0}
     },
     {
         "name": "Documentation & Knowledge Base",
         "hours": 0.0,
         "custom": False,
+        "auto": True,
         "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Service Review Preparation",
         "hours": 0.0,
         "custom": False,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0, "SSDM": 0.0}
     },
     {
         "name": "Other",
         "hours": 0.0,
         "custom": False,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0}
     },
 ]

@@ -77,31 +77,44 @@ def calc_patching_effort(
     included: bool,
     num_servers: int,
     method: str,
-    manual_effort_per_server: float = 0,
-    failure_rate_pct: float = 0,
-    remediation_effort: float = 0,
+    manual_effort_per_server: float = 45.0,
+    auto_effort_per_server: float = 30.0,
+    **_legacy,
 ) -> Dict[str, Any]:
+    """
+    Patching effort = minutes-per-server × server count (÷ 60 for hours).
+    Manual and automated (Tool-Based) patching differ only in the per-server
+    minutes (defaults: Manual 45, Tool-Based 30). All values are user-editable.
+    """
     if not included:
         return {"hours": 0.0, "detail": "Not included"}
-    if method == "Manual":
-        hours = (num_servers * manual_effort_per_server) / 60.0
-        return {
-            "hours": hours,
-            "servers": num_servers,
-            "effort_per_server_min": manual_effort_per_server,
-            "detail": f"{num_servers} servers × {manual_effort_per_server} min/server",
-        }
-    # Tool-Based
-    failed = math.ceil(num_servers * (failure_rate_pct / 100.0))
-    hours = (failed * remediation_effort) / 60.0
+    per = manual_effort_per_server if method == "Manual" else auto_effort_per_server
+    hours = (num_servers * per) / 60.0
     return {
         "hours": hours,
         "servers": num_servers,
-        "failed_servers": failed,
-        "failure_rate_pct": failure_rate_pct,
-        "remediation_effort_min": remediation_effort,
-        "detail": f"⌈{num_servers} × {failure_rate_pct}%⌉ = {failed} failed × {remediation_effort} min",
+        "method": method,
+        "effort_per_server_min": per,
+        "detail": f"{num_servers} servers × {per:.0f} min/server",
     }
+
+
+def derive_activity_hours(activity_name: str, servers: int, volumes: Dict[str, float]) -> float:
+    """
+    Recommended monthly effort (hours) for an auto-derived additional activity,
+    using the per-unit-minute coefficients in config.ACTIVITY_FORMULAS.
+      volumes : {"alerts", "incidents", "service_requests", "changes"}
+    Returns 0.0 for activities without a defined formula.
+    """
+    from config.settings import ACTIVITY_FORMULAS
+    cfg = ACTIVITY_FORMULAS.get(activity_name)
+    if not cfg:
+        return 0.0
+    total_min = 0.0
+    for driver, per_min in cfg["drivers"].items():
+        qty = servers if driver == "servers" else volumes.get(driver, 0)
+        total_min += (qty or 0) * per_min
+    return total_min / 60.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -492,9 +505,8 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         g("patching_included") == "Yes",
         g("num_servers", 0) or 0,
         g("patching_method") or "Manual",
-        g("manual_effort_per_server", 0) or 0,
-        g("patch_failure_rate", 0) or 0,
-        g("patch_remediation_effort", 0) or 0,
+        g("manual_effort_per_server", 45) or 45,
+        g("auto_effort_per_server", 30) or 30,
     )
     patch_h = patching["hours"]
 

@@ -3,12 +3,12 @@ import math
 import pandas as pd
 import pytest
 
-from config.settings import ALL_ROLES, COVERAGE_APPLICABLE_ROLES
+from config.settings import ALL_ROLES, COVERAGE_APPLICABLE_ROLES, ACTIVITY_FORMULAS
 from modules.calculations.engine import (
     convert_rate_to_inr, convert_to_currency, calc_productive_hours,
     calc_coverage_multiplier, calc_fte, ceil_half, calc_patching_effort,
     calc_total_delivery_cost, calc_selling_price, assemble_role_hours,
-    calc_resource_cost, filter_rate_card, resolve_role_rates,
+    calc_resource_cost, filter_rate_card, resolve_role_rates, derive_activity_hours,
 )
 
 
@@ -64,19 +64,49 @@ def test_coverage_applicable_roles_config():
 # ── Patching ──────────────────────────────────────────────────────────────────
 
 def test_patching_excluded():
-    assert calc_patching_effort(False, 50, "Manual", 30)["hours"] == 0.0
+    assert calc_patching_effort(False, 20, "Manual")["hours"] == 0.0
 
 
-def test_patching_manual():
-    res = calc_patching_effort(True, 50, "Manual", 30)
-    assert res["hours"] == pytest.approx(50 * 30 / 60.0)  # 25.0
+def test_patching_manual_default_45_per_server():
+    res = calc_patching_effort(True, 20, "Manual", manual_effort_per_server=45.0)
+    assert res["effort_per_server_min"] == 45.0
+    assert res["hours"] == pytest.approx(20 * 45 / 60.0)  # 15.0
 
 
-def test_patching_tool_based_uses_ceil_of_failures():
-    # ceil(50 * 22%) = ceil(11.0) = 11 failed * 30 min / 60
-    res = calc_patching_effort(True, 50, "Tool-Based", 0, 22.0, 30.0)
-    assert res["failed_servers"] == math.ceil(50 * 0.22)
-    assert res["hours"] == pytest.approx(res["failed_servers"] * 30 / 60.0)
+def test_patching_automated_default_30_per_server():
+    res = calc_patching_effort(True, 20, "Tool-Based", auto_effort_per_server=30.0)
+    assert res["effort_per_server_min"] == 30.0
+    assert res["hours"] == pytest.approx(20 * 30 / 60.0)  # 10.0
+
+
+# ── Auto-derived activity efforts ──────────────────────────────────────────────
+
+def test_derive_scheduled_maintenance_uses_servers():
+    h = derive_activity_hours("Scheduled Maintenance", 20, {})
+    assert h == pytest.approx(20 * 10 / 60.0)  # 10 min/server
+
+
+def test_derive_rca_uses_all_volumes():
+    vols = {"alerts": 100, "incidents": 10, "service_requests": 25, "changes": 8}
+    expected = (10 * 15 + 100 * 1 + 25 * 0.5 + 8 * 3) / 60.0
+    assert derive_activity_hours("Root Cause Analysis (RCA)", 20, vols) == pytest.approx(expected)
+
+
+def test_derive_documentation_uses_servers_and_volumes():
+    vols = {"alerts": 100, "incidents": 10, "service_requests": 25, "changes": 8}
+    # Documentation ignores alerts by design
+    expected = (20 * 3 + 10 * 3 + 25 * 1 + 8 * 4) / 60.0
+    assert derive_activity_hours("Documentation & Knowledge Base", 20, vols) == pytest.approx(expected)
+
+
+def test_derive_unknown_activity_is_zero():
+    assert derive_activity_hours("Service Review Preparation", 20, {"incidents": 10}) == 0.0
+
+
+def test_all_formula_activities_resolve():
+    vols = {"alerts": 50, "incidents": 5, "service_requests": 12, "changes": 4}
+    for name in ACTIVITY_FORMULAS:
+        assert derive_activity_hours(name, 10, vols) >= 0.0
 
 
 # ── Cost / price ──────────────────────────────────────────────────────────────

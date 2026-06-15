@@ -81,13 +81,12 @@ def _build_initial_state():
         # ── Patching role assignment ───────────────────────────────────
         "patching_role": "L2",
 
-        # ── Step 3: Patching ──────────────────────────────────────────
+        # ── Step 3: Patching (effort = min/server × servers) ──────────
         "patching_included":       "Yes",
-        "num_servers":              50,
+        "num_servers":              20,
         "patching_method":          "Tool-Based",
-        "manual_effort_per_server": 30.0,
-        "patch_failure_rate":       20.0,
-        "patch_remediation_effort": 0.0,
+        "manual_effort_per_server": 45.0,
+        "auto_effort_per_server":   30.0,
 
         # ── Step 4: Additional Activities ────────────────────────────
         "additional_activities": copy.deepcopy(DEFAULT_ADDITIONAL_ACTIVITIES),
@@ -171,6 +170,7 @@ def sanitize_additional_activities():
         "Other":                          {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0},
     }
     
+    from config.settings import ACTIVITY_FORMULAS
     for act in activities:
         if "dist" not in act or not isinstance(act["dist"], dict):
             name = act.get("name", "")
@@ -183,6 +183,10 @@ def sanitize_additional_activities():
             for r in ALL_ROLES:
                 if r not in act["dist"]:
                     act["dist"][r] = 0.0
+        # Backfill the auto flag: activities with a derivation formula default to
+        # Auto (formula-driven), everything else to manual entry.
+        if "auto" not in act:
+            act["auto"] = act.get("name") in ACTIVITY_FORMULAS
 
 
 def init_session_state():
@@ -238,7 +242,7 @@ def apply_total_volume(cat_key: str, new_total: int):
 _MODEL_KEYS = [
     "alerts", "service_requests", "incidents", "changes",
     "patching_included", "num_servers", "patching_method",
-    "manual_effort_per_server", "patch_failure_rate", "patch_remediation_effort",
+    "manual_effort_per_server", "auto_effort_per_server",
     "patching_role", "additional_activities", "contingency_pct", "overhead_pcts",
     "coverage_model", "custom_hours_per_day", "custom_days_per_week",
     "monthly_working_hours", "productive_utilisation", "role_genus",
@@ -249,6 +253,29 @@ _MODEL_KEYS = [
 ]
 
 
+def workload_volumes() -> dict:
+    """Current ticket volumes used to derive activity defaults."""
+    totals = st.session_state.get("workload_totals", {}) or {}
+    return {
+        "alerts":           totals.get("alerts", 0),
+        "incidents":        totals.get("incidents", 0),
+        "service_requests": totals.get("service_requests", 0),
+        "changes":          totals.get("changes", 0),
+    }
+
+
+def refresh_auto_activity_hours():
+    """Recompute hours for every additional activity still in Auto mode from the
+    current server count and ticket volumes. Manual (Auto-off) rows are left as-is."""
+    from config.settings import ACTIVITY_FORMULAS
+    from modules.calculations.engine import derive_activity_hours
+    servers = int(st.session_state.get("num_servers", 0) or 0)
+    volumes = workload_volumes()
+    for act in st.session_state.get("additional_activities", []) or []:
+        if act.get("auto") and act.get("name") in ACTIVITY_FORMULAS:
+            act["hours"] = round(derive_activity_hours(act["name"], servers, volumes), 1)
+
+
 def build_model_state() -> dict:
     """
     Assemble the plain-dict state consumed by engine.compute_full_model from the
@@ -257,6 +284,7 @@ def build_model_state() -> dict:
     every output (dashboard, exports, what-if).
     """
     from modules.calculations.engine import resolve_role_rates
+    refresh_auto_activity_hours()  # keep Auto-derived activity hours current
     state = {k: st.session_state.get(k) for k in _MODEL_KEYS}
     exchange_rates = st.session_state.get("exchange_rates", {}) or {}
     state["role_rates_inr"] = resolve_role_rates(

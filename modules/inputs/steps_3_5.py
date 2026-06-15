@@ -30,14 +30,16 @@ def render_step3() -> bool:
         callout("Patching excluded. Patching effort = 0 hours.", "info")
         return True
 
+    from config.settings import PATCHING_EFFORT_DEFAULTS
+
     c1, c2 = st.columns(2)
     with c1:
         st.number_input(
             "**Number of Servers to be Patched**",
             min_value=1, step=1,
-            value=max(1, int(st.session_state.get("num_servers", 1))),
+            value=max(1, int(st.session_state.get("num_servers", 20))),
             key="num_servers",
-            help="Total server count in patching scope.",
+            help="Total server count in patching scope. Default: 20.",
         )
     with c2:
         method = st.radio(
@@ -46,62 +48,38 @@ def render_step3() -> bool:
             index=0 if st.session_state.get("patching_method") == "Manual" else 1,
             key="patching_method",
             horizontal=True,
+            help="Manual default: 45 min/server. Automated (Tool-Based) default: 30 min/server.",
         )
 
     if method == "Manual":
         section_hdr("Manual Patching Configuration")
-        st.number_input(
+        effort = st.number_input(
             "**Effort Per Server (Minutes)**",
             min_value=0.0, step=5.0, format="%.0f",
-            value=float(st.session_state.get("manual_effort_per_server", 0.0)),
+            value=float(st.session_state.get("manual_effort_per_server", PATCHING_EFFORT_DEFAULTS["Manual"])),
             key="manual_effort_per_server",
-            help="Average minutes to manually patch one server end-to-end.",
+            help="Average minutes to manually patch one server end-to-end. Default: 45.",
         )
-        result = calc_patching_effort(
-            True,
-            st.session_state.num_servers,
-            "Manual",
-            st.session_state.manual_effort_per_server,
-        )
-        callout(
-            f"📊 <strong>Patching Effort:</strong> {st.session_state.num_servers} servers × "
-            f"{st.session_state.manual_effort_per_server:.0f} min = "
-            f"<strong>{result['hours']:.1f} hours/month</strong>",
-            "success",
-        )
+        result = calc_patching_effort(True, st.session_state.num_servers, "Manual",
+                                      manual_effort_per_server=effort)
     else:
-        section_hdr("Tool-Based Patching Configuration")
-        tc1, tc2 = st.columns(2)
-        with tc1:
-            st.number_input(
-                "**Patch Failure Rate (%)**",
-                min_value=0.0, max_value=100.0, step=1.0, format="%.1f",
-                value=float(st.session_state.get("patch_failure_rate", 0.0)),
-                key="patch_failure_rate",
-                help="% of servers that fail auto-patching and need manual remediation.",
-            )
-        with tc2:
-            st.number_input(
-                "**Remediation Effort Per Failed Server (Minutes)**",
-                min_value=0.0, step=5.0, format="%.0f",
-                value=float(st.session_state.get("patch_remediation_effort", 0.0)),
-                key="patch_remediation_effort",
-                help="Minutes to manually fix one failed server.",
-            )
-        result = calc_patching_effort(
-            True,
-            st.session_state.num_servers,
-            "Tool-Based",
-            0,
-            st.session_state.patch_failure_rate,
-            st.session_state.patch_remediation_effort,
+        section_hdr("Automated (Tool-Based) Patching Configuration")
+        effort = st.number_input(
+            "**Effort Per Server (Minutes)**",
+            min_value=0.0, step=5.0, format="%.0f",
+            value=float(st.session_state.get("auto_effort_per_server", PATCHING_EFFORT_DEFAULTS["Tool-Based"])),
+            key="auto_effort_per_server",
+            help="Average minutes of effort per server for tool-based patching "
+                 "(orchestration, verification, exception handling). Default: 30.",
         )
-        callout(
-            f"📊 <strong>Calculation:</strong> {result['detail']}<br>"
-            f"<strong>Patching Effort = {result['hours']:.1f} hours/month</strong>",
-            "success",
-        )
+        result = calc_patching_effort(True, st.session_state.num_servers, "Tool-Based",
+                                      auto_effort_per_server=effort)
 
+    callout(
+        f"📊 <strong>Patching Effort:</strong> {st.session_state.num_servers} servers × "
+        f"{effort:.0f} min = <strong>{result['hours']:.1f} hours/month</strong>",
+        "success",
+    )
     return True
 
 
@@ -121,10 +99,33 @@ def render_step4() -> bool:
     activities = st.session_state.additional_activities
     to_remove = []
 
+    from config.settings import ALL_ROLES, ACTIVITY_FORMULAS
+    from modules.calculations.engine import derive_activity_hours
+    from modules.state.session_manager import workload_volumes
+
+    servers = int(st.session_state.get("num_servers", 0) or 0)
+    volumes = workload_volumes()
+
+    # Clickable formula reference
+    with st.expander("ℹ️ How are the recommended default efforts calculated?"):
+        st.markdown(
+            "For activities below marked **Auto**, the monthly effort is derived from your "
+            "server count and ticket volumes as a recommendation. Untick **Auto** on any row "
+            "to enter your own value. Formula: *(sum of the terms below) ÷ 60 = hours/month.*"
+        )
+        for nm, cfg in ACTIVITY_FORMULAS.items():
+            h = derive_activity_hours(nm, servers, volumes)
+            st.markdown(f"- **{nm}** = ({cfg['text']}) ÷ 60 → current default **{h:.1f} hrs/month**")
+        st.caption(f"Using servers = {servers}, alerts = {volumes['alerts']}, "
+                   f"incidents = {volumes['incidents']}, service requests = {volumes['service_requests']}, "
+                   f"changes = {volumes['changes']}.")
+
     # 1. Header row
-    h0, h1, hl1, hl2, hl3, harch, hsdm, hssdm, h_del = st.columns([3.0, 1.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8])
+    h0, h1, hauto, hl1, hl2, hl3, harch, hsdm, hssdm, h_del = st.columns(
+        [2.6, 1.0, 0.8, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.9])
     h0.markdown("**Activity Name**")
     h1.markdown("**Monthly Hrs**")
+    hauto.markdown("**Auto**")
     hl1.markdown("**L1 %**")
     hl2.markdown("**L2 %**")
     hl3.markdown("**L3 %**")
@@ -133,12 +134,17 @@ def render_step4() -> bool:
     hssdm.markdown("**SSDM %**")
     h_del.markdown("**Status**")
 
-    from config.settings import ALL_ROLES
     all_valid = True
 
     for i, row in enumerate(activities):
-        c0, c1, cl1, cl2, cl3, carch, csdm, cssdm, c_del = st.columns([3.0, 1.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8])
-        
+        c0, c1, c_auto, cl1, cl2, cl3, carch, csdm, cssdm, c_del = st.columns(
+            [2.6, 1.0, 0.8, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.9])
+
+        name = row["name"]
+        formula = ACTIVITY_FORMULAS.get(name)
+        is_derived = formula is not None
+        formula_help = (f"Default = ({formula['text']}) ÷ 60" if is_derived else None)
+
         # Editable name for custom rows
         if row.get("custom"):
             name = c0.text_input("Name", value=row["name"],
@@ -147,13 +153,33 @@ def render_step4() -> bool:
         else:
             c0.markdown(f"*{row['name']}*")
 
-        hours = c1.number_input(
-            "hrs", min_value=0.0, step=0.5, format="%.1f",
-            value=float(row["hours"]),
-            key=f"act_hrs_{i}",
-            label_visibility="collapsed",
-        )
-        activities[i]["hours"] = hours
+        # Auto toggle (only for activities that have a derivation formula)
+        if is_derived:
+            auto = c_auto.checkbox("Auto", value=row.get("auto", True),
+                                   key=f"act_auto_{i}", label_visibility="collapsed",
+                                   help="On: effort auto-derived from volumes. Off: enter your own.")
+            activities[i]["auto"] = auto
+        else:
+            auto = False
+            c_auto.markdown("<div style='color:#888;text-align:center'>—</div>", unsafe_allow_html=True)
+
+        # Monthly hours — disabled & formula-driven when Auto is on
+        if is_derived and auto:
+            derived_h = round(derive_activity_hours(name, servers, volumes), 1)
+            activities[i]["hours"] = derived_h
+            hours = derived_h
+            c1.number_input("hrs", value=derived_h, disabled=True,
+                            key=f"act_hrs_auto_{i}", label_visibility="collapsed",
+                            help=formula_help)
+        else:
+            hours = c1.number_input(
+                "hrs", min_value=0.0, step=0.5, format="%.1f",
+                value=float(row["hours"]),
+                key=f"act_hrs_{i}",
+                label_visibility="collapsed",
+                help=formula_help,
+            )
+            activities[i]["hours"] = hours
 
         # Role percentages
         dist = row.setdefault("dist", {r: 0.0 for r in ALL_ROLES})
@@ -221,6 +247,8 @@ def render_step4() -> bool:
 
 def _compute_all_effort():
     """Compute every effort component from session state. Returns full breakdown dict."""
+    from modules.state.session_manager import refresh_auto_activity_hours
+    refresh_auto_activity_hours()
     _, alert_h  = calc_category_hours(st.session_state.alerts)
     _, sr_h     = calc_category_hours(st.session_state.service_requests)
     _, inc_h    = calc_category_hours(st.session_state.incidents)
@@ -230,9 +258,8 @@ def _compute_all_effort():
         st.session_state.get("patching_included") == "Yes",
         st.session_state.get("num_servers", 0),
         st.session_state.get("patching_method") or "Manual",
-        st.session_state.get("manual_effort_per_server", 0),
-        st.session_state.get("patch_failure_rate", 0),
-        st.session_state.get("patch_remediation_effort", 0),
+        st.session_state.get("manual_effort_per_server", 45),
+        st.session_state.get("auto_effort_per_server", 30),
     )
     add_h = sum(r["hours"] for r in st.session_state.additional_activities)
 

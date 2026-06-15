@@ -54,6 +54,23 @@ Selling Price = Delivery Cost ÷ (1 − Margin%)
 
 ---
 
+## Effort Defaults & Auto-Derivation
+
+All defaults are **editable recommendations**.
+
+**Patching** = minutes-per-server × server count:
+- Manual: **45 min/server**, Automated (tool-based): **30 min/server**, default **20 servers**.
+
+**Auto-derived additional activities** (Step 4) — each has an **Auto** toggle (on by
+default) and a tooltip/expander showing its formula. Monthly hours = (Σ terms) ÷ 60:
+- **Scheduled Maintenance** = 10 min × servers
+- **RCA** = 15 min × incidents + 1 × alerts + 0.5 × service requests + 3 × changes
+- **Problem Management** = 6 min × incidents + 0.5 × alerts + 0.3 × service requests + 1.5 × changes
+- **Documentation & KB** = 3 min × servers + 3 × incidents + 1 × service requests + 4 × changes
+
+Switch **Auto** off on any row to enter your own value. Coefficients live in
+`config.settings.ACTIVITY_FORMULAS` / `PATCHING_EFFORT_DEFAULTS`.
+
 ## Rate Card Format
 
 Excel (.xlsx) with columns: **Country, Location, Genus, Hourly Rate, Rate Currency**
