@@ -37,15 +37,35 @@ jobs:
   deploy:
     needs: test          # deploy only if tests pass
     runs-on: ubuntu-latest
+    env:
+      # Accept the IDs whether they were added under the Variables OR Secrets tab.
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Azure IDs are configured
+        run: |
+          missing=""
+          [ -z "$AZURE_CLIENT_ID" ]       && missing="$missing AZURE_CLIENT_ID"
+          [ -z "$AZURE_TENANT_ID" ]       && missing="$missing AZURE_TENANT_ID"
+          [ -z "$AZURE_SUBSCRIPTION_ID" ] && missing="$missing AZURE_SUBSCRIPTION_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Azure IDs:$missing"
+            echo "Add them at: https://github.com/${{ github.repository }}/settings/variables/actions"
+            echo "(Variables tab OR Secrets tab — either works now. Names must match exactly.)"
+            echo "Get the values by running STEP 4 of DEPLOY.md in Azure Cloud Shell."
+            exit 1
+          fi
+          echo "All three Azure IDs are present."
 
       - name: Azure login (OIDC — no secrets)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build image & deploy to Container Apps
         uses: azure/cli@v2
