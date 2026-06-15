@@ -51,7 +51,7 @@ def inject_auto_select():
     )
 
 st.set_page_config(
-    page_title="IT MS Calculator",
+    page_title="Cloud & Infrastructure Practices — Ops Effort Estimation Tool",
     page_icon="⚙️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -112,14 +112,24 @@ def step_icon(n):
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
+    _logo = os.path.join(os.path.dirname(__file__), "assets", "nagarro_logo.png")
+    if os.path.exists(_logo):
+        st.image(_logo, use_container_width=True)
+    else:
+        # Fallback wordmark until assets/nagarro_logo.png is supplied
+        st.markdown(
+            "<div style='text-align:center;padding-top:12px'>"
+            "<span style='font-family:Arial,Helvetica,sans-serif;font-weight:800;"
+            "font-size:1.8rem;color:#FFFFFF;letter-spacing:0.5px'>nagarro</span></div>",
+            unsafe_allow_html=True,
+        )
     st.markdown("""
-    <div style="text-align:center;padding:14px 0 6px 0;">
-      <div style="font-size:1.9rem">⚙️</div>
-      <div style="font-weight:700;font-size:0.95rem;color:#FFFFFF;line-height:1.3">
-        IT Managed Services<br>Calculator
+    <div style="text-align:center;padding:8px 0 6px 0;">
+      <div style="font-weight:700;font-size:0.9rem;color:#FFFFFF;line-height:1.3">
+        Cloud &amp; Infrastructure Practices<br>Ops Effort Estimation Tool
       </div>
       <div style="font-size:0.7rem;color:#A8DDD8;margin-top:3px">
-        Shared Model · End-to-End · v2.0
+        Cloud &amp; Infra · End-to-End Delivery
       </div>
     </div>""", unsafe_allow_html=True)
 

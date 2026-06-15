@@ -144,6 +144,20 @@ def _render_cost_inputs():
     if cur != "INR" and not fx.get(cur):
         callout(f"⚠️ Enter an exchange rate for {cur} above to convert the output.", "warning")
 
+    # ── FTE basis for costing ─────────────────────────────────
+    st.divider()
+    section_hdr("🧮 FTE Basis (Resource Cost & Executive Summary)")
+    basis_label = st.radio(
+        "Calculate cost and FTE using",
+        ["Rounded FTE (⌈0.5⌉)", "Raw FTE"],
+        index=1 if st.session_state.get("fte_basis", "rounded") == "raw" else 0,
+        key="fte_basis_w", horizontal=True,
+        help="Rounded: bills to the next 0.5 FTE, min 0.5 per active role (delivery view). "
+             "Raw: bills the exact computed FTE (cost-basis view). Affects Resource Cost, "
+             "Executive Summary, delivery cost and price.",
+    )
+    st.session_state["fte_basis"] = "raw" if basis_label.startswith("Raw") else "rounded"
+
 
 def _render_what_if(base_model, conv, currency):
     """Live sensitivity panel. Recomputes a modified copy of the state without
@@ -241,13 +255,17 @@ def render_step8() -> bool:
 
     # ── Resource cost summary ─────────────────────────────────
     st.divider()
+    basis_txt = "Raw FTE" if model["fte_basis"] == "raw" else "Rounded FTE (⌈0.5⌉)"
     section_hdr("💰 Resource Cost Summary")
+    st.caption(f"Costed on **{basis_txt}** — change this with the FTE Basis toggle above.")
     rc_rows_html = ""
+    _raw = model["fte_basis"] == "raw"
     for role in ALL_ROLES:
         r = resource_costs[role]
+        fte_disp = f"{r['fte']:.2f}" if _raw else f"{r['fte']:.1f}"
         rc_rows_html += (
             f"<tr><td>{role}</td><td>{r['genus'] or '—'}</td>"
-            f"<td class='r'>{r['fte']:.1f}</td><td class='r'>{r['billed_hours']:,.0f}</td>"
+            f"<td class='r'>{fte_disp}</td><td class='r'>{r['billed_hours']:,.0f}</td>"
             f"<td class='r'>₹{r['rate_inr']:,.0f}</td><td class='r'>₹{r['cost_inr']:,.0f}</td></tr>"
         )
     rc_rows_html += (
@@ -268,7 +286,9 @@ def render_step8() -> bool:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Effort",  fmt_hours(total_effort))
-    m2.metric("Total FTE",     f"{total_fte:.1f}")
+    _raw_fte = model["fte_basis"] == "raw"
+    m2.metric("Total FTE (Raw)" if _raw_fte else "Total FTE (Rounded)",
+              f"{total_fte:.2f}" if _raw_fte else f"{total_fte:.1f}")
     m3.metric("Delivery Cost", fmt_currency(conv(cost_result["total_delivery_cost"]), currency))
     m4.metric("Selling Price", fmt_currency(conv(price_result["selling_price"]), currency))
     m5, m6, m7, m8 = st.columns(4)

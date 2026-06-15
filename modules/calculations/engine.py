@@ -306,10 +306,13 @@ def calc_resource_cost(
     monthly_working_hours: float,
     role_rates_inr: Dict[str, float],
     role_genus: Dict[str, Optional[str]],
+    fte_key: str = "final_fte",
 ) -> Dict[str, Dict[str, Any]]:
+    """fte_key selects the staffing basis used for billing: 'final_fte' (rounded
+    to 0.5) or 'raw_fte' (un-rounded)."""
     result = {}
     for role, fte_data in fte_result.items():
-        fte = fte_data.get("final_fte", 0.0)
+        fte = fte_data.get(fte_key, 0.0)
         billed_hours = fte * monthly_working_hours
         rate = role_rates_inr.get(role, 0.0)
         cost = billed_hours * rate if (fte > 0 and rate > 0) else 0.0
@@ -544,12 +547,18 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
     utilisation = float(g("productive_utilisation", 75.0) or 75.0)
     productive_hrs = calc_productive_hours(monthly_working_hours, utilisation)
     fte_result = calc_fte(role_hours, productive_hrs, multiplier)
-    total_fte = sum(v["final_fte"] for v in fte_result.values())
 
-    # 7. Resource cost
+    # FTE basis for costing/display: rounded (⌈0.5⌉) or raw
+    fte_basis = (g("fte_basis", "rounded") or "rounded").lower()
+    fte_key = "raw_fte" if fte_basis == "raw" else "final_fte"
+    total_fte = sum(v[fte_key] for v in fte_result.values())
+    total_fte_raw = sum(v["raw_fte"] for v in fte_result.values())
+    total_fte_final = sum(v["final_fte"] for v in fte_result.values())
+
+    # 7. Resource cost (billed on the chosen FTE basis)
     role_rates_inr = g("role_rates_inr", {}) or {}
     role_genus = g("role_genus", {}) or {}
-    resource_costs = calc_resource_cost(fte_result, monthly_working_hours, role_rates_inr, role_genus)
+    resource_costs = calc_resource_cost(fte_result, monthly_working_hours, role_rates_inr, role_genus, fte_key=fte_key)
     total_resource_cost = sum(v["cost_inr"] for v in resource_costs.values())
 
     # 8. Delivery cost + price (transition is one-time, excluded from monthly)
@@ -583,7 +592,10 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         "coverage_multiplier": multiplier,
         "productive_hours": productive_hrs,
         "fte_result": fte_result,
+        "fte_basis": fte_basis,
         "total_fte": total_fte,
+        "total_fte_raw": total_fte_raw,
+        "total_fte_final": total_fte_final,
         "resource_costs": resource_costs,
         "total_resource_cost": total_resource_cost,
         "cost_result": cost_result,

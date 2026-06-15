@@ -130,6 +130,7 @@ def _build_initial_state():
         "sla_provision_pct":       0.0,
         "target_margin_pct":       20.0,
         "reporting_currency":      "INR",
+        "fte_basis":               "rounded",   # "rounded" (⌈0.5⌉) or "raw"
 
         # ── Navigation ────────────────────────────────────────────────
         "current_step": 1,
@@ -249,7 +250,7 @@ _MODEL_KEYS = [
     "additional_costs", "sla_provision_included", "sla_provision_pct",
     "target_margin_pct", "transition_total_cost",
     "reporting_currency", "exchange_rates",
-    "delivery_country", "delivery_location",
+    "delivery_country", "delivery_location", "fte_basis",
 ]
 
 

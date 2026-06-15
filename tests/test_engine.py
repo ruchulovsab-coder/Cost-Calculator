@@ -83,19 +83,23 @@ def test_patching_automated_default_30_per_server():
 
 def test_derive_scheduled_maintenance_uses_servers():
     h = derive_activity_hours("Scheduled Maintenance", 20, {})
-    assert h == pytest.approx(20 * 10 / 60.0)  # 10 min/server
+    assert h == pytest.approx(20 * 30 / 60.0)  # 30 min/server
 
 
-def test_derive_rca_uses_all_volumes():
+def test_derive_rca_uses_incidents():
     vols = {"alerts": 100, "incidents": 10, "service_requests": 25, "changes": 8}
-    expected = (10 * 15 + 100 * 1 + 25 * 0.5 + 8 * 3) / 60.0
-    assert derive_activity_hours("Root Cause Analysis (RCA)", 20, vols) == pytest.approx(expected)
+    assert derive_activity_hours("Root Cause Analysis (RCA)", 20, vols) == pytest.approx(10 * 360 / 60.0)
+
+
+def test_derive_problem_management_uses_incidents():
+    vols = {"incidents": 10}
+    assert derive_activity_hours("Problem Management", 20, vols) == pytest.approx(10 * 600 / 60.0)
 
 
 def test_derive_documentation_uses_servers_and_volumes():
     vols = {"alerts": 100, "incidents": 10, "service_requests": 25, "changes": 8}
     # Documentation ignores alerts by design
-    expected = (20 * 3 + 10 * 3 + 25 * 1 + 8 * 4) / 60.0
+    expected = (20 * 30 + 10 * 120 + 25 * 15 + 8 * 120) / 60.0
     assert derive_activity_hours("Documentation & Knowledge Base", 20, vols) == pytest.approx(expected)
 
 

@@ -4,6 +4,11 @@ Add new roles, grades, coverage models, currencies, or workload defaults here.
 No code changes needed anywhere else.
 """
 
+# ── Branding ──────────────────────────────────────────────────────────────────
+APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Tool"
+APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
+ORG_NAME       = "Nagarro"
+
 # ── Roles ─────────────────────────────────────────────────────────────────────
 ALL_ROLES = ["L1", "L2", "L3", "Architect", "SDM", "SSDM"]
 COVERAGE_APPLICABLE_ROLES = ["L1", "L2"]
@@ -127,20 +132,20 @@ PATCHING_EFFORT_DEFAULTS  = {"Manual": 45.0, "Tool-Based": 30.0}  # minutes/serv
 # defaults only — users can switch "Auto" off and enter their own value.
 ACTIVITY_FORMULAS = {
     "Scheduled Maintenance": {
-        "drivers": {"servers": 10.0},
-        "text": "10 min × servers",
+        "drivers": {"servers": 30.0},
+        "text": "30 min × servers",
     },
     "Root Cause Analysis (RCA)": {
-        "drivers": {"incidents": 15.0, "alerts": 1.0, "service_requests": 0.5, "changes": 3.0},
-        "text": "15 min × incidents + 1 min × alerts + 0.5 min × service requests + 3 min × changes",
+        "drivers": {"incidents": 360.0},
+        "text": "360 min × incidents",
     },
     "Problem Management": {
-        "drivers": {"incidents": 6.0, "alerts": 0.5, "service_requests": 0.3, "changes": 1.5},
-        "text": "6 min × incidents + 0.5 min × alerts + 0.3 min × service requests + 1.5 min × changes",
+        "drivers": {"incidents": 600.0},
+        "text": "600 min × incidents",
     },
     "Documentation & Knowledge Base": {
-        "drivers": {"servers": 3.0, "incidents": 3.0, "service_requests": 1.0, "changes": 4.0},
-        "text": "3 min × servers + 3 min × incidents + 1 min × service requests + 4 min × changes",
+        "drivers": {"servers": 30.0, "incidents": 120.0, "service_requests": 15.0, "changes": 120.0},
+        "text": "30 min × servers + 120 min × incidents + 15 min × service requests + 120 min × changes",
     },
 }
 

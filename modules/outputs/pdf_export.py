@@ -1,5 +1,6 @@
 """Client-facing PDF proposal export (reportlab). Reads the unified compute model."""
 import io
+import os
 from datetime import date
 
 import streamlit as st
@@ -8,11 +9,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
 )
 
-from config.settings import ALL_ROLES, CURRENCY_SYMBOLS
+from config.settings import ALL_ROLES, CURRENCY_SYMBOLS, APP_NAME, ORG_NAME
 from modules.state.session_manager import run_model
+
+_LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                          "assets", "nagarro_logo.png")
 
 NAVY = colors.HexColor("#1F3864")
 TEAL = colors.HexColor("#1A5F6A")
@@ -68,7 +72,7 @@ def generate_pdf_report() -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=16 * mm,
                             leftMargin=16 * mm, rightMargin=16 * mm,
-                            title="IT Managed Services Proposal")
+                            title=f"{APP_NAME} — Proposal")
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=NAVY, fontSize=20, spaceAfter=2)
     sub = ParagraphStyle("sub", parent=styles["Normal"], textColor=GREY, fontSize=10, spaceAfter=2)
@@ -76,8 +80,14 @@ def generate_pdf_report() -> bytes:
     note = ParagraphStyle("note", parent=styles["Normal"], textColor=GREY, fontSize=8, spaceBefore=10)
 
     e = []
-    e.append(Paragraph("IT Managed Services Proposal", h1))
-    e.append(Paragraph("Shared Managed Services &middot; End-to-End Delivery Model", sub))
+    if os.path.exists(_LOGO_PATH):
+        try:
+            img = Image(_LOGO_PATH); img._restrictSize(45 * mm, 16 * mm); img.hAlign = "LEFT"
+            e.append(img); e.append(Spacer(1, 4))
+        except Exception:
+            pass
+    e.append(Paragraph(APP_NAME, h1))
+    e.append(Paragraph(f"{ORG_NAME} &middot; Cloud &amp; Infrastructure Practices", sub))
     e.append(Paragraph(f"Delivery location: <b>{scope}</b> &nbsp;|&nbsp; Reporting currency: <b>{cur}</b> "
                        f"&nbsp;|&nbsp; Generated: {date.today()}", sub))
     e.append(Spacer(1, 6))

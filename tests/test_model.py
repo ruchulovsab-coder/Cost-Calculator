@@ -55,6 +55,17 @@ def test_compute_full_model_default_reporting_is_inr(state):
     assert m["selling_price_converted"] == pytest.approx(m["price_result"]["selling_price"])
 
 
+def test_fte_basis_rounded_costs_at_least_raw(state):
+    state["fte_basis"] = "rounded"; mr = compute_full_model(state)
+    state["fte_basis"] = "raw"; mw = compute_full_model(state)
+    assert mr["fte_basis"] == "rounded" and mw["fte_basis"] == "raw"
+    # Rounded (ceil to 0.5, min 0.5) is always >= raw, so its cost is too.
+    assert mr["total_fte_final"] >= mw["total_fte_raw"] > 0
+    assert mr["total_resource_cost"] >= mw["total_resource_cost"] > 0
+    # Both totals are exposed regardless of basis.
+    assert mr["total_fte_raw"] == mw["total_fte_raw"]
+
+
 def test_compute_full_model_zero_volume_is_safe():
     s = _build_initial_state()
     for cat in ("alerts", "service_requests", "incidents", "changes"):

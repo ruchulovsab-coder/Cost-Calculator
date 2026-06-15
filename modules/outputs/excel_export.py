@@ -5,7 +5,7 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
-from config.settings import ALL_ROLES
+from config.settings import ALL_ROLES, APP_NAME
 from modules.state.session_manager import run_model
 
 NAVY = "1F3864"; BLUE = "2E75B6"; LB = "D5E8F0"; ACCENT = "ED7D31"
@@ -42,7 +42,7 @@ def _title(ws, t, sub=""):
 
 def _build_exec(wb, model):
     ws = wb.create_sheet("Executive Summary")
-    _title(ws, "IT Managed Services Calculator — Executive Summary")
+    _title(ws, f"{APP_NAME} — Executive Summary")
     cost = model["cost_result"]; price = model["price_result"]
     te = model["total_effort"]; base = model["base_effort"]
     _hrow(ws, 5, ["Metric", "Value", "Unit"], [35, 22, 15])
