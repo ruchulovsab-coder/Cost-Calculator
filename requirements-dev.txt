@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Test-only dependencies (not installed in the deployed image)
+pytest>=8.0.0

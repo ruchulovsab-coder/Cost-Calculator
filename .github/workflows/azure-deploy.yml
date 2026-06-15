@@ -1,0 +1,64 @@
+name: Deploy to Azure Container Apps
+
+# Push-to-deploy. Authentication uses GitHub OIDC (federated identity) — there are
+# NO secrets stored in this repo. The three values below are non-secret IDs set as
+# GitHub Actions *Variables* (Settings > Secrets and variables > Actions > Variables).
+# See DEPLOY.md for the one-time Azure setup.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required to request the OIDC token
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-ops-estimator
+  LOCATION: centralindia
+  CONTAINERAPP_ENV: env-ops-estimator
+  CONTAINERAPP_NAME: nagarro-ops-estimator
+  TARGET_PORT: "8000"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC — no secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image & deploy to Container Apps
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az config set extension.use_dynamic_install=yes_without_prompt
+            # Builds the image in Azure (no local Docker needed) and deploys it.
+            az containerapp up \
+              --name "$CONTAINERAPP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --environment "$CONTAINERAPP_ENV" \
+              --location "$LOCATION" \
+              --source . \
+              --ingress external \
+              --target-port "$TARGET_PORT"
+            # Scale to zero when idle; keep a single replica so a user's in-memory
+            # Streamlit session is never split across replicas.
+            az containerapp update \
+              --name "$CONTAINERAPP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --min-replicas 0 --max-replicas 1
+            az containerapp ingress sticky-sessions set \
+              --name "$CONTAINERAPP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --affinity sticky
+            echo "App URL:"
+            az containerapp show -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
+              --query properties.configuration.ingress.fqdn -o tsv
