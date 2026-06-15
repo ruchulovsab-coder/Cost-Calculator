@@ -234,6 +234,41 @@ def apply_total_volume(cat_key: str, new_total: int):
     st.session_state[cat_key] = existing
 
 
+# Keys consumed by the calculation pipeline (compute_full_model).
+_MODEL_KEYS = [
+    "alerts", "service_requests", "incidents", "changes",
+    "patching_included", "num_servers", "patching_method",
+    "manual_effort_per_server", "patch_failure_rate", "patch_remediation_effort",
+    "patching_role", "additional_activities", "contingency_pct", "overhead_pcts",
+    "coverage_model", "custom_hours_per_day", "custom_days_per_week",
+    "monthly_working_hours", "productive_utilisation", "role_genus",
+    "additional_costs", "sla_provision_included", "sla_provision_pct",
+    "target_margin_pct", "transition_total_cost",
+    "reporting_currency", "exchange_rates",
+    "delivery_country", "delivery_location",
+]
+
+
+def build_model_state() -> dict:
+    """
+    Assemble the plain-dict state consumed by engine.compute_full_model from the
+    live Streamlit session, resolving per-role INR rates from the uploaded rate
+    card scoped to the selected delivery location. Single source of truth for
+    every output (dashboard, exports, what-if).
+    """
+    from modules.calculations.engine import resolve_role_rates
+    state = {k: st.session_state.get(k) for k in _MODEL_KEYS}
+    exchange_rates = st.session_state.get("exchange_rates", {}) or {}
+    state["role_rates_inr"] = resolve_role_rates(
+        st.session_state.get("rate_card_df"),
+        st.session_state.get("role_genus", {}) or {},
+        st.session_state.get("delivery_country"),
+        st.session_state.get("delivery_location"),
+        exchange_rates,
+    )
+    return state
+
+
 def export_scenario(name: str, description: str) -> dict:
     import pandas as pd
     keys = [k for k in _get_initial_state() if k not in ("saved_scenarios", "_last_scenario")]

@@ -390,3 +390,195 @@ def validate_overhead_pcts(overhead_pcts: Dict[str, float]) -> Tuple[float, bool
     if total > 30:
         return total, True, f"⚠️ Overhead roles sum to {total:.1f}% — unusually high."
     return total, True, ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rate-card resolution (genus → hourly rate) — centralised here so the dashboard
+# and Step 7 agree. Honours the selected delivery location instead of hardcoding
+# India. pandas is imported lazily to keep the rest of the engine dependency-free.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def filter_rate_card(df, country: Optional[str] = None, location: Optional[str] = None):
+    """
+    Return the subset of the rate card for the given country/location.
+    Columns are assumed lower-cased ('country', 'location', 'genus', 'hourly rate',
+    'rate currency'). If a filter yields no rows it is ignored (graceful fallback).
+    """
+    if df is None or len(df) == 0:
+        return df
+    out = df
+    if country:
+        sub = out[out["country"].astype(str).str.strip().str.lower() == country.strip().lower()]
+        if len(sub) > 0:
+            out = sub
+    if location:
+        sub = out[out["location"].astype(str).str.strip().str.lower() == location.strip().lower()]
+        if len(sub) > 0:
+            out = sub
+    return out
+
+
+def resolve_role_rates(
+    df,
+    role_genus: Dict[str, Optional[str]],
+    country: Optional[str] = None,
+    location: Optional[str] = None,
+    exchange_rates: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """
+    Map each role's selected genus to an hourly rate (converted to INR) from the
+    rate card, scoped to the selected country/location. Returns {role: rate_inr}.
+    Roles with no genus or no matching row are omitted.
+    """
+    if df is None or len(df) == 0:
+        return {}
+    exchange_rates = exchange_rates or {}
+    scoped = filter_rate_card(df, country, location)
+    rates: Dict[str, float] = {}
+    for role, genus in (role_genus or {}).items():
+        if not genus:
+            continue
+        row = scoped[scoped["genus"] == genus]
+        if len(row) == 0:
+            continue
+        raw = float(row.iloc[0]["hourly rate"])
+        currency = row.iloc[0].get("rate currency", "INR") if hasattr(row.iloc[0], "get") else "INR"
+        try:
+            rates[role] = convert_rate_to_inr(raw, currency, exchange_rates)
+        except ValueError:
+            # Unknown FX for this card row — fall back to raw value so the model
+            # still produces a number; the UI surfaces missing-FX warnings.
+            rates[role] = raw
+    return rates
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unified pipeline — single source of truth for the whole calculation.
+# Pure: (state dict) → (results dict), no Streamlit, no side effects.
+# Every consumer (dashboard, Excel/PDF export, what-if sliders, tests) calls this
+# so displayed and exported numbers can never drift apart.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Run the entire effort → FTE → cost → price pipeline from a plain state dict.
+
+    Expected keys (all optional, sensible defaults applied):
+      alerts, service_requests, incidents, changes : workload sublabel dicts
+      patching_included ("Yes"/"No"), num_servers, patching_method,
+      manual_effort_per_server, patch_failure_rate, patch_remediation_effort,
+      patching_role
+      additional_activities : list of {hours, dist}
+      contingency_pct, overhead_pcts
+      coverage_model, custom_hours_per_day, custom_days_per_week,
+      monthly_working_hours, productive_utilisation
+      role_rates_inr : {role: inr_rate}  (pre-resolved from the rate card)
+      role_genus : {role: genus}
+      additional_costs : list of {cost}
+      sla_provision_included ("Yes"/"No"), sla_provision_pct
+      target_margin_pct
+      reporting_currency, exchange_rates
+    """
+    g = state.get
+
+    # 1. Ticket effort per category
+    _, alert_h = calc_category_hours(g("alerts", {}) or {})
+    _, sr_h    = calc_category_hours(g("service_requests", {}) or {})
+    _, inc_h   = calc_category_hours(g("incidents", {}) or {})
+    _, chg_h   = calc_category_hours(g("changes", {}) or {})
+
+    # 2. Patching
+    patching = calc_patching_effort(
+        g("patching_included") == "Yes",
+        g("num_servers", 0) or 0,
+        g("patching_method") or "Manual",
+        g("manual_effort_per_server", 0) or 0,
+        g("patch_failure_rate", 0) or 0,
+        g("patch_remediation_effort", 0) or 0,
+    )
+    patch_h = patching["hours"]
+
+    # 3. Additional activities
+    additional_activities = g("additional_activities", []) or []
+    add_h = sum(a.get("hours", 0.0) for a in additional_activities)
+
+    # 4. Base effort + contingency
+    breakdown = calc_base_effort(alert_h, sr_h, inc_h, chg_h, patch_h, add_h)
+    base_effort = breakdown["Base Effort"]
+    contingency_pct = float(g("contingency_pct", 0.0) or 0.0)
+    cont = calc_contingency(base_effort, contingency_pct)
+    total_effort = cont["total_effort"]
+
+    # 5. Role hours (resolution split + overhead + patching share + contingency)
+    ticket_role_hours = calc_all_ticket_role_hours(
+        g("alerts", {}) or {}, g("service_requests", {}) or {},
+        g("incidents", {}) or {}, g("changes", {}) or {},
+    )
+    overhead_pcts = g("overhead_pcts", {}) or {}
+    overhead_role_hours = calc_overhead_hours(total_effort, overhead_pcts)
+    role_hours = assemble_role_hours(
+        ticket_role_hours, overhead_role_hours, patch_h,
+        g("patching_role", "L2") or "L2",
+        additional_activities, contingency_pct,
+    )
+
+    # 6. FTE
+    multiplier = calc_coverage_multiplier(
+        g("coverage_model") or "8×5",
+        g("custom_hours_per_day", 8) or 8,
+        g("custom_days_per_week", 5) or 5,
+    )
+    monthly_working_hours = float(g("monthly_working_hours", 160.0) or 160.0)
+    utilisation = float(g("productive_utilisation", 75.0) or 75.0)
+    productive_hrs = calc_productive_hours(monthly_working_hours, utilisation)
+    fte_result = calc_fte(role_hours, productive_hrs, multiplier)
+    total_fte = sum(v["final_fte"] for v in fte_result.values())
+
+    # 7. Resource cost
+    role_rates_inr = g("role_rates_inr", {}) or {}
+    role_genus = g("role_genus", {}) or {}
+    resource_costs = calc_resource_cost(fte_result, monthly_working_hours, role_rates_inr, role_genus)
+    total_resource_cost = sum(v["cost_inr"] for v in resource_costs.values())
+
+    # 8. Delivery cost + price (transition is one-time, excluded from monthly)
+    additional_costs = g("additional_costs", []) or []
+    total_additional = sum(c.get("cost", 0.0) for c in additional_costs)
+    sla_pct = float(g("sla_provision_pct", 0.0) or 0.0) if g("sla_provision_included") == "Yes" else 0.0
+    cost_result = calc_total_delivery_cost(total_resource_cost, 0.0, total_additional, sla_pct)
+    margin = float(g("target_margin_pct", 0.0) or 0.0)
+    price_result = calc_selling_price(cost_result["total_delivery_cost"], margin)
+
+    # 9. Currency conversion of headline figures
+    reporting_currency = g("reporting_currency", "INR") or "INR"
+    exchange_rates = g("exchange_rates", {}) or {}
+    fx = dict(exchange_rates); fx.setdefault("INR", 1.0)
+    def _conv(v): return convert_to_currency(v, reporting_currency, fx)
+
+    return {
+        "effort_sources": {
+            "Monitoring Alerts": alert_h, "Service Requests": sr_h,
+            "Incidents": inc_h, "Change Requests": chg_h,
+            "Patching": patch_h, "Additional Activities": add_h,
+            "Contingency": cont["contingency_hours"],
+        },
+        "patching": patching,
+        "base_effort": base_effort,
+        "contingency": cont,
+        "total_effort": total_effort,
+        "ticket_role_hours": ticket_role_hours,
+        "overhead_role_hours": overhead_role_hours,
+        "role_hours": role_hours,
+        "coverage_multiplier": multiplier,
+        "productive_hours": productive_hrs,
+        "fte_result": fte_result,
+        "total_fte": total_fte,
+        "resource_costs": resource_costs,
+        "total_resource_cost": total_resource_cost,
+        "cost_result": cost_result,
+        "price_result": price_result,
+        "reporting_currency": reporting_currency,
+        "selling_price_converted": _conv(price_result["selling_price"]),
+        "delivery_cost_converted": _conv(cost_result["total_delivery_cost"]),
+        "transition_cost": float(g("transition_total_cost", 0.0) or 0.0),
+        "transition_cost_converted": _conv(float(g("transition_total_cost", 0.0) or 0.0)),
+    }

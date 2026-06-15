@@ -28,9 +28,16 @@ COVERAGE_MODELS = {
     "Custom":{"hours_per_day": None,"days_per_week": None,"weekly_hours": None,"multiplier": None},
 }
 
-# ── Currencies (INR only) ─────────────────────────────────────────────────────
-DEFAULT_CURRENCIES = ["INR"]
-CURRENCY_SYMBOLS   = {"INR": "₹"}
+# ── Currencies ────────────────────────────────────────────────────────────────
+# INR is the base/default. Other currencies are supported for the *reporting*
+# (output) view and for rate cards whose rates are quoted in foreign currency.
+# Exchange rates are entered by the user as: 1 <CUR> = X INR.
+DEFAULT_CURRENCIES   = ["INR"]
+REPORTING_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AUD", "AED", "SGD", "CAD", "JPY"]
+CURRENCY_SYMBOLS     = {
+    "INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "AUD": "A$",
+    "AED": "AED ", "SGD": "S$", "CAD": "C$", "JPY": "¥",
+}
 
 # ── Ticket category labels ────────────────────────────────────────────────────
 TICKET_CATEGORIES = ["Monitoring Alerts", "Service Requests", "Incidents", "Change Requests"]

@@ -179,24 +179,52 @@ def render_step7() -> bool:
         callout("Please upload a valid rate card to continue.", "warning")
         return False
 
-    # ── Delivery Location (Hardcoded to India) ────────────────────────
+    # ── Delivery Location ─────────────────────────────────────
     st.divider()
-    section_hdr("📍 Delivery Location (India)")
-    
-    # Auto-filter for India
-    df_india = df[df["country"].str.lower().str.contains("india", na=False)]
-    if len(df_india) > 0:
-        filtered = df_india.drop_duplicates(subset=["genus"], keep="first")
-        st.info(f"**{len(filtered)} grade(s) found** for India (Auto-Filtered)")
-    else:
-        filtered = df.drop_duplicates(subset=["genus"], keep="first")
-        st.info(f"**{len(filtered)} grade(s) found** (Could not find 'India' in Country column, showing all)")
+    section_hdr("📍 Delivery Location")
+    from modules.calculations.engine import filter_rate_card
+
+    countries = sorted(df["country"].dropna().astype(str).str.strip().unique().tolist())
+
+    def _default_idx(options, current, fallback_contains="india"):
+        if current and current in options:
+            return options.index(current)
+        for i, o in enumerate(options):
+            if fallback_contains in o.lower():
+                return i
+        return 0
+
+    lc1, lc2 = st.columns(2)
+    with lc1:
+        country = st.selectbox(
+            "Delivery Country", countries,
+            index=_default_idx(countries, st.session_state.get("delivery_country")),
+            key="dc_select", help="Defaults to India when present in the rate card.",
+        )
+    st.session_state["delivery_country"] = country
+
+    locs = sorted(
+        df[df["country"].astype(str).str.strip().str.lower() == country.lower()]
+        ["location"].dropna().astype(str).str.strip().unique().tolist()
+    )
+    loc_options = ["(All locations)"] + locs
+    with lc2:
+        prev_loc = st.session_state.get("delivery_location")
+        loc_idx = loc_options.index(prev_loc) if prev_loc in loc_options else 0
+        loc_sel = st.selectbox("Delivery Location", loc_options, index=loc_idx, key="dl_select")
+    location = None if loc_sel == "(All locations)" else loc_sel
+    st.session_state["delivery_location"] = location
+
+    scoped = filter_rate_card(df, country, location)
+    filtered = scoped.drop_duplicates(subset=["genus"], keep="first")
+    scope_label = f"{country}" + (f" / {location}" if location else "")
+    st.info(f"**{len(filtered)} grade(s) found** for {scope_label}")
 
     st.session_state["_filtered_rate_card"] = filtered
 
     st.dataframe(
         filtered[["genus", "hourly rate", "rate currency"]].rename(columns={
-            "genus": "Genus", "hourly rate": "Hourly Rate", "rate currency": "Currency (INR Default)"
+            "genus": "Genus", "hourly rate": "Hourly Rate", "rate currency": "Currency"
         }),
         use_container_width=True, hide_index=True,
     )
@@ -258,7 +286,8 @@ def render_step7() -> bool:
         if len(rate_row) > 0:
             rate = float(rate_row.iloc[0]["hourly rate"])
             rates_inr_preview[role] = rate
-            c2.markdown(f"**INR {rate:,.0f}/hr**")
+            row_cur = str(rate_row.iloc[0].get("rate currency", "INR")).upper().strip() or "INR"
+            c2.markdown(f"**{row_cur} {rate:,.0f}/hr**")
             c3.markdown('<span class="pill-ok">✓ Mapped</span>', unsafe_allow_html=True)
         else:
             c2.markdown("—")
