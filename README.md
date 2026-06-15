@@ -1,10 +1,15 @@
-# IT Managed Services Calculator v2
+# Cloud & Infrastructure Practices — Ops Effort Estimation Tool
 
-**Shared Managed Services | End-to-End Delivery Model**
+**Nagarro | Cloud & Infrastructure Practices · End-to-End Delivery Model**
+
+[![Deploy to Azure Container Apps](https://github.com/ruchulovsab-coder/Cost-Calculator/actions/workflows/azure-deploy.yml/badge.svg)](https://github.com/ruchulovsab-coder/Cost-Calculator/actions/workflows/azure-deploy.yml)
+
+🔗 **Live app:** https://nagarro-ops-estimator.graystone-62d2702b.centralindia.azurecontainerapps.io/
+*(Azure Container Apps, scale-to-zero — first load after idle wakes in a few seconds.)*
 
 ---
 
-## Quick Start
+## Quick Start (local)
 
 ```bash
 pip install -r requirements.txt
@@ -12,6 +17,10 @@ streamlit run main.py
 ```
 
 Opens at `http://localhost:8501`
+
+## Deploying
+
+Push-to-deploy to Azure via GitHub Actions (OIDC, no stored secrets). See **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
