@@ -269,6 +269,20 @@ def build_model_state() -> dict:
     return state
 
 
+@st.cache_data(show_spinner=False)
+def _compute_cached(state: dict) -> dict:
+    """Memoised pipeline. Cached on the (hashable) state dict so navigating back to
+    the dashboard with unchanged inputs reuses the result instead of recomputing."""
+    from modules.calculations.engine import compute_full_model
+    return compute_full_model(state)
+
+
+def run_model() -> dict:
+    """Compute the full model from the current session. Result is read-only —
+    do not mutate the returned dict (it may be a shared cached object)."""
+    return _compute_cached(build_model_state())
+
+
 def export_scenario(name: str, description: str) -> dict:
     import pandas as pd
     keys = [k for k in _get_initial_state() if k not in ("saved_scenarios", "_last_scenario")]

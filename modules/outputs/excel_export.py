@@ -6,8 +6,7 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
 from config.settings import ALL_ROLES
-from modules.calculations.engine import compute_full_model
-from modules.state.session_manager import build_model_state
+from modules.state.session_manager import run_model
 
 NAVY = "1F3864"; BLUE = "2E75B6"; LB = "D5E8F0"; ACCENT = "ED7D31"
 LGRAY = "F2F2F2"; WHITE = "FFFFFF"
@@ -167,7 +166,7 @@ def _build_audit(wb, model):
     for i,row in enumerate(audit,6): _drow(ws,i,list(row))
 
 def generate_excel_report() -> bytes:
-    model = st.session_state.get("_model") or compute_full_model(build_model_state())
+    model = st.session_state.get("_model") or run_model()
     wb = openpyxl.Workbook(); wb.remove(wb.active)
     _build_exec(wb, model); _build_effort(wb, model); _build_resolution(wb, model)
     _build_fte(wb, model); _build_costs(wb, model); _build_financial(wb, model); _build_audit(wb, model)

@@ -2,6 +2,7 @@
 Step 6 — Coverage Model & FTE Calculation
 Step 7 — Rate Card Upload, Delivery Location & Grade Mapping
 """
+import io
 import streamlit as st
 import pandas as pd
 from modules.inputs.steps_1_2 import page_header, section_hdr, callout
@@ -10,6 +11,15 @@ from modules.calculations.engine import (
 )
 from config.settings import ALL_ROLES, COVERAGE_MODELS, GRADE_ELIGIBILITY, DEFAULT_CURRENCIES
 from utils.validators import validate_rate_card
+
+
+@st.cache_data(show_spinner=False)
+def _parse_rate_card(file_bytes: bytes) -> pd.DataFrame:
+    """Parse an uploaded rate-card .xlsx. Cached on file content so the workbook
+    is only read once per distinct upload instead of on every rerun."""
+    df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+    df_raw.columns = [c.strip() for c in df_raw.columns]
+    return df_raw
 
 
 # ── Step 6: Coverage & FTE ─────────────────────────────────────────────────────
@@ -158,8 +168,7 @@ def render_step7() -> bool:
     uploaded = st.file_uploader("Upload Rate Card (.xlsx)", type=["xlsx"], key="rate_card_upload")
     if uploaded:
         try:
-            df_raw = pd.read_excel(uploaded, engine="openpyxl")
-            df_raw.columns = [c.strip() for c in df_raw.columns]
+            df_raw = _parse_rate_card(uploaded.getvalue())
             ok, msg = validate_rate_card(df_raw)
             if ok:
                 df_clean = df_raw.copy()

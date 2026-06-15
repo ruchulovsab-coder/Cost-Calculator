@@ -17,8 +17,8 @@ except ImportError:
     PLOTLY_OK = False
 
 from modules.inputs.steps_1_2 import page_header, section_hdr, callout
-from modules.calculations.engine import compute_full_model, convert_to_currency
-from modules.state.session_manager import build_model_state
+from modules.calculations.engine import convert_to_currency
+from modules.state.session_manager import run_model
 from config.settings import (
     ALL_ROLES, CATEGORY_SUBLABELS, CURRENCY_SYMBOLS, REPORTING_CURRENCIES,
 )
@@ -152,7 +152,7 @@ def render_step8() -> bool:
 
     # ── Single compute ────────────────────────────────────────
     try:
-        model = compute_full_model(build_model_state())
+        model = run_model()
     except ValueError as e:
         callout(f"❌ {e}", "error")
         return False
