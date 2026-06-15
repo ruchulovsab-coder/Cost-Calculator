@@ -156,7 +156,13 @@ def _render_what_if(base_model, conv, currency):
     base_state = build_model_state()
     c1, c2 = st.columns(2)
     with c1:
-        vol_scale = st.slider("Ticket volume scale (×)", 0.5, 3.0, 1.0, 0.1, key="wi_vol")
+        vol_steps = st.slider(
+            "Ticket volume scale-up", 0.0, 5.0, 0.0, 0.5, key="wi_vol",
+            help="0 = your entered volumes (no change). Moving the slider scales volumes up: "
+                 "1 → 2×, 2 → 3× … 5 → 6×.",
+        )
+        vol_scale = 1.0 + vol_steps
+        st.caption(f"Effective volume: **{vol_scale:.1f}×** your entered tickets")
         margin = st.slider("Target gross margin (%)", 0.0, 80.0,
                            float(base_state.get("target_margin_pct", 20) or 20), 0.5, key="wi_margin")
     with c2:
@@ -164,8 +170,11 @@ def _render_what_if(base_model, conv, currency):
                          float(base_state.get("contingency_pct", 10) or 10), 1.0, key="wi_cont")
         cov_models = list(COVERAGE_MODELS.keys())
         cur_cov = base_state.get("coverage_model") or "8×5"
-        cov = st.selectbox("Coverage model", cov_models,
-                           index=cov_models.index(cur_cov) if cur_cov in cov_models else 0, key="wi_cov")
+        cov = st.selectbox(
+            "Coverage model", cov_models,
+            index=cov_models.index(cur_cov) if cur_cov in cov_models else 0, key="wi_cov",
+            help="Defaults to the model selected in Step 6; change it here to test alternatives.",
+        )
 
     s = copy.deepcopy(base_state)
     s["target_margin_pct"] = margin
@@ -266,7 +275,7 @@ def render_step8() -> bool:
     m5.metric("Base Effort",    fmt_hours(base_effort))
     m6.metric("Contingency",    fmt_hours(cont_hours))
     m7.metric("Gross Margin",   fmt_pct(margin))
-    m8.metric("Coverage Model", st.session_state.get("coverage_model", "—"))
+    m8.metric("Coverage Model", st.session_state.get("coverage_model") or "—")
 
     # ── Effort breakdown + charts ─────────────────────────────
     st.divider()

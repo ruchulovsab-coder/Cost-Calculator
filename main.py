@@ -1,7 +1,7 @@
 """
 IT Managed Services Costing, Effort Estimation, Staffing and Pricing Calculator v2
 Shared Managed Services | End-to-End Delivery Model
-"""
+~"""
 import sys, os
 
 if __name__ == "__main__":
