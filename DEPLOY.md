@@ -1,110 +1,92 @@
 # Deploying to Azure (Container Apps, scale-to-zero) — secure, no shared credentials
 
-This app deploys via **GitHub Actions using OIDC federated identity**. There are
-**no secrets** stored in the repo and nothing is shared with anyone: GitHub gets a
-short-lived token at deploy time that Azure validates against a trust *you* create.
+Deploys via **GitHub Actions using OIDC federated identity** — **no secrets** stored,
+nothing shared. GitHub gets a short-lived token at deploy time that Azure validates
+against a trust *you* create. Do the one-time setup once; afterwards every `git push`
+to `main` deploys automatically.
 
-- **Host:** Azure Container Apps, **min-replicas = 0** (runs only on request; ~no cost when idle)
-- **Auth:** Microsoft Entra ID sign-in (step 7)
-- **Identity used:** GitHub `@ruchulovsab-coder` / Azure `ruchulovsab@gmail.com`
-- **Repo trusted:** `ruchulovsab-coder/Cost-Calculator` (branch `main`)
+- **Host:** Azure Container Apps, **min-replicas = 0** (runs only on request)
+- **Azure login:** `rjabhi77@gmail.com` (your Azure account / subscription owner)
+- **GitHub repo trusted:** `ruchulovsab-coder/Cost-Calculator` (branch `main`)
 
-You only do the one-time setup below **once**. After that, every `git push` to `main`
-deploys automatically.
+Use these **direct links** instead of hunting through menus.
 
 ---
 
-## One-time setup (run in Azure Cloud Shell — Bash)
+## STEP 1 — Open Cloud Shell
+Go to **https://shell.azure.com** → sign in as `rjabhi77@gmail.com` → choose **Bash**.
+If asked about storage, pick **"No storage account required"** (or create one — either is fine).
 
-Open **https://shell.azure.com**, choose **Bash**. You're already signed in there as
-`ruchulovsab@gmail.com`, so no passwords are typed and nothing leaves Azure.
+## STEP 2 — Confirm a subscription exists
+```bash
+az account show --query id -o tsv
+```
+Prints a GUID = good. Blank/error = subscription not ready yet.
 
-> Requires that your account can create app registrations and role assignments. If a
-> command returns an authorization error, your Azure admin needs to run these (or grant
-> you Owner on the subscription / "Application Developer" in Entra ID).
+## STEP 3 — Register features (wait for DONE, ~2 min)
+```bash
+az provider register -n Microsoft.App --wait
+az provider register -n Microsoft.OperationalInsights --wait
+az provider register -n Microsoft.ContainerRegistry --wait
+echo "DONE"
+```
+
+## STEP 4 — Create identity + trust (paste the whole block)
+> Needs rights to create app registrations + role assignments. On a personal free
+> Azure account you're Owner, so this works. On a corporate tenant an admin may need to run it.
 
 ```bash
-# ---- settings ----
 REPO="ruchulovsab-coder/Cost-Calculator"
 RG="rg-ops-estimator"
-LOCATION="centralindia"        # change if you prefer another region
-APP_DISPLAY="github-cost-calculator-oidc"
+LOCATION="centralindia"
 
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 
-# 1) Resource group that will hold everything
 az group create -n "$RG" -l "$LOCATION"
-
-# 2) App registration + service principal (the identity GitHub will assume)
-APP_ID=$(az ad app create --display-name "$APP_DISPLAY" --query appId -o tsv)
+APP_ID=$(az ad app create --display-name "github-cost-calculator-oidc" --query appId -o tsv)
 az ad sp create --id "$APP_ID"
 
-# 3) Federated credential: trust GitHub Actions on this repo's main branch
 cat > fic.json <<EOF
-{
-  "name": "github-main",
+{ "name": "github-main",
   "issuer": "https://token.actions.githubusercontent.com",
   "subject": "repo:${REPO}:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}
+  "audiences": ["api://AzureADTokenExchange"] }
 EOF
 az ad app federated-credential create --id "$APP_ID" --parameters fic.json
 
-# (optional) also allow manual "Run workflow" from the Actions tab:
-cat > fic-dispatch.json <<EOF
-{
-  "name": "github-workflow-dispatch",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:${REPO}:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}
-EOF
-
-# 4) Give that identity Contributor — scoped ONLY to this resource group
-az role assignment create \
-  --assignee "$APP_ID" \
-  --role Contributor \
+az role assignment create --assignee "$APP_ID" --role Contributor \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}"
 
-# 5) Print the three NON-secret IDs to paste into GitHub
-echo "----------------------------------------------------"
-echo "AZURE_CLIENT_ID       = $APP_ID"
-echo "AZURE_TENANT_ID       = $TENANT_ID"
-echo "AZURE_SUBSCRIPTION_ID = $SUBSCRIPTION_ID"
-echo "----------------------------------------------------"
+echo "================ COPY THESE THREE ================"
+echo "AZURE_CLIENT_ID=$APP_ID"
+echo "AZURE_TENANT_ID=$TENANT_ID"
+echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
+echo "================================================="
 ```
 
-## 6) Add the three IDs to GitHub (as Variables, not Secrets)
-
-GitHub repo → **Settings → Secrets and variables → Actions → Variables tab →
-New repository variable**, add all three:
+## STEP 5 — Paste the 3 IDs into GitHub (Variables, not Secrets)
+Direct link: **https://github.com/ruchulovsab-coder/Cost-Calculator/settings/variables/actions**
+Click **New repository variable** and add each (value = the part after `=`):
 
 | Name | Value |
 |------|-------|
-| `AZURE_CLIENT_ID` | from step 5 |
-| `AZURE_TENANT_ID` | from step 5 |
-| `AZURE_SUBSCRIPTION_ID` | from step 5 |
+| `AZURE_CLIENT_ID` | from Step 4 |
+| `AZURE_TENANT_ID` | from Step 4 |
+| `AZURE_SUBSCRIPTION_ID` | from Step 4 |
 
 These are identifiers, not credentials — useless without the trust you created.
 
-## Deploy
+## STEP 6 — Run the deployment
+Direct link: **https://github.com/ruchulovsab-coder/Cost-Calculator/actions**
+→ click **"Deploy to Azure Container Apps"** → **Run workflow** → green **Run workflow**.
+The **test** job runs first, then **deploy** (~5–8 min). The deploy job's last step prints
+**`App URL:`** — that's your live app. (Or push to `main` to trigger it.)
 
-```bash
-git push            # to main  -> triggers .github/workflows/azure-deploy.yml
-```
-
-…or GitHub → **Actions → Deploy to Azure Container Apps → Run workflow**.
-
-The job prints the app URL at the end (also: Azure Portal → Container Apps →
-`nagarro-ops-estimator` → Application Url).
-
-## 7) Require Nagarro / Entra ID sign-in (after the first deploy)
-
-Easiest via Portal: **Container App → Settings → Authentication → Add identity
-provider → Microsoft → Entra ID** → *create new app registration* → set
-"Restrict access: Require authentication" → unauthenticated requests → **Return HTTP 302
-(login)**. Save. Now only signed-in accounts can open the tool.
+## STEP 7 — Require sign-in (after first deploy)
+**https://portal.azure.com** → search **Container Apps** → open `nagarro-ops-estimator`
+→ left menu **Authentication** → **Add identity provider** → **Microsoft** →
+**Create new app registration** → set **Require authentication** → **Add**.
 
 ---
 
