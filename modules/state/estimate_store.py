@@ -125,42 +125,41 @@ def save_estimate(project, label, author, inputs, summary) -> dict:
     return payload["meta"]
 
 
+def _names_in_container() -> list:
+    """Blob names only. Uses list_blob_names() (lighter, avoids the properties
+    deserialization that some SDK/storage combos crash on), with a fallback."""
+    cc = _container_client()
+    try:
+        return [n for n in cc.list_blob_names()]
+    except Exception:
+        return [getattr(b, "name", None) for b in cc.list_blobs()]
+
+
 @st.cache_data(show_spinner=False, ttl=60)
 def list_estimates() -> list:
-    """All saved versions across all projects. Resilient: prefers blob metadata but
-    falls back to parsing the blob name (<slug>/<ts>__v<n>.json) so it never crashes
-    on a missing/None field."""
-    cc = _container_client()
-    # Some SDK/storage combos choke on include=["metadata"]; fall back to a plain list.
-    try:
-        blobs = list(cc.list_blobs(include=["metadata"]))
-    except Exception:
-        blobs = list(cc.list_blobs())
-
+    """All saved versions across projects, derived purely from blob names
+    (<slug>/<ts>__v<n>.json). Robust — no per-blob property/metadata parsing."""
     out = []
-    for b in blobs:
+    for name in _names_in_container():
+        if not name or not name.endswith(".json"):
+            continue
         try:
-            name = getattr(b, "name", None) or ""
-            if not name.endswith(".json"):
-                continue
-            info = _decode_metadata(getattr(b, "metadata", None))
-            info["blob"] = name
-            info["slug"] = name.split("/", 1)[0]
-            # Derive version / timestamp from the name when metadata is absent.
+            slug = name.split("/", 1)[0]
             leaf = name.rsplit("/", 1)[-1]
+            version, saved_at = 0, ""
             if "__v" in leaf:
                 ts_part, v_part = leaf.rsplit("__v", 1)
-                info["version"] = info["version"] or int((v_part.replace(".json", "") or "0"))
-                info["saved_at"] = info["saved_at"] or ts_part
-            if not info["saved_at"]:
-                lm = getattr(b, "last_modified", None)
-                info["saved_at"] = lm.strftime("%Y-%m-%dT%H-%M-%SZ") if lm else ""
-            if not info["project"]:
-                info["project"] = info["slug"]
-            out.append(info)
+                saved_at = ts_part
+                version = int(v_part.replace(".json", "") or 0)
+            out.append({
+                "blob": name, "slug": slug,
+                "project": slug.replace("-", " ").title(),
+                "version": version, "saved_at": saved_at,
+                "author": "", "label": "", "price": 0.0, "currency": "INR", "total_fte": "",
+            })
         except Exception:
             continue
-    out.sort(key=lambda x: x.get("saved_at") or "", reverse=True)
+    out.sort(key=lambda x: (x.get("saved_at") or "", x.get("version") or 0), reverse=True)
     return out
 
 

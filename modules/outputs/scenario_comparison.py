@@ -126,8 +126,11 @@ def render_saved_calc_sidebar():
                 key=lambda x: x["version"], reverse=True)
 
             def _fmt(it):
-                base = f"v{it['version']} · {it['saved_at']} · {it['currency']} {it['price']:,.0f}"
-                return base + (f" · {it['label']}" if it["label"] else "")
+                ts = (it.get("saved_at") or "")
+                if "T" in ts:
+                    d, _, t = ts.partition("T")
+                    ts = f"{d} {t.replace('-', ':')[:5]} UTC"
+                return f"v{it['version']} · {ts}"
 
             sel = st.selectbox("Version (newest first)", versions, format_func=_fmt, key="est_sel_ver")
             if sel and sel.get("author"):
