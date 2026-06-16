@@ -92,10 +92,24 @@ def render_approval_panel():
                 newrec = A.request_approval(
                     ref["slug"], ref["version"], ref["project"], ref["blob"],
                     email.strip(), st.session_state.get("prepared_by", ""))
-                st.success("Approval requested.")
-                st.caption("Share this review link with the reviewer "
-                           "(automatic email comes with the ACS setup):")
-                st.code(review_link(ref["slug"], ref["version"], newrec["token"]))
+                link = review_link(ref["slug"], ref["version"], newrec["token"])
+                from modules.notify.email_sender import email_configured, send_review_email
+                sent = False
+                if email_configured():
+                    if not link.lower().startswith("http"):
+                        st.warning("Set the APP_BASE_URL variable so the emailed link is clickable.")
+                    try:
+                        send_review_email(email.strip(), ref["project"], ref["version"],
+                                          link, st.session_state.get("prepared_by", ""))
+                        sent = True
+                        st.success(f"Approval requested and emailed to {email.strip()}.")
+                    except Exception as e:
+                        st.warning(f"Request saved, but the email failed to send: {e}")
+                else:
+                    st.success("Approval requested.")
+                if not sent:
+                    st.caption("Share this review link with the reviewer:")
+                    st.code(link)
     elif rec.get("status") == A.STATUS_PENDING:
         st.caption(f"Awaiting review by {rec.get('reviewer_email') or 'the reviewer'}. "
                    "Re-share the link below if needed:")
