@@ -127,21 +127,40 @@ def save_estimate(project, label, author, inputs, summary) -> dict:
 
 @st.cache_data(show_spinner=False, ttl=60)
 def list_estimates() -> list:
-    """All saved versions across all projects (cheap — uses blob metadata)."""
+    """All saved versions across all projects. Resilient: prefers blob metadata but
+    falls back to parsing the blob name (<slug>/<ts>__v<n>.json) so it never crashes
+    on a missing/None field."""
     cc = _container_client()
+    # Some SDK/storage combos choke on include=["metadata"]; fall back to a plain list.
+    try:
+        blobs = list(cc.list_blobs(include=["metadata"]))
+    except Exception:
+        blobs = list(cc.list_blobs())
+
     out = []
-    for b in cc.list_blobs(include=["metadata"]):
-        if not b.name.endswith(".json"):
+    for b in blobs:
+        try:
+            name = getattr(b, "name", None) or ""
+            if not name.endswith(".json"):
+                continue
+            info = _decode_metadata(getattr(b, "metadata", None))
+            info["blob"] = name
+            info["slug"] = name.split("/", 1)[0]
+            # Derive version / timestamp from the name when metadata is absent.
+            leaf = name.rsplit("/", 1)[-1]
+            if "__v" in leaf:
+                ts_part, v_part = leaf.rsplit("__v", 1)
+                info["version"] = info["version"] or int((v_part.replace(".json", "") or "0"))
+                info["saved_at"] = info["saved_at"] or ts_part
+            if not info["saved_at"]:
+                lm = getattr(b, "last_modified", None)
+                info["saved_at"] = lm.strftime("%Y-%m-%dT%H-%M-%SZ") if lm else ""
+            if not info["project"]:
+                info["project"] = info["slug"]
+            out.append(info)
+        except Exception:
             continue
-        info = _decode_metadata(getattr(b, "metadata", None))
-        info["blob"] = b.name
-        info["slug"] = b.name.split("/", 1)[0]
-        if not info["saved_at"]:
-            # fall back to blob's last-modified if metadata missing
-            lm = getattr(b, "last_modified", None)
-            info["saved_at"] = lm.strftime("%Y-%m-%dT%H-%M-%SZ") if lm else ""
-        out.append(info)
-    out.sort(key=lambda x: x["saved_at"], reverse=True)
+    out.sort(key=lambda x: x.get("saved_at") or "", reverse=True)
     return out
 
 
