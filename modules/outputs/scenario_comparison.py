@@ -89,7 +89,8 @@ def render_saved_calc_sidebar():
             st.caption("Set a **Customer / RFP name** on Step 1 first.")
         label = st.text_input("Version note (optional)", key="est_label",
                               placeholder="e.g. After negotiation")
-        if st.button("💾 Save version", key="btn_save_est", disabled=not proj, use_container_width=True):
+        if st.button("💾 Save version", key="btn_save_est", disabled=not proj,
+                     use_container_width=True, type="primary"):
             try:
                 model = run_model()
                 meta = save_estimate(
@@ -102,7 +103,7 @@ def render_saved_calc_sidebar():
                 st.error(f"Save failed: {e}")
 
     with st.sidebar.expander("📂 Open saved calculation"):
-        if st.button("🔄 Refresh list", key="btn_refresh_est", use_container_width=True):
+        if st.button("🔄 Refresh list", key="btn_refresh_est", use_container_width=True, type="primary"):
             list_estimates.clear()
             st.rerun()
         try:
@@ -135,7 +136,7 @@ def render_saved_calc_sidebar():
             sel = st.selectbox("Version (newest first)", versions, format_func=_fmt, key="est_sel_ver")
             if sel and sel.get("author"):
                 st.caption(f"Prepared by: {sel['author']}")
-            if st.button("📥 Load this version", key="btn_load_est", use_container_width=True):
+            if st.button("📥 Load this version", key="btn_load_est", use_container_width=True, type="primary"):
                 try:
                     data = load_estimate(sel["blob"])
                     load_scenario({"inputs": data.get("inputs", {})})
