@@ -82,68 +82,62 @@ def render_saved_calc_sidebar():
     from modules.state.session_manager import (
         serialize_inputs, build_estimate_summary, run_model, load_scenario,
     )
+    sb = st.sidebar  # render inline (no expanders — they had unreadable white-on-white headers)
 
-    with st.sidebar.expander("💾 Save current calculation"):
-        proj = (st.session_state.get("project_name") or "").strip()
-        if not proj:
-            st.caption("Set a **Customer / RFP name** on Step 1 first.")
-        label = st.text_input("Version note (optional)", key="est_label",
-                              placeholder="e.g. After negotiation")
-        if st.button("💾 Save version", key="btn_save_est", disabled=not proj,
-                     use_container_width=True, type="primary"):
-            try:
-                model = run_model()
-                meta = save_estimate(
-                    proj, label.strip(), (st.session_state.get("prepared_by") or "").strip(),
-                    serialize_inputs(), build_estimate_summary(model),
-                )
-                list_estimates.clear()
-                st.success(f"Saved **{meta['project']}** — v{meta['version']}  ({meta['saved_at']})")
-            except Exception as e:
-                st.error(f"Save failed: {e}")
-
-    with st.sidebar.expander("📂 Open saved calculation"):
-        if st.button("🔄 Refresh list", key="btn_refresh_est", use_container_width=True, type="primary"):
-            list_estimates.clear()
-            st.rerun()
+    # ── Save ──────────────────────────────────────────────────
+    sb.markdown("**💾 Save current calculation**")
+    proj = (st.session_state.get("project_name") or "").strip()
+    if not proj:
+        sb.caption("Set a Customer / RFP name on Step 1 first.")
+    label = sb.text_input("Version note (optional)", key="est_label", placeholder="e.g. After negotiation")
+    if sb.button("💾 Save version", key="btn_save_est", disabled=not proj,
+                 use_container_width=True, type="primary"):
         try:
-            items = list_estimates()
+            model = run_model()
+            meta = save_estimate(
+                proj, label.strip(), (st.session_state.get("prepared_by") or "").strip(),
+                serialize_inputs(), build_estimate_summary(model),
+            )
+            list_estimates.clear()
+            sb.success(f"Saved {meta['project']} — v{meta['version']}")
         except Exception as e:
-            import traceback
-            st.error(f"Could not list saved calculations: {type(e).__name__}: {e}")
-            with st.expander("Debug details"):
-                st.code(traceback.format_exc())
-            items = []
-        if not items:
-            st.caption("No saved calculations yet.")
-            with st.expander("🔧 Diagnostics"):
-                from modules.state.estimate_store import debug_list_raw
-                st.json(debug_list_raw())
-        else:
-            projects = sorted({(it["project"] or it["slug"]) for it in items})
-            sel_proj = st.selectbox("Project", projects, key="est_sel_proj")
-            versions = sorted(
-                [it for it in items if (it["project"] or it["slug"]) == sel_proj],
-                key=lambda x: x["version"], reverse=True)
+            sb.error(f"Save failed: {e}")
 
-            def _fmt(it):
-                ts = (it.get("saved_at") or "")
-                if "T" in ts:
-                    d, _, t = ts.partition("T")
-                    ts = f"{d} {t.replace('-', ':')[:5]} UTC"
-                return f"v{it['version']} · {ts}"
+    # ── Open ──────────────────────────────────────────────────
+    sb.markdown("**📂 Open saved calculation**")
+    if sb.button("🔄 Refresh list", key="btn_refresh_est", use_container_width=True, type="primary"):
+        list_estimates.clear()
+        st.rerun()
+    try:
+        items = list_estimates()
+    except Exception as e:
+        sb.error(f"Could not list: {type(e).__name__}: {e}")
+        items = []
+    if not items:
+        sb.caption("No saved calculations yet.")
+    else:
+        projects = sorted({(it["project"] or it["slug"]) for it in items})
+        sel_proj = sb.selectbox("Project", projects, key="est_sel_proj")
+        versions = sorted(
+            [it for it in items if (it["project"] or it["slug"]) == sel_proj],
+            key=lambda x: x["version"], reverse=True)
 
-            sel = st.selectbox("Version (newest first)", versions, format_func=_fmt, key="est_sel_ver")
-            if sel and sel.get("author"):
-                st.caption(f"Prepared by: {sel['author']}")
-            if st.button("📥 Load this version", key="btn_load_est", use_container_width=True, type="primary"):
-                try:
-                    data = load_estimate(sel["blob"])
-                    load_scenario({"inputs": data.get("inputs", {})})
-                    st.success(f"Loaded {sel_proj} v{sel['version']}")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Load failed: {e}")
+        def _fmt(it):
+            ts = (it.get("saved_at") or "")
+            if "T" in ts:
+                d, _, t = ts.partition("T")
+                ts = f"{d} {t.replace('-', ':')[:5]} UTC"
+            return f"v{it['version']} · {ts}"
+
+        sel = sb.selectbox("Version (newest first)", versions, format_func=_fmt, key="est_sel_ver")
+        if sb.button("📥 Load this version", key="btn_load_est", use_container_width=True, type="primary"):
+            try:
+                data = load_estimate(sel["blob"])
+                load_scenario({"inputs": data.get("inputs", {})})
+                sb.success(f"Loaded {sel_proj} v{sel['version']}")
+                st.rerun()
+            except Exception as e:
+                sb.error(f"Load failed: {e}")
 
 
 def _safe_model(inputs):
