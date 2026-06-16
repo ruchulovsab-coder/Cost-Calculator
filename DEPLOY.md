@@ -141,6 +141,40 @@ or users click **🔄 Reload from cloud**).
 
 ---
 
+## STEP 9 (optional) — Saved calculations store (cloud, versioned)
+
+Lets users save named, versioned calculations and reopen them later. Uses the same
+storage account, a **separate `estimates` container**, and the app's **managed
+identity** with **write** access. Shared team repository.
+
+### Portal
+1. Open your **Storage account** → **Containers** → **+ Container** → name `estimates` → **Create**.
+2. Open the **estimates** container → **Access Control (IAM)** (left menu inside the container)
+   → **+ Add → Add role assignment**.
+3. Role: **Storage Blob Data Contributor** → **Next**.
+4. **Assign access to: Managed identity** → **+ Select members** → type **Container App**
+   → pick **nagarro-ops-estimator** → **Select** → **Review + assign**.
+   *(Scoping the role to the `estimates` container keeps the rate-card container read-only.)*
+5. Add **two repository Variables** at
+   **https://github.com/ruchulovsab-coder/Cost-Calculator/settings/variables/actions**:
+
+   | Name | Value |
+   |------|-------|
+   | `ESTIMATES_ACCOUNT_URL` | `https://<your-storage-account>.blob.core.windows.net` |
+   | `ESTIMATES_CONTAINER` | `estimates` |
+
+6. Re-run the deploy (Actions → Run workflow).
+
+Now the sidebar shows **📁 Saved Calculations** — *Save current calculation* (stores a
+new timestamped version under the Step-1 Customer/RFP name) and *Open saved calculation*
+(browse projects → versions → load). Until configured, that panel says cloud storage
+isn't set up and you use the JSON **Scenarios** instead.
+
+> Equivalent CLI (Cloud Shell): create the container, then
+> `az role assignment create --assignee <app-principalId> --role "Storage Blob Data Contributor" --scope <estimates-container-resource-id>`.
+
+---
+
 ## Notes / tuning
 
 - **Cold start:** first request after idle takes a few seconds (scale-from-zero). Set

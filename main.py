@@ -73,7 +73,7 @@ from modules.inputs.steps_1_2 import render_step1, render_step2
 from modules.inputs.steps_3_5 import render_step3, render_step4, render_step5
 from modules.inputs.steps_6_7 import render_step6, render_step7
 from modules.outputs.dashboard import render_step8
-from modules.outputs.scenario_comparison import render_scenario_sidebar, render_comparison
+from modules.outputs.scenario_comparison import render_scenario_sidebar, render_comparison, render_saved_calc_sidebar
 from modules.outputs.excel_export import generate_excel_report
 from modules.outputs.pdf_export import generate_pdf_report
 
@@ -150,6 +150,7 @@ with st.sidebar:
             st.session_state.current_step = n
             st.rerun()
 
+    render_saved_calc_sidebar()
     render_scenario_sidebar()
 
     st.divider()

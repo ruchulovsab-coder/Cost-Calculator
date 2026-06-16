@@ -38,6 +38,20 @@ def render_step1() -> bool:
     page_header(1, "Monthly Workload Volumes",
                 "Enter the total monthly ticket / alert volume for each category.")
 
+    # ── Estimate identity (required) ──────────────────────────
+    section_hdr("📇 Estimate Details")
+    ic1, ic2 = st.columns(2)
+    proj = ic1.text_input(
+        "Customer / RFP Name *", value=st.session_state.get("project_name", ""),
+        key="project_name_w", placeholder="e.g. Acme Corp — Infra RFP 2026",
+        help="Every estimate is identified and saved under this name.")
+    st.session_state["project_name"] = proj
+    prep = ic2.text_input(
+        "Prepared By", value=st.session_state.get("prepared_by", ""),
+        key="prepared_by_w", placeholder="Your name")
+    st.session_state["prepared_by"] = prep
+    st.divider()
+
     callout(
         "Enter <strong>one number per category</strong> — the total tickets or alerts "
         "your team handles per month. Step 2 will automatically distribute these across "
@@ -91,10 +105,14 @@ def render_step1() -> bool:
     c4.metric("Change Requests",    f"{totals['changes']:,}")
     c5.metric("Grand Total",        f"{grand:,}")
 
+    ok = True
+    if not proj.strip():
+        callout("Enter a <strong>Customer / RFP name</strong> above to begin.", "warning")
+        ok = False
     if grand == 0:
         callout("Enter at least one volume to proceed to Step 2.", "warning")
-        return False
-    return True
+        ok = False
+    return ok
 
 
 # ── Step 2 ─────────────────────────────────────────────────────────────────────

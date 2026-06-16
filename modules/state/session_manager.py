@@ -135,6 +135,10 @@ def _build_initial_state():
         "reporting_currency":      "INR",
         "fte_basis":               "rounded",   # "rounded" (⌈0.5⌉) or "raw"
 
+        # ── Project / estimate identity ───────────────────────────────
+        "project_name": "",     # Customer / RFP name (required to proceed)
+        "prepared_by":  "",     # Author / estimator
+
         # ── Navigation ────────────────────────────────────────────────
         "current_step": 1,
 
@@ -318,7 +322,9 @@ def run_model() -> dict:
     return _compute_cached(build_model_state())
 
 
-def export_scenario(name: str, description: str) -> dict:
+def serialize_inputs() -> dict:
+    """Snapshot all user inputs from session as a JSON-serialisable dict.
+    Shared by scenario export and the cloud estimate store."""
     import pandas as pd
     keys = [k for k in _get_initial_state() if k not in ("saved_scenarios", "_last_scenario")]
     inputs = {}
@@ -330,10 +336,25 @@ def export_scenario(name: str, description: str) -> dict:
             inputs[k] = copy.deepcopy(v)
         else:
             inputs[k] = v
+    return inputs
+
+
+def build_estimate_summary(model: dict) -> dict:
+    """Headline figures stored alongside a saved estimate (for listings)."""
+    return {
+        "total_fte": round(model.get("total_fte", 0) or 0, 2),
+        "delivery_cost": round(model.get("cost_result", {}).get("total_delivery_cost", 0) or 0, 0),
+        "selling_price": round(model.get("price_result", {}).get("selling_price", 0) or 0, 0),
+        "reporting_currency": model.get("reporting_currency", "INR"),
+        "fte_basis": model.get("fte_basis", "rounded"),
+    }
+
+
+def export_scenario(name: str, description: str) -> dict:
     return {
         "meta": {"name": name, "description": description,
                  "date": str(date.today()), "version": "4.0"},
-        "inputs": inputs,
+        "inputs": serialize_inputs(),
     }
 
 
