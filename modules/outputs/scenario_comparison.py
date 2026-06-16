@@ -115,6 +115,9 @@ def render_saved_calc_sidebar():
             items = []
         if not items:
             st.caption("No saved calculations yet.")
+            with st.expander("🔧 Diagnostics"):
+                from modules.state.estimate_store import debug_list_raw
+                st.json(debug_list_raw())
         else:
             projects = sorted({(it["project"] or it["slug"]) for it in items})
             sel_proj = st.selectbox("Project", projects, key="est_sel_proj")

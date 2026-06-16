@@ -164,6 +164,20 @@ def list_estimates() -> list:
     return out
 
 
+def debug_list_raw() -> dict:
+    """Diagnostics: what the app actually sees in the configured container."""
+    url, container = _config()
+    info = {"account_url": url, "container": container}
+    try:
+        cc = _container_client()
+        names = [getattr(b, "name", None) for b in cc.list_blobs()]
+        info["raw_blob_count"] = len(names)
+        info["raw_blob_names"] = names[:25]
+    except Exception as e:
+        info["error"] = f"{type(e).__name__}: {e}"
+    return info
+
+
 def load_estimate(blob_name: str) -> dict:
     """Download and parse a stored estimate JSON."""
     cc = _container_client()
