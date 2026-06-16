@@ -9,7 +9,35 @@ from modules.calculations.engine import (
     calc_coverage_multiplier, calc_fte, ceil_half, calc_patching_effort,
     calc_total_delivery_cost, calc_selling_price, assemble_role_hours,
     calc_resource_cost, filter_rate_card, resolve_role_rates, derive_activity_hours,
+    calc_category_role_hours,
 )
+
+
+# ── Per-row, per-role buffer on resolution split ───────────────────────────────
+
+def test_category_role_hours_applies_explicit_buffer():
+    # 100 tickets × 60 min = 100 base hrs, all to L1, +20% buffer = 120
+    cat = {"Low": {"count": 100, "minutes": 60, "L1_pct": 100, "L2_pct": 0, "L3_pct": 0,
+                   "L1_buffer": 20, "L2_buffer": 0, "L3_buffer": 0}}
+    r = calc_category_role_hours(cat)
+    assert r["L1"] == pytest.approx(120.0)
+    assert r["L2"] == 0.0 and r["L3"] == 0.0
+
+
+def test_category_role_hours_per_role_buffers_differ():
+    cat = {"Hi": {"count": 60, "minutes": 60, "L1_pct": 50, "L2_pct": 30, "L3_pct": 20,
+                  "L1_buffer": 0, "L2_buffer": 10, "L3_buffer": 50}}
+    # base 60 hrs: L1 30, L2 18, L3 12 -> buffered: 30, 19.8, 18
+    r = calc_category_role_hours(cat)
+    assert r["L1"] == pytest.approx(30.0)
+    assert r["L2"] == pytest.approx(19.8)
+    assert r["L3"] == pytest.approx(18.0)
+
+
+def test_category_role_hours_defaults_buffer_when_missing():
+    # No buffer fields -> default 20%
+    cat = {"x": {"count": 60, "minutes": 60, "L1_pct": 100, "L2_pct": 0, "L3_pct": 0}}
+    assert calc_category_role_hours(cat)["L1"] == pytest.approx(72.0)  # 60 × 1.2
 
 
 # ── Currency ──────────────────────────────────────────────────────────────────

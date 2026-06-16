@@ -22,6 +22,7 @@ from modules.calculations.engine import convert_to_currency, compute_full_model
 from modules.state.session_manager import run_model, build_model_state
 from config.settings import (
     ALL_ROLES, CATEGORY_SUBLABELS, CURRENCY_SYMBOLS, REPORTING_CURRENCIES, COVERAGE_MODELS,
+    DEFAULT_ROLE_BUFFER_PCT,
 )
 from utils.formatters import fmt_currency, fmt_pct, fmt_hours
 
@@ -347,18 +348,25 @@ def render_step8() -> bool:
             row = cat_data.get(label, {})
             cnt = row.get("count", 0); mins = row.get("minutes", 0)
             l1p = row.get("L1_pct", 0); l2p = row.get("L2_pct", 0); l3p = row.get("L3_pct", 0)
+            l1b = row.get("L1_buffer", DEFAULT_ROLE_BUFFER_PCT)
+            l2b = row.get("L2_buffer", DEFAULT_ROLE_BUFFER_PCT)
+            l3b = row.get("L3_buffer", DEFAULT_ROLE_BUFFER_PCT)
             total_h = (cnt * mins) / 60.0
-            l1h = total_h * l1p / 100; l2h = total_h * l2p / 100; l3h = total_h * l3p / 100
+            # Buffered role hours (match Step 2)
+            l1h = total_h * l1p / 100 * (1 + l1b / 100)
+            l2h = total_h * l2p / 100 * (1 + l2b / 100)
+            l3h = total_h * l3p / 100 * (1 + l3b / 100)
             res_rows += (
                 f"<tr><td>{cat_label}</td><td>{label}</td>"
                 f"<td class='r'>{cnt:,}</td><td class='r'>{mins:.0f}</td><td class='r'>{total_h:.1f}</td>"
-                f"<td class='r'>{l1p:.0f}% ({l1h:.1f}h)</td><td class='r'>{l2p:.0f}% ({l2h:.1f}h)</td>"
-                f"<td class='r'>{l3p:.0f}% ({l3h:.1f}h)</td></tr>"
+                f"<td class='r'>{l1p:.0f}% +{l1b:.0f}% ({l1h:.1f}h)</td>"
+                f"<td class='r'>{l2p:.0f}% +{l2b:.0f}% ({l2h:.1f}h)</td>"
+                f"<td class='r'>{l3p:.0f}% +{l3b:.0f}% ({l3h:.1f}h)</td></tr>"
             )
     st.markdown(f"""
     <table class="styled-table"><thead><tr>
         <th>Category</th><th>Severity</th><th class="r">Count</th><th class="r">Min/Ticket</th>
-        <th class="r">Total Hrs</th><th class="r">L1 %(Hrs)</th><th class="r">L2 %(Hrs)</th><th class="r">L3 %(Hrs)</th>
+        <th class="r">Total Hrs</th><th class="r">L1 %+Buf (Hrs)</th><th class="r">L2 %+Buf (Hrs)</th><th class="r">L3 %+Buf (Hrs)</th>
       </tr></thead><tbody>{res_rows}</tbody></table>""", unsafe_allow_html=True)
 
     # ── FTE summary ───────────────────────────────────────────

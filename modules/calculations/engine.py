@@ -27,14 +27,19 @@ def calc_category_hours(cat_data: Dict[str, Dict]) -> Tuple[Dict[str, float], fl
 
 def calc_category_role_hours(cat_data: Dict[str, Dict]) -> Dict[str, float]:
     """
-    For one category, return hours per role (L1/L2/L3).
-    Each sublabel contributes: count × minutes / 60 × role_pct / 100
+    For one category, return buffered hours per role (L1/L2/L3).
+    Each sublabel contributes, per role:
+        count × minutes / 60 × role_pct / 100 × (1 + role_buffer% / 100)
+    The per-row, per-role buffer defaults to DEFAULT_ROLE_BUFFER_PCT when absent.
     """
+    from config.settings import DEFAULT_ROLE_BUFFER_PCT
     role_hours = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
     for label, row in cat_data.items():
         total_h = (row.get("count", 0) * row.get("minutes", 0)) / 60.0
         for role in ("L1", "L2", "L3"):
-            role_hours[role] += total_h * row.get(f"{role}_pct", 0.0) / 100.0
+            base = total_h * row.get(f"{role}_pct", 0.0) / 100.0
+            buf = row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT)
+            role_hours[role] += base * (1.0 + buf / 100.0)
     return role_hours
 
 

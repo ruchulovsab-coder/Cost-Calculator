@@ -17,7 +17,7 @@ import streamlit as st
 from config.settings import (
     CATEGORY_SUBLABELS, DEFAULT_VOLUME_DIST_PCT, DEFAULT_EFFORT_MINUTES,
     DEFAULT_RESOLUTION_PCT, ALL_ROLES, DEFAULT_CURRENCIES, TICKET_CATEGORIES,
-    DEFAULT_ADDITIONAL_ACTIVITIES
+    DEFAULT_ADDITIONAL_ACTIVITIES, DEFAULT_ROLE_BUFFER_PCT
 )
 
 
@@ -48,6 +48,9 @@ def _build_workload_section(cat_key: str, total: int) -> dict:
             "L1_pct":   float(res_pct[label]["L1"]),
             "L2_pct":   float(res_pct[label]["L2"]),
             "L3_pct":   float(res_pct[label]["L3"]),
+            "L1_buffer": DEFAULT_ROLE_BUFFER_PCT,
+            "L2_buffer": DEFAULT_ROLE_BUFFER_PCT,
+            "L3_buffer": DEFAULT_ROLE_BUFFER_PCT,
         }
     return section
 
@@ -235,6 +238,9 @@ def apply_total_volume(cat_key: str, new_total: int):
             "L1_pct":   row.get("L1_pct",  DEFAULT_RESOLUTION_PCT[cat_key][label]["L1"]),
             "L2_pct":   row.get("L2_pct",  DEFAULT_RESOLUTION_PCT[cat_key][label]["L2"]),
             "L3_pct":   row.get("L3_pct",  DEFAULT_RESOLUTION_PCT[cat_key][label]["L3"]),
+            "L1_buffer": row.get("L1_buffer", DEFAULT_ROLE_BUFFER_PCT),
+            "L2_buffer": row.get("L2_buffer", DEFAULT_ROLE_BUFFER_PCT),
+            "L3_buffer": row.get("L3_buffer", DEFAULT_ROLE_BUFFER_PCT),
         }
     st.session_state[cat_key] = existing
 

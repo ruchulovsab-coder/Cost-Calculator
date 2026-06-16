@@ -5,7 +5,7 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
-from config.settings import ALL_ROLES, APP_NAME
+from config.settings import ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT
 from modules.state.session_manager import run_model
 
 NAVY = "1F3864"; BLUE = "2E75B6"; LB = "D5E8F0"; ACCENT = "ED7D31"
@@ -78,9 +78,9 @@ def _build_resolution(wb, model):
     ws = wb.create_sheet("Resolution Detail")
     _title(ws, "Resolution Detail — Tickets, Minutes & Role Hours")
     _hrow(ws,5,[
-        "Category","Severity/Type","Count","Min/Ticket",
-        "Total Hrs","L1 %","L1 Hrs","L2 %","L2 Hrs","L3 %","L3 Hrs"
-    ],[18,14,10,12,12,8,10,8,10,8,10])
+        "Category","Severity/Type","Count","Min/Ticket","Total Hrs",
+        "L1 %","L1 Buf%","L1 Hrs","L2 %","L2 Buf%","L2 Hrs","L3 %","L3 Buf%","L3 Hrs"
+    ],[18,14,10,12,12,8,9,10,8,9,10,8,9,10])
     from config.settings import CATEGORY_SUBLABELS
     CATS = [
         ("alerts",           "Monitoring Alerts"),
@@ -95,11 +95,15 @@ def _build_resolution(wb, model):
             row = cat_data.get(label, {})
             cnt  = row.get("count", 0); mins = row.get("minutes", 0)
             l1p  = row.get("L1_pct", 0); l2p = row.get("L2_pct", 0); l3p = row.get("L3_pct", 0)
+            l1b = row.get("L1_buffer", DEFAULT_ROLE_BUFFER_PCT)
+            l2b = row.get("L2_buffer", DEFAULT_ROLE_BUFFER_PCT)
+            l3b = row.get("L3_buffer", DEFAULT_ROLE_BUFFER_PCT)
             total_h = (cnt * mins) / 60.0
             _drow(ws, row_num, [
                 cat_label, label, cnt, round(mins,0), round(total_h,2),
-                l1p, round(total_h*l1p/100,2), l2p, round(total_h*l2p/100,2),
-                l3p, round(total_h*l3p/100,2),
+                l1p, l1b, round(total_h*l1p/100*(1+l1b/100),2),
+                l2p, l2b, round(total_h*l2p/100*(1+l2b/100),2),
+                l3p, l3b, round(total_h*l3p/100*(1+l3b/100),2),
             ])
             row_num += 1
 

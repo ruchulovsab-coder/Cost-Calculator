@@ -119,6 +119,9 @@ DEFAULT_RESOLUTION_PCT = {
 OVERHEAD_ROLES   = ["Architect", "SDM", "SSDM"]
 RESOLUTION_ROLES = ["L1", "L2", "L3"]
 
+# Default per-row, per-role effort buffer (%) applied to L1/L2/L3 hours in Step 2.
+DEFAULT_ROLE_BUFFER_PCT = 20.0
+
 # ── Server patching effort defaults ───────────────────────────────────────────
 # Effort is modelled as (minutes per server × server count). All values are
 # user-editable; these are the recommended starting points.
