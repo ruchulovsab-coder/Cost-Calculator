@@ -254,6 +254,13 @@ def render_step8() -> bool:
         '<div style="text-align:center; font-size:1.5rem; font-weight:700; color:#0D1B2A; '
         'padding:8px 0;">📊 OUTPUT DASHBOARD</div>', unsafe_allow_html=True)
 
+    # Approval (reviewer approve/reject via tokened link; preparer sees status)
+    try:
+        from modules.outputs.approval import render_approval_panel
+        render_approval_panel()
+    except Exception as _e:
+        st.caption(f"Approval panel unavailable: {_e}")
+
     # ── Resource cost summary ─────────────────────────────────
     st.divider()
     basis_txt = "Raw FTE" if model["fte_basis"] == "raw" else "Rounded FTE (⌈0.5⌉)"

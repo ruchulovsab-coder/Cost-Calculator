@@ -99,6 +99,9 @@ def render_saved_calc_sidebar():
                 serialize_inputs(), build_estimate_summary(model),
             )
             list_estimates.clear()
+            st.session_state["_current_estimate_ref"] = {
+                "slug": meta["project_slug"], "version": meta["version"],
+                "project": meta["project"], "blob": meta.get("_blob")}
             sb.success(f"Saved {meta['project']} — v{meta['version']}")
         except Exception as e:
             sb.error(f"Save failed: {e}")
@@ -134,6 +137,10 @@ def render_saved_calc_sidebar():
             try:
                 data = load_estimate(sel["blob"])
                 load_scenario({"inputs": data.get("inputs", {})})
+                st.session_state["_current_estimate_ref"] = {
+                    "slug": sel["slug"], "version": sel["version"],
+                    "project": (data.get("meta", {}) or {}).get("project", sel["project"]),
+                    "blob": sel["blob"]}
                 sb.success(f"Loaded {sel_proj} v{sel['version']}")
                 st.rerun()
             except Exception as e:

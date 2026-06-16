@@ -68,6 +68,38 @@ if os.path.exists(_css):
 from modules.state.session_manager import init_session_state
 init_session_state()
 
+
+# ── Deep link: approval review  (?p=<slug>&v=<version>&t=<token>) ────────────────
+def _maybe_load_review():
+    qp = st.query_params
+    if not (qp.get("t") and qp.get("p") and qp.get("v")):
+        return
+    if st.session_state.get("_review_loaded"):
+        return
+    st.session_state["_review_loaded"] = True
+    slug, tok = qp.get("p"), qp.get("t")
+    try:
+        ver = int(qp.get("v"))
+    except Exception:
+        ver = 0
+    st.session_state["_review"] = {"slug": slug, "version": ver, "token": tok}
+    try:
+        from modules.state import approval_store as A
+        from modules.state.estimate_store import load_estimate
+        from modules.state.session_manager import load_scenario
+        rec = A.get_approval(slug, ver)
+        if rec and rec.get("token") == tok and rec.get("estimate_blob"):
+            data = load_estimate(rec["estimate_blob"])
+            load_scenario({"inputs": data.get("inputs", {})})
+            st.session_state["_current_estimate_ref"] = {
+                "slug": slug, "version": ver,
+                "project": rec.get("project", slug), "blob": rec["estimate_blob"]}
+        st.session_state["current_step"] = 8
+    except Exception:
+        pass
+
+_maybe_load_review()
+
 # ── Step renderers ─────────────────────────────────────────────────────────────
 from modules.inputs.steps_1_2 import render_step1, render_step2
 from modules.inputs.steps_3_5 import render_step3, render_step4, render_step5
