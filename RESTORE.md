@@ -1,8 +1,15 @@
-# Restoring to Stable Version 1 (`v1.0`)
+# Restoring to a Stable Version
 
-This repository is tagged **`v1.0`** at the first stable release. A git tag is an
-immutable pointer to that exact snapshot, so you can always return to it no matter
-what changes later.
+This repository is tagged at each stable release. A git tag is an immutable pointer
+to that exact snapshot, so you can always return to it no matter what changes later.
+
+## Stable versions (latest first)
+- **`v1.1`** — adds Step 2 per-role buffer % (default 20%) + the missing L3 Hrs column,
+  and loads the rate card from **Azure Blob Storage** (managed identity) instead of a
+  local upload. Builds on v1.0.
+- **`v1.0`** — first production-ready release.
+
+> In the commands below, replace `v1.0` with the version you want (e.g. `v1.1`).
 
 ## What `v1.0` contains
 - Full Streamlit app: 9-step Ops effort/cost/pricing flow
