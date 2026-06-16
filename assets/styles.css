@@ -169,6 +169,21 @@ section[data-testid="stSidebar"] .st-key-btn_save_est button:disabled * {
     color: #FFFFFF !important;
 }
 
+/* ── Sidebar input / dropdown values ────────────────────────────
+   The global "all sidebar text white" rule turned the *values* inside text boxes
+   and selectboxes white (white-on-white). Force dark text on the input/select
+   controls only — field labels (outside these controls) stay white on teal. */
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea,
+section[data-testid="stSidebar"] div[data-baseweb="select"],
+section[data-testid="stSidebar"] div[data-baseweb="select"] * {
+    color: #0D1B2A !important;
+}
+section[data-testid="stSidebar"] input::placeholder,
+section[data-testid="stSidebar"] textarea::placeholder {
+    color: #6B7B7B !important;
+}
+
 /* Generic Streamlit modifications */
 hr {
     border-color: rgba(42, 138, 138, 0.1) !important;
