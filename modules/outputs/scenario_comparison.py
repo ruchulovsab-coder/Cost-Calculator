@@ -108,7 +108,10 @@ def render_saved_calc_sidebar():
         try:
             items = list_estimates()
         except Exception as e:
-            st.error(f"Could not list saved calculations: {e}")
+            import traceback
+            st.error(f"Could not list saved calculations: {type(e).__name__}: {e}")
+            with st.expander("Debug details"):
+                st.code(traceback.format_exc())
             items = []
         if not items:
             st.caption("No saved calculations yet.")
