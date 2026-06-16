@@ -162,37 +162,72 @@ def render_step7() -> bool:
     page_header(7, "Rate Card, Location & Grade Mapping",
                 "Upload your Genus rate card, select delivery location, and map roles to grades.")
 
-    # ── Upload ────────────────────────────────────────────────
-    section_hdr("📂 Rate Card Upload")
+    from modules.inputs.rate_card_source import blob_configured, fetch_rate_card_bytes
+
+    def _apply_rate_card(data: bytes, source: str) -> bool:
+        """Parse + validate raw bytes and store the cleaned df. Returns success."""
+        try:
+            df_raw = _parse_rate_card(data)
+            ok, msg = validate_rate_card(df_raw)
+            if not ok:
+                callout(f"❌ {msg}", "error")
+                return False
+            df_clean = df_raw.copy()
+            df_clean.columns = [c.lower().strip() for c in df_clean.columns]
+            df_clean["hourly rate"] = pd.to_numeric(df_clean["hourly rate"], errors="coerce")
+            st.session_state.rate_card_df = df_clean
+            st.session_state["_rate_card_source"] = source
+            callout(msg, "success")
+            return True
+        except Exception as e:
+            callout(f"❌ Error reading rate card: {e}", "error")
+            return False
+
+    # ── Source: Azure Blob (preferred) with manual-upload override ────
+    section_hdr("📂 Rate Card")
     callout(
         "Required Excel columns: <strong>Country, Location, Genus, Hourly Rate, Rate Currency</strong>. "
-        "All required. Hourly Rate must be numeric and > 0. "
-        "A sample rate card is included in the download package.",
+        "Hourly Rate must be numeric and > 0.",
         "info",
     )
 
-    uploaded = st.file_uploader("Upload Rate Card (.xlsx)", type=["xlsx"], key="rate_card_upload")
-    if uploaded:
-        try:
-            df_raw = _parse_rate_card(uploaded.getvalue())
-            ok, msg = validate_rate_card(df_raw)
-            if ok:
-                df_clean = df_raw.copy()
-                df_clean.columns = [c.lower().strip() for c in df_clean.columns]
-                df_clean["hourly rate"] = pd.to_numeric(df_clean["hourly rate"], errors="coerce")
-                st.session_state.rate_card_df = df_clean
-                callout(msg, "success")
-            else:
-                callout(f"❌ {msg}", "error")
-                st.session_state.rate_card_df = None
-        except Exception as e:
-            callout(f"❌ Error reading file: {e}", "error")
+    if blob_configured():
+        bc1, bc2 = st.columns([4, 1])
+        bc1.caption("Rate card is centrally managed in **Azure Blob Storage** "
+                    "(loaded automatically). You may still upload a file to override for this session.")
+        if bc2.button("🔄 Reload from cloud", key="rc_reload"):
+            fetch_rate_card_bytes.clear() if hasattr(fetch_rate_card_bytes, "clear") else None
+            from modules.inputs.rate_card_source import load_rate_card_bytes
+            load_rate_card_bytes.clear()
             st.session_state.rate_card_df = None
+            st.rerun()
+
+    uploaded = st.file_uploader("Upload Rate Card (.xlsx) — optional override", type=["xlsx"], key="rate_card_upload")
+    if uploaded:
+        _apply_rate_card(uploaded.getvalue(), "upload")
+
+    # Auto-load from Blob when nothing is loaded yet and Blob is configured
+    if st.session_state.get("rate_card_df") is None and blob_configured():
+        try:
+            data = fetch_rate_card_bytes()
+            if data:
+                _apply_rate_card(data, "cloud")
+        except Exception as e:
+            callout(f"⚠️ Could not load rate card from Azure Blob: {e}", "warning")
 
     df = st.session_state.get("rate_card_df")
     if df is None:
-        callout("Please upload a valid rate card to continue.", "warning")
+        if blob_configured():
+            callout("No rate card loaded from cloud yet — upload one above, or check the Blob configuration.", "warning")
+        else:
+            callout("Please upload a valid rate card to continue.", "warning")
         return False
+
+    src = st.session_state.get("_rate_card_source")
+    if src == "cloud":
+        st.caption("✅ Loaded from Azure Blob Storage.")
+    elif src == "upload":
+        st.caption("✅ Loaded from your uploaded file (session override).")
 
     # ── Delivery Location ─────────────────────────────────────
     st.divider()

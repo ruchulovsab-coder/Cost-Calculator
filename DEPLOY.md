@@ -90,6 +90,57 @@ The **test** job runs first, then **deploy** (~5–8 min). The deploy job's last
 
 ---
 
+## STEP 8 (optional) — Central rate card in Azure Blob Storage
+
+Lets the app load the rate card from the cloud (no per-session upload). Access uses
+the Container App's **managed identity** — no keys or connection strings in the app.
+
+Run in **Cloud Shell (Bash)** as `rjabhi77@gmail.com`:
+
+```bash
+RG=rg-ops-estimator
+APP=nagarro-ops-estimator
+LOC=centralindia
+STORAGE="opsratecard$RANDOM"      # 3-24 lowercase alphanumeric, globally unique
+CONTAINER=ratecards
+BLOB=genus_rate_card.xlsx
+
+# 1) Private storage account + container
+az storage account create -n "$STORAGE" -g "$RG" -l "$LOC" \
+  --sku Standard_LRS --kind StorageV2 --allow-blob-public-access false
+KEY=$(az storage account keys list -n "$STORAGE" -g "$RG" --query "[0].value" -o tsv)
+az storage container create --account-name "$STORAGE" -n "$CONTAINER" --account-key "$KEY"
+
+# 2) Upload your rate card. First click Cloud Shell's "Upload/Download files" button
+#    to upload genus_rate_card.xlsx into the shell, then:
+az storage blob upload --account-name "$STORAGE" -c "$CONTAINER" -n "$BLOB" \
+  -f ./genus_rate_card.xlsx --account-key "$KEY" --overwrite
+
+# 3) Ensure the app has a managed identity, then grant it READ access to the storage
+PID=$(az containerapp identity assign -n "$APP" -g "$RG" --system-assigned --query principalId -o tsv)
+ACCT_ID=$(az storage account show -n "$STORAGE" -g "$RG" --query id -o tsv)
+az role assignment create --assignee "$PID" --role "Storage Blob Data Reader" --scope "$ACCT_ID"
+
+# 4) Print the values to add as GitHub repo Variables
+echo "RATECARD_ACCOUNT_URL = https://$STORAGE.blob.core.windows.net"
+echo "RATECARD_CONTAINER   = $CONTAINER"
+echo "RATECARD_BLOB        = $BLOB"
+```
+
+Then add those 3 as **repository Variables** (same page as before):
+**https://github.com/ruchulovsab-coder/Cost-Calculator/settings/variables/actions**
+→ `RATECARD_ACCOUNT_URL`, `RATECARD_CONTAINER`, `RATECARD_BLOB`.
+
+Re-run the deploy (Actions → Run workflow). The pipeline injects these env vars and
+the app auto-loads the rate card from Blob. Update the rate card anytime by uploading
+a new blob of the same name (step 2) — no redeploy needed (app re-reads within ~10 min,
+or users click **🔄 Reload from cloud**).
+
+> To update the rate card via key-free auth instead, grant yourself
+> **Storage Blob Data Contributor** and use `--auth-mode login` on the upload.
+
+---
+
 ## Notes / tuning
 
 - **Cold start:** first request after idle takes a few seconds (scale-from-zero). Set
