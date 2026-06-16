@@ -113,6 +113,32 @@ section[data-testid="stSidebar"] button[kind="secondary"]:hover * {
 .metric-card .mv { font-size:1.45rem; font-weight:600; color:#0D1B2A; }
 .metric-card .ml { font-size:0.73rem; color:#0D4A4A; text-transform:uppercase; letter-spacing:0.4px; margin-top:2px; }
 
+/* ── Sidebar expander headers (Save / Open saved calculation, Scenarios) ──
+   The global "all sidebar text white" rule + Streamlit's light hover background
+   made these labels disappear (white-on-white). Keep them readable in every state. */
+section[data-testid="stSidebar"] summary,
+section[data-testid="stSidebar"] summary * {
+    color: #FFFFFF !important;
+}
+section[data-testid="stSidebar"] summary:hover,
+section[data-testid="stSidebar"] summary:hover * {
+    background-color: rgba(0, 196, 180, 0.30) !important;
+    color: #FFFFFF !important;
+}
+
+/* Keep sidebar primary buttons teal with white text across all states */
+section[data-testid="stSidebar"] button[kind="primary"],
+section[data-testid="stSidebar"] button[kind="primary"]:hover,
+section[data-testid="stSidebar"] button[kind="primary"]:focus,
+section[data-testid="stSidebar"] button[kind="primary"]:active,
+section[data-testid="stSidebar"] button[kind="primary"] * {
+    background-color: #00C4B4 !important;
+    color: #FFFFFF !important;
+}
+section[data-testid="stSidebar"] button[kind="primary"]:hover {
+    background-color: #00A396 !important;
+}
+
 /* Generic Streamlit modifications */
 hr {
     border-color: rgba(42, 138, 138, 0.1) !important;
