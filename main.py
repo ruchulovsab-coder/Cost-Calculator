@@ -185,12 +185,12 @@ if render_fn:
 
         # Dashboard export buttons
         if current == 8 and step_valid:
-            ec1, ec2, ec3 = st.columns(3)
+            ec1, ec2, ec3, ec4 = st.columns(4)
             with ec1:
                 try:
                     xl = generate_excel_report()
                     st.download_button(
-                        "⬇️ Download Excel Report",
+                        "⬇️ Excel Report",
                         data=xl,
                         file_name="IT_MS_Calculator_Report.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -201,9 +201,23 @@ if render_fn:
                     st.error(f"Excel error: {e}")
             with ec2:
                 try:
+                    from modules.outputs.excel_model import generate_excel_model
+                    xlm = generate_excel_model()
+                    st.download_button(
+                        "⬇️ Editable Excel (formulas)",
+                        data=xlm,
+                        file_name="IT_MS_Editable_Model.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        key="dl_excel_model",
+                    )
+                except Exception as e:
+                    st.error(f"Editable Excel error: {e}")
+            with ec3:
+                try:
                     pdf = generate_pdf_report()
                     st.download_button(
-                        "⬇️ Download PDF Proposal",
+                        "⬇️ PDF Proposal",
                         data=pdf,
                         file_name="IT_MS_Proposal.pdf",
                         mime="application/pdf",
@@ -212,7 +226,7 @@ if render_fn:
                     )
                 except Exception as e:
                     st.error(f"PDF error: {e}")
-            with ec3:
+            with ec4:
                 if st.button("📊 Compare Scenarios", type="secondary", key="btn_compare"):
                     st.session_state.current_step = 9
                     st.rerun()
