@@ -29,10 +29,10 @@ def inject_auto_select():
                 const inputs = doc.querySelectorAll('input');
                 inputs.forEach(input => {
                     if (!input.hasAttribute('data-focus-listener')) {
+                        // Select the whole value on focus so a single click lets the
+                        // user type a replacement (no double-click / manual clearing).
                         input.addEventListener('focus', function() {
-                            if (this.value === '0' || this.value === '0.0' || this.value === '0.00') {
-                                this.select();
-                            }
+                            try { this.select(); } catch (e) {}
                         });
                         input.setAttribute('data-focus-listener', 'true');
                     }
@@ -196,16 +196,46 @@ with st.sidebar:
 current = st.session_state.get("current_step", 1)
 render_fn, next_label = RENDERERS.get(current, (None, None))
 
+# Scroll to the top of the page whenever the step changes
+if st.session_state.get("_scroll_last") != current:
+    st.session_state["_scroll_last"] = current
+    components.html(
+        """<script>
+        const d = window.parent.document;
+        d.querySelectorAll('[data-testid="stMain"],[data-testid="stAppViewContainer"]')
+         .forEach(e => { try { e.scrollTo(0, 0); } catch (x) {} });
+        try { window.parent.scrollTo(0, 0); } catch (x) {}
+        </script>""", height=0, width=0,
+    )
+
+
+@st.dialog("Reset this page?")
+def _confirm_reset(step):
+    st.write("This restores **only this page's** fields to their defaults. "
+             "Other pages are not affected.")
+    c1, c2 = st.columns(2)
+    if c1.button("Yes, reset this page", type="primary", key="confirm_reset_yes"):
+        from modules.state.session_manager import reset_step
+        reset_step(step)
+        st.rerun()
+    if c2.button("Cancel", key="confirm_reset_no"):
+        st.rerun()
+
 if render_fn:
     step_valid = render_fn()
 
     st.divider()
-    nav_l, nav_r = st.columns([1, 5])
+    from modules.state.session_manager import step_has_reset
+    nav_l, nav_mid, nav_r = st.columns([1, 1.4, 4])
     with nav_l:
         if current > 1:
             if st.button("← Back", type="secondary", key="btn_back"):
                 st.session_state.current_step = current - 1
                 st.rerun()
+    with nav_mid:
+        if step_has_reset(current):
+            if st.button("↺ Reset this page", type="secondary", key="btn_reset_page"):
+                _confirm_reset(current)
 
     with nav_r:
         if next_label and step_valid:

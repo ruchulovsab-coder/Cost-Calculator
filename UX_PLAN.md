@@ -35,7 +35,14 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
 ## Phased roadmap
 - [ ] **Phase 1 — Quick wins:** language/labels + tooltips + glossary; button/contrast
       consistency; sidebar grouping + clarify Saved-vs-file; section/metric polish.
-- [ ] **Phase 2 — Flow:** split Step 8; move Compare out; stepper validity badges; review panel.
+- **Phase 2 — Input ease + layout** (in progress):
+  - [x] Select-all on focus (single click to overwrite any field)
+  - [x] Hide +/- number steppers; right-align numeric values
+  - [x] Scroll to top on page change
+  - [x] Per-page **Reset this page** with confirmation dialog
+  - [ ] Step 2: collapse buffer columns behind a toggle
+  - [ ] Split **Step 8 → 8 Costing inputs / 9 Results / 10 Approve & Export** (+ 11 Compare)
+  - [ ] Units in every label; reduce mid-edit reruns; live running totals; reset-to-defaults per category
 - [ ] **Phase 3 — Inputs:** Step 2 & Step 4 table redesign.
 - [ ] **Phase 4 — Outputs:** shared header/section order; PDF cover; email HTML template; Excel polish.
 - [ ] **Phase 5 — Design system:** documented tokens/components + CSS refactor.

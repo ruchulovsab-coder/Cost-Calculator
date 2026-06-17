@@ -214,6 +214,58 @@ def reset_all():
     sanitize_additional_activities()
 
 
+# Per-page reset: (plain state keys to restore, exact widget keys to drop, widget-key prefixes to drop)
+_STEP_RESET = {
+    1: (["workload_totals", "alerts", "service_requests", "incidents", "changes"],
+        ["total_alerts", "total_service_requests", "total_incidents", "total_changes"], []),
+    2: (["alerts", "service_requests", "incidents", "changes", "overhead_pcts", "patching_role"],
+        ["overhead_architect", "overhead_sdm", "overhead_ssdm", "patching_role_w"],
+        ["alerts_", "service_requests_", "incidents_", "changes_"]),
+    3: (["patching_included", "num_servers", "patching_method",
+         "manual_effort_per_server", "auto_effort_per_server"],
+        ["patching_included_w", "num_servers_w", "patching_method_w",
+         "manual_effort_per_server_w", "auto_effort_per_server_w"], []),
+    4: (["additional_activities"], [], ["act_"]),
+    5: (["contingency_pct"], ["contingency_pct_w"], []),
+    6: (["coverage_model", "custom_hours_per_day", "custom_days_per_week",
+         "monthly_working_hours", "productive_utilisation"],
+        ["coverage_model_w", "custom_hours_per_day_w", "custom_days_per_week_w",
+         "monthly_working_hours_w", "productive_utilisation_w"], []),
+    7: (["role_genus", "delivery_country", "delivery_location"],
+        ["dc_select", "dl_select"], ["genus_"]),
+    8: (["transition_included", "transition_total_cost", "additional_costs",
+         "sla_provision_included", "sla_provision_pct", "target_margin_pct",
+         "reporting_currency", "exchange_rates", "fte_basis"],
+        ["transition_included", "transition_total_cost_input", "sla_provision_included",
+         "sla_provision_pct", "target_margin_pct", "reporting_currency", "fte_basis_w"],
+        ["addcost_", "ac_p_", "ac_h_", "ac_r_", "fx_"]),
+}
+
+
+def step_has_reset(step: int) -> bool:
+    return step in _STEP_RESET
+
+
+def reset_step(step: int):
+    """Restore only this page's inputs to defaults (other pages untouched).
+    Also drops the page's widget keys so the inputs visibly re-seed from defaults."""
+    cfg = _STEP_RESET.get(step)
+    if not cfg:
+        return
+    plain, widgets, prefixes = cfg
+    initial = _get_initial_state()
+    for k in plain:
+        if k in initial:
+            d = initial[k]
+            st.session_state[k] = copy.deepcopy(d) if isinstance(d, (dict, list)) else d
+    for wk in widgets:
+        st.session_state.pop(wk, None)
+    if prefixes:
+        for k in [kk for kk in st.session_state.keys() if any(kk.startswith(p) for p in prefixes)]:
+            st.session_state.pop(k, None)
+    sanitize_additional_activities()
+
+
 def apply_total_volume(cat_key: str, new_total: int):
     """
     Called when the user changes the total volume for a category.

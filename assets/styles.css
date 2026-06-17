@@ -196,6 +196,15 @@ section[data-testid="stSidebar"] textarea::placeholder {
     color: #6B7B7B !important;
 }
 
+/* Typing-focused number fields: hide the +/- steppers and right-align the value */
+[data-testid="stNumberInputStepUp"],
+[data-testid="stNumberInputStepDown"] {
+    display: none !important;
+}
+[data-testid="stNumberInput"] input {
+    text-align: right;
+}
+
 /* Generic Streamlit modifications */
 hr {
     border-color: rgba(42, 138, 138, 0.1) !important;
