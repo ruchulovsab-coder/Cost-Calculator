@@ -30,30 +30,8 @@ def send_review_email(reviewer_email: str, project: str, version, link: str, req
         endpoint = os.environ["ACS_ENDPOINT"].strip()
         client = EmailClient(endpoint, DefaultAzureCredential(exclude_interactive_browser_credential=True))
 
-    by = f" by {requested_by}" if requested_by else ""
-    subject = f"Approval requested: {project} (v{version})"
-    text = (f"An estimate '{project}' (version {version}) has been submitted for your "
-            f"approval{by}.\n\nReview and approve/reject here:\n{link}\n")
-    # Single-column, inline-styled HTML (Gmail/Outlook strip <style> blocks).
-    # The CTA is a brand-teal button with a ≥44px tap target.
-    html = (
-        "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;"
-        "color:#0D1B2A;font-size:15px;line-height:1.5\">"
-        "<div style=\"background:#0D1B2A;color:#FFFFFF;padding:16px 20px;border-radius:8px 8px 0 0;"
-        "font-weight:bold;font-size:16px\">Nagarro · Ops Effort Estimation Tool</div>"
-        "<div style=\"background:#FFFFFF;padding:20px;border:1px solid #E0ECEC;border-top:none;"
-        "border-radius:0 0 8px 8px\">"
-        f"<p style=\"margin:0 0 16px\">An estimate <b>{project} — v{version}</b> has been "
-        f"submitted for your approval{by}. Please review and approve or send it back for rework.</p>"
-        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr><td "
-        "style=\"border-radius:8px;background:#00C4B4\">"
-        f"<a href=\"{link}\" style=\"display:inline-block;padding:14px 28px;color:#FFFFFF;"
-        "text-decoration:none;font-weight:bold;font-size:15px\">Review &amp; approve →</a>"
-        "</td></tr></table>"
-        f"<p style=\"color:#666666;font-size:12px;margin:18px 0 0\">If the button doesn't work, "
-        f"paste this link into your browser:<br>{link}</p>"
-        "</div></div>"
-    )
+    from modules.notify.email_templates import review_request
+    subject, text, html = review_request(project, version, link, requested_by)
 
     message = {
         "senderAddress": sender,

@@ -8,11 +8,14 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
 )
 
-from config.settings import ALL_ROLES, CURRENCY_SYMBOLS, APP_NAME, ORG_NAME, THEME
+from config.settings import (
+    ALL_ROLES, CURRENCY_SYMBOLS, APP_NAME, APP_NAME_SHORT, ORG_NAME, THEME,
+)
 from modules.state.session_manager import run_model
 
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
@@ -22,7 +25,33 @@ _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file
 NAVY = colors.HexColor(THEME["navy"])
 TEAL = colors.HexColor(THEME["teal_dark"])
 LB = colors.HexColor(THEME["tint"])
+BGTINT = colors.HexColor(THEME["bg"])     # zebra row shade
 GREY = colors.HexColor(THEME["text_muted"])
+
+
+class _NumberedCanvas(canvas.Canvas):
+    """Two-pass canvas so each page can print 'Page n of N' plus a brand footer."""
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_states = []
+
+    def showPage(self):
+        self._saved_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved_states)
+        for state in self._saved_states:
+            self.__dict__.update(state)
+            self._draw_footer(total)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def _draw_footer(self, total):
+        self.setFont("Helvetica", 8)
+        self.setFillColor(GREY)
+        self.drawString(16 * mm, 10 * mm, f"{ORG_NAME} · {APP_NAME_SHORT}")
+        self.drawRightString(A4[0] - 16 * mm, 10 * mm, f"Page {self._pageNumber} of {total}")
 
 
 def _sym(currency: str) -> str:
@@ -34,7 +63,8 @@ def _money(value: float, currency: str = "INR") -> str:
 
 
 def _table(data, col_widths, header=True, total_row_idx=None):
-    t = Table(data, colWidths=col_widths, hAlign="LEFT")
+    # repeatRows=1 re-prints the header on any page the table spills onto.
+    t = Table(data, colWidths=col_widths, hAlign="LEFT", repeatRows=1 if header else 0)
     style = [
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
@@ -44,6 +74,9 @@ def _table(data, col_widths, header=True, total_row_idx=None):
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
+    # Zebra striping over the body rows (header at row 0 stays navy).
+    body_start = 1 if header else 0
+    style += [("ROWBACKGROUNDS", (0, body_start), (-1, -1), [colors.white, BGTINT])]
     if header:
         style += [
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
@@ -78,7 +111,7 @@ def generate_pdf_report() -> bytes:
     h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=NAVY, fontSize=20, spaceAfter=2)
     sub = ParagraphStyle("sub", parent=styles["Normal"], textColor=GREY, fontSize=10, spaceAfter=2)
     h2 = ParagraphStyle("h2", parent=styles["Heading2"], textColor=TEAL, fontSize=13, spaceBefore=12, spaceAfter=6)
-    note = ParagraphStyle("note", parent=styles["Normal"], textColor=GREY, fontSize=8, spaceBefore=10)
+    note = ParagraphStyle("note", parent=styles["Normal"], textColor=GREY, fontSize=9, spaceBefore=10)
 
     e = []
     if os.path.exists(_LOGO_PATH):
@@ -146,6 +179,6 @@ def generate_pdf_report() -> bytes:
         "volumes and assumptions provided. Final pricing is subject to contract. Transition costs, "
         "where shown, are one-time and billed separately from the monthly delivery charge.", note))
 
-    doc.build(e)
+    doc.build(e, canvasmaker=_NumberedCanvas)
     buf.seek(0)
     return buf.getvalue()

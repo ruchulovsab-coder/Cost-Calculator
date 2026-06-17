@@ -5,12 +5,34 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
-from config.settings import ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT, hx
+from config.settings import (
+    ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT, REPORTING_CURRENCIES, hx,
+)
 from modules.state.session_manager import run_model
 
 # Brand tokens (shared with the web app and PDF via config.settings.THEME)
 NAVY = hx("navy"); BLUE = hx("badge"); LB = hx("tint"); ACCENT = hx("primary")
 LGRAY = "F2F2F2"; WHITE = "FFFFFF"
+
+# ── Number formats ─────────────────────────────────────────────────────────────
+F_INR  = "#,##0"        # currency / counts (INR column)
+F_CUR2 = "#,##0.00"     # reporting-currency value
+F_NUM1 = "#,##0.0"      # hours
+F_FTE  = "0.0"          # FTE
+F_RAW  = "0.000"        # raw FTE
+F_PCT  = '0.0"%"'       # percentage stored as e.g. 20.0 → "20.0%"
+F_PCT0 = '0"%"'         # whole-number percentage → "80%"
+
+
+def _unit_fmt(u):
+    """Map an Exec/Audit 'unit' label to the right Excel number format."""
+    u = (u or "").strip()
+    if u in ("Hrs/Month", "Hrs"): return F_NUM1
+    if u == "FTE": return F_FTE
+    if u == "%":   return F_PCT
+    if u == "INR": return F_INR
+    if u in REPORTING_CURRENCIES: return F_CUR2
+    return None
 
 def _fill(c): return PatternFill("solid", fgColor=c)
 def _font(c="000000", bold=False, sz=10): return Font(name="Calibri", color=c, bold=bold, size=sz)
@@ -27,19 +49,24 @@ def _hrow(ws, row, headers, widths=None):
         c.border = _border()
         if widths and i <= len(widths): _cw(ws, i, widths[i-1])
 
-def _drow(ws, row, vals, total=False):
+def _drow(ws, row, vals, total=False, fmts=None):
     bg = _fill(LB) if total else None
     for i, v in enumerate(vals, 1):
         c = ws.cell(row=row, column=i, value=v)
         c.font = _font(bold=total)
         c.border = _border()
         c.alignment = Alignment(horizontal="right" if isinstance(v, (int, float)) else "left")
+        if fmts and i <= len(fmts) and fmts[i-1] and isinstance(v, (int, float)):
+            c.number_format = fmts[i-1]
         if bg: c.fill = bg
 
 def _title(ws, t, sub=""):
     ws.cell(1,1,t).font = Font("Calibri", bold=True, size=13, color=NAVY)
     if sub: ws.cell(2,1,sub).font = Font("Calibri", italic=True, size=10, color="767676")
-    ws.cell(3,1,f"Generated: {date.today()}").font = Font("Calibri", size=9, color="767676")
+    ws.cell(3,1,"Generated:").font = Font("Calibri", size=9, color="767676")
+    dc = ws.cell(3,2, date.today())          # real Date cell, not a string
+    dc.number_format = "yyyy-mm-dd"
+    dc.font = Font("Calibri", size=9, color="767676")
 
 def _build_exec(wb, model):
     ws = wb.create_sheet("Executive Summary")
@@ -63,17 +90,19 @@ def _build_exec(wb, model):
         (f"Monthly Selling Price ({model['reporting_currency']})",
          round(model["selling_price_converted"], 2), model["reporting_currency"]),
     ]
-    for i,(m,v,u) in enumerate(rows,6): _drow(ws,i,[m,v,u], total=(str(m).isupper()))
+    for i,(m,v,u) in enumerate(rows,6):
+        _drow(ws,i,[m,v,u], total=(str(m).isupper()), fmts=[None, _unit_fmt(u), None])
 
 def _build_effort(wb, model):
     ws = wb.create_sheet("Effort Breakdown")
     _title(ws, "Effort Breakdown")
     rh = model["role_hours"]; te = model["total_effort"]
     _hrow(ws,5,["Role","Effort Hours","% of Total Effort"],[18,16,20])
+    EFFORT_FMTS = [None, F_NUM1, F_PCT]
     for i,role in enumerate(ALL_ROLES,6):
         h = rh.get(role,0); pct = h/te*100 if te>0 else 0
-        _drow(ws,i,[role,round(h,1),round(pct,1)])
-    _drow(ws,6+len(ALL_ROLES),["TOTAL",round(te,1),100.0],total=True)
+        _drow(ws,i,[role,round(h,1),round(pct,1)], fmts=EFFORT_FMTS)
+    _drow(ws,6+len(ALL_ROLES),["TOTAL",round(te,1),100.0],total=True, fmts=EFFORT_FMTS)
 
 def _build_resolution(wb, model):
     ws = wb.create_sheet("Resolution Detail")
@@ -105,7 +134,8 @@ def _build_resolution(wb, model):
                 l1p, l1b, round(total_h*l1p/100*(1+l1b/100),2),
                 l2p, l2b, round(total_h*l2p/100*(1+l2b/100),2),
                 l3p, l3b, round(total_h*l3p/100*(1+l3b/100),2),
-            ])
+            ], fmts=[None, None, F_INR, F_INR, F_NUM1,
+                     F_PCT0, F_PCT0, F_NUM1, F_PCT0, F_PCT0, F_NUM1, F_PCT0, F_PCT0, F_NUM1])
             row_num += 1
 
 def _build_fte(wb, model):
@@ -113,20 +143,22 @@ def _build_fte(wb, model):
     _title(ws, "FTE Summary")
     fte = model["fte_result"]
     _hrow(ws,5,["Role","Effort Hours","Raw FTE","Cov. Applied","Final FTE"],[14,14,12,16,12])
+    FTE_FMTS = [None, F_NUM1, F_RAW, None, F_FTE]
     for i,role in enumerate(ALL_ROLES,6):
         r = fte.get(role,{})
-        _drow(ws,i,[role,round(r.get("hours",0),1),round(r.get("raw_fte",0),3),"Yes" if r.get("coverage_applied") else "No",round(r.get("final_fte",0),1)])
-    _drow(ws,6+len(ALL_ROLES),["TOTAL","","","",round(model["total_fte"],1)],total=True)
+        _drow(ws,i,[role,round(r.get("hours",0),1),round(r.get("raw_fte",0),3),"Yes" if r.get("coverage_applied") else "No",round(r.get("final_fte",0),1)], fmts=FTE_FMTS)
+    _drow(ws,6+len(ALL_ROLES),["TOTAL","","","",round(model["total_fte"],1)],total=True, fmts=FTE_FMTS)
 
 def _build_costs(wb, model):
     ws = wb.create_sheet("Resource Costs")
     _title(ws,"Resource Cost Summary")
     rc = model["resource_costs"]
     _hrow(ws,5,["Role","Genus","Required FTE","Billed Hours","Rate (INR/hr)","Cost (INR)"],[12,22,14,14,16,18])
+    COST_FMTS = [None, None, F_FTE, F_INR, F_INR, F_INR]
     for i,role in enumerate(ALL_ROLES,6):
         r = rc.get(role,{})
-        _drow(ws,i,[role,r.get("genus","—"),round(r.get("fte",0),1),round(r.get("billed_hours",0),0),round(r.get("rate_inr",0),0),round(r.get("cost_inr",0),0)])
-    _drow(ws,6+len(ALL_ROLES),["TOTAL","","","","",round(model["total_resource_cost"],0)],total=True)
+        _drow(ws,i,[role,r.get("genus","—"),round(r.get("fte",0),1),round(r.get("billed_hours",0),0),round(r.get("rate_inr",0),0),round(r.get("cost_inr",0),0)], fmts=COST_FMTS)
+    _drow(ws,6+len(ALL_ROLES),["TOTAL","","","","",round(model["total_resource_cost"],0)],total=True, fmts=COST_FMTS)
 
 def _build_financial(wb, model):
     ws = wb.create_sheet("Financial Model")
@@ -143,7 +175,10 @@ def _build_financial(wb, model):
         ("MONTHLY SELLING PRICE",     price.get("selling_price",0),      True),
         ("ONE-TIME TRANSITION COST",  model["transition_cost"],          True),
     ]
-    for i,(lbl,val,tot) in enumerate(rows,6): _drow(ws,i,[lbl,round(val,0)],total=tot)
+    for i,(lbl,val,tot) in enumerate(rows,6):
+        is_pct = "%" in lbl
+        v = round(val, 1) if is_pct else round(val, 0)
+        _drow(ws,i,[lbl,v],total=tot, fmts=[None, F_PCT if is_pct else F_INR])
 
 def _build_audit(wb, model):
     ws = wb.create_sheet("Inputs Audit")
@@ -157,8 +192,8 @@ def _build_audit(wb, model):
         (6,"Coverage Model",st.session_state.get("coverage_model",""),""),
         (6,"Monthly Working Hours",st.session_state.get("monthly_working_hours",0),"Hrs"),
         (6,"Productive Utilisation",st.session_state.get("productive_utilisation",0),"%"),
-        (7,"Delivery Country",st.session_state.get("delivery_country","India"),""),
-        (7,"Delivery Location",st.session_state.get("delivery_location","—") or "—",""),
+        (1,"Delivery Country",st.session_state.get("delivery_country","India"),""),
+        (1,"Delivery Location",st.session_state.get("delivery_location","—") or "—",""),
         (8,"Reporting Currency",model["reporting_currency"],""),
         (8,"Target Gross Margin",st.session_state.get("target_margin_pct",0),"%"),
         (8,"Transition Included",st.session_state.get("transition_included",""),""),
@@ -167,8 +202,10 @@ def _build_audit(wb, model):
         (8,"SLA Provision %",st.session_state.get("sla_provision_pct",0),"%"),
     ]
     for role, pct in (st.session_state.get("overhead_pcts",{}) or {}).items():
-        audit.append((2,f"Overhead % — {role}",pct,"%"))
-    for i,row in enumerate(audit,6): _drow(ws,i,list(row))
+        audit.append((5,f"Overhead % — {role}",pct,"%"))
+    for i,row in enumerate(audit,6):
+        step, field, value, unit = row
+        _drow(ws,i,list(row), fmts=[None, None, _unit_fmt(unit), None])
 
 def generate_excel_report() -> bytes:
     model = st.session_state.get("_model") or run_model()
