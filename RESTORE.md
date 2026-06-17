@@ -4,7 +4,15 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.2`** — *current stable.* **11-step** flow (split the old combined Step 8 into
+- **`v1.3`** — *current stable.* Builds on v1.2 with the full **UX/design-system pass**:
+  a central **design-token** layer (`config.settings.THEME` + CSS `:root`) shared by the
+  web app, PDF and Excel so all three share one brand palette; the **Step 2** resolution
+  grid rebuilt with `st.data_editor`; **PDF** page numbers + repeating header + zebra
+  rows; **Excel** number/percent/date formatting + logo; the approval **email** as a
+  branded inline button (extracted template); the **Nagarro logo** asset; a **sidebar
+  gradient** background that blends with the logo; and spacing fixes so dividers/borders
+  never clip text, boxes or inputs. 55 passing tests.
+- **`v1.2`** — **11-step** flow (split the old combined Step 8 into
   **8 Costing Inputs / 9 Results Dashboard / 10 Approve & Export / 11 Compare**) and
   relocated rate card, coverage model and delivery location onto Step 1. Adds the
   **Tool-Based patching error-rate** model, **Saved Calculations** (versioned Blob
@@ -17,9 +25,23 @@ to that exact snapshot, so you can always return to it no matter what changes la
   local upload. Builds on v1.0. (9-step flow.)
 - **`v1.0`** — first production-ready release. (9-step flow.)
 
-> In the commands below, replace `v1.0` with the version you want (e.g. `v1.2`).
+> In the commands below, replace `v1.0` with the version you want (e.g. `v1.3`).
 
-## What `v1.2` contains (current stable)
+## What `v1.3` contains (current stable)
+- Everything in v1.2 (below), plus the complete UX/design-system pass:
+  - **Design tokens** — `config.settings.THEME` + CSS `:root` variables drive the web app,
+    PDF (reportlab) and Excel (openpyxl) from one palette; `kind=` button selectors
+    migrated to the Streamlit 1.58 `stBaseButton-*` testids + a native `[theme]` block.
+  - **Step 2** resolution grid rebuilt with `st.data_editor` (read-only computed results
+    table; calculation contract unchanged).
+  - **PDF**: `Page n of N` + brand footer, repeating table headers, zebra rows, logo.
+  - **Excel**: number/percent formats, real Date cell, Exec-sheet logo.
+  - **Email**: branded inline-button approval template (`modules/notify/email_templates.py`).
+  - **Branding**: `assets/nagarro_logo.png` + a `assets/sidebar_bg.png` gradient sidebar.
+  - **Layout**: spacing fixes so dividers/section underlines/alert boxes never clip
+    adjacent text, inputs or boxes.
+
+## What `v1.2` contains
 - Full Streamlit app: **11-step** Ops effort/cost/pricing flow (see the table in README).
   - Inputs 1–8; outputs 9 Results / 10 Approve & Export / 11 Compare.
   - Step 1 carries the rate-card source, coverage model and delivery location.
@@ -96,6 +118,9 @@ git push origin v1.1
 
 git tag -a v1.2 -m "Stable Version 1.2 — 11-step flow, error-rate patching, saved calcs, approvals"
 git push origin v1.2
+
+git tag -a v1.3 -m "Stable Version 1.3 — UX/design-system pass: tokens, Step 2 data-editor, export polish, branding"
+git push origin v1.3
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
