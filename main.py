@@ -64,6 +64,22 @@ if os.path.exists(_css):
     with open(_css) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+# Sidebar background image — navy top matches the logo plate, sweeps to teal below.
+# Embedded as base64 so the browser can render it (a local path isn't reachable).
+import base64
+_sb_bg = os.path.join(os.path.dirname(__file__), "assets", "sidebar_bg.png")
+if os.path.exists(_sb_bg):
+    with open(_sb_bg, "rb") as _f:
+        _sb_b64 = base64.b64encode(_f.read()).decode()
+    st.markdown(
+        "<style>section[data-testid='stSidebar'] {"
+        f"background-image:url('data:image/png;base64,{_sb_b64}') !important;"
+        "background-size:cover !important;"
+        "background-position:top center !important;"
+        "background-repeat:no-repeat !important;}</style>",
+        unsafe_allow_html=True,
+    )
+
 # ── Session state ──────────────────────────────────────────────────────────────
 from modules.state.session_manager import init_session_state
 init_session_state()
