@@ -25,7 +25,7 @@ def render_scenario_sidebar():
     sb = st.sidebar
     sb.divider()
     sb.markdown("### 🗂️ Compare / File")
-    sb.caption("Add snapshots to compare side-by-side (Step 9), or download/upload a JSON "
+    sb.caption("Add snapshots to compare side-by-side (Step 11), or download/upload a JSON "
                "file to back up or share. Day-to-day saving lives in **📁 Saved Calculations** above.")
 
     saved = st.session_state.setdefault("saved_scenarios", [])
@@ -42,7 +42,7 @@ def render_scenario_sidebar():
             sb.success(f"Snapshot added: {name.strip()}")
             st.rerun()
     if saved:
-        sb.caption(f"{len(saved)} snapshot(s) ready to compare on Step 9.")
+        sb.caption(f"{len(saved)} snapshot(s) ready to compare on Step 11.")
 
     _n = (name.strip() or st.session_state.get("project_name") or "estimate")
     scen = export_scenario(_n, "")
@@ -169,8 +169,8 @@ def render_comparison():
             if s["meta"]["name"] in chosen:
                 pool[s["meta"]["name"]] = s.get("inputs", {})
     else:
-        callout("No scenarios saved yet. Use **💾 Scenarios → Save to session** in the sidebar, "
-                "or upload JSON files below.", "info")
+        callout("No scenarios saved yet. Use **🗂️ Compare / File → Add snapshot for comparison** "
+                "in the sidebar, or upload JSON files below.", "info")
 
     # External uploads
     with st.expander("➕ Add scenarios from JSON files"):

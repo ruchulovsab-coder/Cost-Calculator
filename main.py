@@ -189,9 +189,7 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Reset All", key="btn_reset_all", use_container_width=True, type="secondary"):
-        from modules.state.session_manager import reset_all
-        reset_all()
-        st.rerun()
+        st.session_state["_confirm_reset_all"] = True
 
 
 # ── Main content ───────────────────────────────────────────────────────────────
@@ -222,6 +220,24 @@ def _confirm_reset(step):
         st.rerun()
     if c2.button("Cancel", key="confirm_reset_no"):
         st.rerun()
+
+
+@st.dialog("Reset everything?")
+def _confirm_reset_all():
+    st.write("This clears **all inputs on every page** and returns the whole "
+             "estimate to its defaults. This cannot be undone.")
+    c1, c2 = st.columns(2)
+    if c1.button("Yes, reset all", type="primary", key="confirm_reset_all_yes"):
+        from modules.state.session_manager import reset_all
+        st.session_state.pop("_confirm_reset_all", None)
+        reset_all()
+        st.rerun()
+    if c2.button("Cancel", key="confirm_reset_all_no"):
+        st.session_state.pop("_confirm_reset_all", None)
+        st.rerun()
+
+if st.session_state.get("_confirm_reset_all"):
+    _confirm_reset_all()
 
 if render_fn:
     step_valid = render_fn()

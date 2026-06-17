@@ -354,10 +354,18 @@ def render_step9() -> bool:
         role_hours = model["role_hours"]
         nz = {r: role_hours.get(r, 0) for r in ALL_ROLES if role_hours.get(r, 0) > 0}
         if PLOTLY_OK and nz:
-            fig2 = px.pie(values=list(nz.values()), names=list(nz.keys()),
-                          color_discrete_sequence=px.colors.qualitative.Set2)
-            fig2.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=10))
+            # Sorted horizontal bar (brand teal) — matches the "By Source" chart and
+            # reads better than a 6-slice pie.
+            ordered = dict(sorted(nz.items(), key=lambda kv: kv[1]))
+            fig2 = px.bar(x=list(ordered.values()), y=list(ordered.keys()),
+                          orientation="h", color_discrete_sequence=["#00C4B4"],
+                          text=[f"{v:.0f}" for v in ordered.values()])
+            fig2.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=10),
+                               xaxis_title="Hours", yaxis_title="", showlegend=False)
             st.plotly_chart(fig2, use_container_width=True)
+        elif nz:
+            for k, v in sorted(nz.items(), key=lambda kv: -kv[1]):
+                st.write(f"{k}: {v:.1f} hrs")
 
     eff_rows = ""
     for k, v in effort_sources.items():

@@ -8,3 +8,12 @@ fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+# Brand tokens — applied natively so primary CTAs stay teal regardless of
+# Streamlit's button DOM changes (the CSS kind= selectors broke in 1.58).
+primaryColor = "#00C4B4"
+backgroundColor = "#F4FAFA"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0D1B2A"
+font = "sans serif"

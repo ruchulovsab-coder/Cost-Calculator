@@ -95,9 +95,12 @@ def render_approval_panel():
                 link = review_link(ref["slug"], ref["version"], newrec["token"])
                 from modules.notify.email_sender import email_configured, send_review_email
                 sent = False
-                if email_configured():
-                    if not link.lower().startswith("http"):
-                        st.warning("Set the APP_BASE_URL variable so the emailed link is clickable.")
+                if email_configured() and not link.lower().startswith("http"):
+                    # Don't dispatch an email whose only action is a dead relative URL.
+                    st.error("Request saved, but no email was sent: set the APP_BASE_URL "
+                             "variable so the review link is absolute and clickable. "
+                             "Share the link below manually for now.")
+                elif email_configured():
                     try:
                         send_review_email(email.strip(), ref["project"], ref["version"],
                                           link, st.session_state.get("prepared_by", ""))
