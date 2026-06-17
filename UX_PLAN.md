@@ -46,7 +46,8 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   - [x] Move rate card + coverage + delivery location to Step 1; rate-card grades as a collapsible table
   - [x] Split **Step 8 → 8 Costing inputs / 9 Results / 10 Approve & Export** (+ 11 Compare)
   - [ ] Units in every label; reduce mid-edit reruns; live running totals; reset-to-defaults per category
-- **Phase 3 — Inputs:** [x] Step 2 → `st.data_editor`; [ ] Step 4 table redesign.
+- **Phase 3 — Inputs:** [x] Step 2 → `st.data_editor`; [x] Step 4 → `st.data_editor`
+  (dynamic add/delete rows; Auto/derived hours + role-% split; read-only validation table).
 - [ ] **Phase 4 — Outputs:** shared header/section order; PDF cover; email HTML template; Excel polish.
 - [ ] **Phase 5 — Design system:** documented tokens/components + CSS refactor.
 

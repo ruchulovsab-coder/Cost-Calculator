@@ -4,6 +4,7 @@ Step 4 — Additional Operational Activities
 Step 5 — Effort Summary & Contingency
 """
 import streamlit as st
+import pandas as pd
 from modules.inputs.steps_1_2 import page_header, section_hdr, callout
 from modules.calculations.engine import (
     calc_patching_effort, calc_category_hours, calc_base_effort, calc_contingency,
@@ -111,14 +112,13 @@ def render_step4() -> bool:
                 "Add recurring operational tasks not covered by ticket volumes or patching.")
 
     callout(
-        "Define effort for recurring tasks and support operations. "
-        "Assign the percentage distribution of hours for each role. "
-        "For any activity with hours > 0, the sum of role percentages must be exactly 100%.",
+        "Define effort for recurring tasks and support operations in the grid below. "
+        "Tick <strong>Auto</strong> on a standard activity to derive its hours from your "
+        "servers/volumes, or untick it to enter your own. Set each row's role % split — "
+        "for any activity with hours > 0 the role percentages must sum to exactly 100%. "
+        "Use the grid's <strong>+</strong> to add a row and the row selector to delete one.",
         "info",
     )
-
-    activities = st.session_state.additional_activities
-    to_remove = []
 
     from config.settings import ALL_ROLES, ACTIVITY_FORMULAS
     from modules.calculations.engine import derive_activity_hours
@@ -127,10 +127,27 @@ def render_step4() -> bool:
     servers = int(st.session_state.get("num_servers", 0) or 0)
     volumes = workload_volumes()
 
+    activities = st.session_state.additional_activities
+
+    # Names that count as "standard" (not custom) — drives the custom flag.
+    STD_NAMES = {
+        "Scheduled Maintenance", "Root Cause Analysis (RCA)", "Problem Management",
+        "Documentation & Knowledge Base", "Service Review Preparation", "Other",
+    }
+    ROLE_COLS = [("L1", "L1 %"), ("L2", "L2 %"), ("L3", "L3 %"),
+                 ("Architect", "Arch %"), ("SDM", "SDM %"), ("SSDM", "SSDM %")]
+
+    def _num(v):
+        try:
+            f = float(v)
+            return 0.0 if pd.isna(f) else f
+        except (TypeError, ValueError):
+            return 0.0
+
     # Clickable formula reference
     with st.expander("ℹ️ How are the recommended default efforts calculated?"):
         st.markdown(
-            "For activities below marked **Auto**, the monthly effort is derived from your "
+            "For activities marked **Auto**, the monthly effort is derived from your "
             "server count and ticket volumes as a recommendation. Untick **Auto** on any row "
             "to enter your own value. Formula: *(sum of the terms below) ÷ 60 = hours/month.*"
         )
@@ -141,126 +158,86 @@ def render_step4() -> bool:
                    f"incidents = {volumes['incidents']}, service requests = {volumes['service_requests']}, "
                    f"changes = {volumes['changes']}.")
 
-    # 1. Header row
-    h0, h1, hauto, hl1, hl2, hl3, harch, hsdm, hssdm, h_del = st.columns(
-        [2.6, 1.0, 0.8, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.9])
-    h0.markdown("**Activity Name**")
-    h1.markdown("**Monthly Hrs**")
-    hauto.markdown("**Auto**")
-    hl1.markdown("**L1 %**")
-    hl2.markdown("**L2 %**")
-    hl3.markdown("**L3 %**")
-    harch.markdown("**Arch %**")
-    hsdm.markdown("**SDM %**")
-    hssdm.markdown("**SSDM %**")
-    h_del.markdown("**Status**")
+    # ── Editable grid ─────────────────────────────────────────
+    in_rows = []
+    for act in activities:
+        name = act.get("name", "")
+        is_derived = name in ACTIVITY_FORMULAS
+        auto = bool(act.get("auto", False)) and is_derived
+        hrs = (round(derive_activity_hours(name, servers, volumes), 1)
+               if auto else _num(act.get("hours", 0)))
+        d = act.get("dist", {})
+        row = {"Activity": name, "Auto": auto, "Monthly Hrs": hrs}
+        for rk, col in ROLE_COLS:
+            row[col] = _num(d.get(rk, 0))
+        in_rows.append(row)
 
+    pct_cfg = dict(min_value=0.0, max_value=100.0, step=5.0, format="%d%%")
+    edited = st.data_editor(
+        pd.DataFrame(in_rows), key="act_editor", hide_index=True,
+        use_container_width=True, num_rows="dynamic",
+        column_config={
+            "Activity": st.column_config.TextColumn(
+                "Activity", width="medium",
+                help="The four standard names (Scheduled Maintenance, RCA, Problem "
+                     "Management, Documentation & Knowledge Base) drive the Auto formulas."),
+            "Auto": st.column_config.CheckboxColumn(
+                "Auto", default=False,
+                help="On: hours auto-derived from servers/volumes (standard activities "
+                     "only). Off: type your own Monthly Hrs."),
+            "Monthly Hrs": st.column_config.NumberColumn(
+                "Monthly Hrs", min_value=0.0, step=0.5, format="%.1f",
+                help="Auto rows are formula-driven (edits revert); untick Auto to set your own."),
+            "L1 %":   st.column_config.NumberColumn("L1 %", **pct_cfg),
+            "L2 %":   st.column_config.NumberColumn("L2 %", **pct_cfg),
+            "L3 %":   st.column_config.NumberColumn("L3 %", **pct_cfg),
+            "Arch %": st.column_config.NumberColumn("Arch %", **pct_cfg),
+            "SDM %":  st.column_config.NumberColumn("SDM %", **pct_cfg),
+            "SSDM %": st.column_config.NumberColumn("SSDM %", **pct_cfg),
+        },
+    )
+
+    # ── Persist back to the session contract (name/auto/custom/hours/dist) ──
+    new_acts = []
+    for _, r in edited.iterrows():
+        nm = r["Activity"]
+        name = ("" if pd.isna(nm) else str(nm).strip()) or "Custom Activity"
+        is_derived = name in ACTIVITY_FORMULAS
+        auto = (bool(r["Auto"]) if not pd.isna(r["Auto"]) else False) and is_derived
+        hours = (round(derive_activity_hours(name, servers, volumes), 1)
+                 if auto else _num(r["Monthly Hrs"]))
+        dist = {rk: _num(r[col]) for rk, col in ROLE_COLS}
+        new_acts.append({"name": name, "hours": hours, "custom": name not in STD_NAMES,
+                         "auto": auto, "dist": dist})
+    st.session_state["additional_activities"] = new_acts
+
+    # ── Read-only validation / results table ──────────────────
     all_valid = True
-
-    for i, row in enumerate(activities):
-        c0, c1, c_auto, cl1, cl2, cl3, carch, csdm, cssdm, c_del = st.columns(
-            [2.6, 1.0, 0.8, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.9])
-
-        name = row["name"]
-        formula = ACTIVITY_FORMULAS.get(name)
-        is_derived = formula is not None
-        formula_help = (f"Default = ({formula['text']}) ÷ 60" if is_derived else None)
-
-        # Editable name for custom rows
-        if row.get("custom"):
-            name = c0.text_input("Name", value=row["name"],
-                                 key=f"act_name_{i}", label_visibility="collapsed")
-            activities[i]["name"] = name
-        else:
-            c0.markdown(f"*{row['name']}*")
-
-        # Auto toggle (only for activities that have a derivation formula)
-        if is_derived:
-            auto = c_auto.checkbox("Auto", value=row.get("auto", True),
-                                   key=f"act_auto_{i}", label_visibility="collapsed",
-                                   help="On: effort auto-derived from volumes. Off: enter your own.")
-            activities[i]["auto"] = auto
-        else:
-            auto = False
-            c_auto.markdown("<div style='color:#888;text-align:center'>—</div>", unsafe_allow_html=True)
-
-        # Monthly hours — disabled & formula-driven when Auto is on
-        if is_derived and auto:
-            derived_h = round(derive_activity_hours(name, servers, volumes), 1)
-            activities[i]["hours"] = derived_h
-            hours = derived_h
-            c1.number_input("hrs", value=derived_h, disabled=True,
-                            key=f"act_hrs_auto_{i}", label_visibility="collapsed",
-                            help=formula_help)
-        else:
-            hours = c1.number_input(
-                "hrs", min_value=0.0, step=0.5, format="%.1f",
-                value=float(row["hours"]),
-                key=f"act_hrs_{i}",
-                label_visibility="collapsed",
-                help=formula_help,
-            )
-            activities[i]["hours"] = hours
-
-        # Role percentages
-        dist = row.setdefault("dist", {r: 0.0 for r in ALL_ROLES})
-        
-        # We render inputs for each role
-        dist["L1"] = cl1.number_input("L1%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("L1", 0.0)), key=f"act_l1_{i}", label_visibility="collapsed")
-        dist["L2"] = cl2.number_input("L2%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("L2", 0.0)), key=f"act_l2_{i}", label_visibility="collapsed")
-        dist["L3"] = cl3.number_input("L3%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("L3", 0.0)), key=f"act_l3_{i}", label_visibility="collapsed")
-        dist["Architect"] = carch.number_input("Arch%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("Architect", 0.0)), key=f"act_arch_{i}", label_visibility="collapsed")
-        dist["SDM"] = csdm.number_input("SDM%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("SDM", 0.0)), key=f"act_sdm_{i}", label_visibility="collapsed")
-        dist["SSDM"] = cssdm.number_input("SSDM%", min_value=0.0, max_value=100.0, step=5.0, format="%.0f", value=float(dist.get("SSDM", 0.0)), key=f"act_ssdm_{i}", label_visibility="collapsed")
-
-        # Validation status & action button
-        total_pct = sum(dist.get(r, 0.0) for r in ALL_ROLES)
-        is_valid = (hours == 0) or (abs(total_pct - 100.0) < 0.1)
-        
-        if not is_valid:
+    total = 0.0
+    detail = ""
+    for a in new_acts:
+        s = sum(a["dist"].values()); total += a["hours"]
+        ok = (a["hours"] == 0) or (abs(s - 100.0) < 0.1)
+        if not ok:
             all_valid = False
-            
-        # Display validation indicator / delete button
-        if row.get("custom"):
-            with c_del:
-                sub_c1, sub_c2 = st.columns([0.6, 0.4])
-                if not is_valid:
-                    sub_c1.markdown(f'<span class="pill-err" style="padding: 2px 4px; font-size: 0.75rem;" title="Must sum to 100% (currently {total_pct:.0f}%)">⚠️{total_pct:.0f}%</span>', unsafe_allow_html=True)
-                elif hours > 0:
-                    sub_c1.markdown('<span class="pill-ok" style="padding: 2px 4px; font-size: 0.75rem;">✓</span>', unsafe_allow_html=True)
-                else:
-                    sub_c1.markdown('<span style="color:#888;">—</span>', unsafe_allow_html=True)
-                
-                if sub_c2.button("🗑️", key=f"del_act_{i}", help="Remove activity"):
-                    to_remove.append(i)
-        else:
-            if not is_valid:
-                c_del.markdown(f'<span class="pill-err" style="padding: 2px 6px; font-size: 0.8rem;" title="Must sum to 100% (currently {total_pct:.0f}%)">⚠️ {total_pct:.0f}%</span>', unsafe_allow_html=True)
-            elif hours > 0:
-                c_del.markdown('<span class="pill-ok" style="padding: 2px 6px; font-size: 0.8rem;">✓ 100%</span>', unsafe_allow_html=True)
-            else:
-                c_del.markdown('<span style="color:#888; font-size: 0.8rem;">—</span>', unsafe_allow_html=True)
+        pill = ('<span class="pill-ok">✓ 100%</span>' if ok
+                else f'<span class="pill-err">{s:.0f}%</span>')
+        auto_txt = "Auto" if a["auto"] else "Manual"
+        detail += (f"<tr><td>{a['name']}</td><td>{auto_txt}</td>"
+                   f"<td class='r'>{a['hours']:.1f}</td><td class='r'>{s:.0f}%</td>"
+                   f"<td style='text-align:center'>{pill}</td></tr>")
+    st.markdown(f"""
+    <table class="styled-table"><thead><tr>
+      <th>Activity</th><th>Source</th><th class="r">Monthly Hrs</th>
+      <th class="r">Role % Sum</th><th style="text-align:center">Valid</th>
+    </tr></thead><tbody>{detail}</tbody></table>""", unsafe_allow_html=True)
 
-    for idx in reversed(to_remove):
-        activities.pop(idx)
-        st.rerun()
-
-    if st.button("➕ Add Activity", type="secondary"):
-        activities.append({
-            "name": "Custom Activity", 
-            "hours": 0.0, 
-            "custom": True, 
-            "dist": {r: (100.0 if r == "L2" else 0.0) for r in ALL_ROLES}
-        })
-        st.rerun()
-
-    total = sum(r["hours"] for r in activities)
     st.info(f"**Total Additional Activity Hours: {total:.1f} hrs/month**")
-    
+
     if not all_valid:
-        st.error("❌ The sum of role percentages for all active activities (where Monthly Hours > 0) must be exactly 100%. Please check the highlighted errors above.")
+        st.error("❌ For every activity with Monthly Hours > 0, the role percentages "
+                 "must sum to exactly 100%. Fix the rows flagged above.")
         return False
-        
     return True
 
 
