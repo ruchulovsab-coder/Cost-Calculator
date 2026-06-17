@@ -273,18 +273,35 @@ section[data-testid="stSidebar"] textarea::placeholder {
     text-align: right;
 }
 
-/* ── Density: tighter page padding + less vertical gap (reduces scrolling) ── */
+/* ── Density: compact page padding + a safe vertical gap ──────────────────────
+   The gap was previously 0.55rem, which was so tight that dividers, section
+   underlines and alert boxes visually touched (and clipped) their neighbours.
+   0.85rem stays compact but guarantees every stacked element has clearance. */
 [data-testid="stMainBlockContainer"],
 [data-testid="stMain"] .block-container {
     padding: 1.3rem 2.5rem 2.5rem 2.5rem !important;
     max-width: 100% !important;
 }
 [data-testid="stMain"] [data-testid="stVerticalBlock"] {
-    gap: 0.55rem !important;
+    gap: 0.85rem !important;
 }
 
-/* Generic Streamlit modifications — dividers darker + tighter */
+/* Dividers: a clean single dark line with clear space above and below so it can
+   never touch the text/box/input on either side. */
 hr {
-    border-color: var(--border-strong) !important;
+    border: none !important;
+    border-top: 1px solid var(--border-strong) !important;
+    height: 0 !important;
+    margin: 0.95rem 0 !important;
+}
+
+/* Alert boxes (st.info / success / warning / error — e.g. the "Reviewing…" box):
+   give them breathing room and never let an adjacent line clip them. */
+[data-testid="stMain"] [data-testid="stAlert"] {
     margin: 0.5rem 0 !important;
+}
+
+/* The section-header underline must clear the element directly below it. */
+[data-testid="stMain"] .section-hdr {
+    margin-bottom: 1rem !important;
 }
