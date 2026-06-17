@@ -57,6 +57,16 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] * { color: #FFFFFF !important; }
 
+/* Hide Streamlit's "view fullscreen" button that pops up on hover over the
+   sidebar logo image (clicking it opened the logo full-screen). */
+section[data-testid="stSidebar"] [data-testid="StyledFullScreenButton"],
+section[data-testid="stSidebar"] [data-testid="stElementToolbar"],
+section[data-testid="stSidebar"] [data-testid="stElementToolbarButton"],
+section[data-testid="stSidebar"] button[title="View fullscreen"],
+section[data-testid="stSidebar"] button[aria-label*="ullscreen"] {
+    display: none !important;
+}
+
 /* ── Page header ──────────────────────────────────────────── */
 .page-header {
     background-color: var(--navy);
