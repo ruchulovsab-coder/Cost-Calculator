@@ -159,16 +159,9 @@ def render_step7() -> bool:
     scoped = filter_rate_card(df, country, location)
     filtered = scoped.drop_duplicates(subset=["genus"], keep="first")
     scope_label = f"{country or 'All'}" + (f" / {location}" if location else "")
-    st.info(f"**{len(filtered)} grade(s)** for {scope_label} — change the location on **Step 1**.")
-
+    st.info(f"**{len(filtered)} grade(s)** for {scope_label} — set the location and view the "
+            "rate card on **Step 1**.")
     st.session_state["_filtered_rate_card"] = filtered
-
-    st.dataframe(
-        filtered[["genus", "hourly rate", "rate currency"]].rename(columns={
-            "genus": "Genus", "hourly rate": "Hourly Rate", "rate currency": "Currency"
-        }),
-        use_container_width=True, hide_index=True,
-    )
 
     # ── Grade Mapping ─────────────────────────────────────────
     st.divider()
@@ -338,4 +331,19 @@ def render_delivery_location():
     prev = st.session_state.get("delivery_location")
     idx = loc_options.index(prev) if prev in loc_options else 0
     loc_sel = lc2.selectbox("Delivery Location", loc_options, index=idx, key="dl_select")
-    st.session_state["delivery_location"] = None if loc_sel == "(All locations)" else loc_sel
+    location = None if loc_sel == "(All locations)" else loc_sel
+    st.session_state["delivery_location"] = location
+
+    # Filtered grades for this location + a collapsible table (default hidden).
+    from modules.calculations.engine import filter_rate_card
+    scoped = filter_rate_card(df, country, location)
+    filtered = scoped.drop_duplicates(subset=["genus"], keep="first")
+    st.session_state["_filtered_rate_card"] = filtered
+    scope = f"{country or 'All'}" + (f" / {location}" if location else "")
+    with st.expander(f"📋 View rate card grades for {scope} ({len(filtered)})", expanded=False):
+        st.dataframe(
+            filtered[["genus", "hourly rate", "rate currency"]].rename(columns={
+                "genus": "Genus", "hourly rate": "Hourly Rate", "rate currency": "Currency"
+            }),
+            use_container_width=True, hide_index=True,
+        )
