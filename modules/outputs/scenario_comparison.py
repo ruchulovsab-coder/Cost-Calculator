@@ -20,51 +20,50 @@ from utils.formatters import fmt_currency, fmt_hours
 
 
 def render_scenario_sidebar():
-    st.sidebar.divider()
-    st.sidebar.markdown("### 💾 Scenarios")
+    """Lightweight snapshots for side-by-side comparison + JSON file backup/share.
+    (For the system-of-record, use cloud 📁 Saved Calculations above.)"""
+    sb = st.sidebar
+    sb.divider()
+    sb.markdown("### 🗂️ Compare / File")
+    sb.caption("Add snapshots to compare side-by-side (Step 9), or download/upload a JSON "
+               "file to back up or share. Day-to-day saving lives in **📁 Saved Calculations** above.")
 
     saved = st.session_state.setdefault("saved_scenarios", [])
+    from modules.state.session_manager import export_scenario, save_scenario_to_session, load_scenario
 
-    with st.sidebar.expander(f"Save Scenario ({len(saved)} saved)"):
-        name = st.text_input("Scenario Name", key="scen_name")
-        desc = st.text_area("Description", key="scen_desc", height=50)
-        if st.button("💾 Save to session", key="btn_save_scen"):
-            if not name.strip():
-                st.error("Enter a name.")
+    name = sb.text_input("Snapshot name", key="scen_name",
+                         value=(st.session_state.get("project_name") or ""))
+    if sb.button("➕ Add snapshot for comparison", key="btn_save_scen",
+                 use_container_width=True, type="primary"):
+        if not name.strip():
+            sb.error("Enter a name.")
+        else:
+            save_scenario_to_session(name.strip(), "")
+            sb.success(f"Snapshot added: {name.strip()}")
+            st.rerun()
+    if saved:
+        sb.caption(f"{len(saved)} snapshot(s) ready to compare on Step 9.")
+
+    _n = (name.strip() or st.session_state.get("project_name") or "estimate")
+    scen = export_scenario(_n, "")
+    sb.download_button(
+        "⬇️ Download current as JSON",
+        data=json.dumps(scen, indent=2, default=str),
+        file_name=f"{_n.replace(' ', '_')}_{scen['meta']['date']}.json",
+        mime="application/json", key="dl_scen_file", use_container_width=True)
+
+    up = sb.file_uploader("Load from JSON file", type=["json"], key="scen_load_upload")
+    if up:
+        try:
+            data = json.load(up)
+            if "meta" in data and "inputs" in data:
+                load_scenario(data)
+                sb.success(f"Loaded: {data['meta'].get('name', 'file')}")
+                st.rerun()
             else:
-                from modules.state.session_manager import save_scenario_to_session
-                save_scenario_to_session(name.strip(), desc.strip())
-                st.success(f"Saved: {name}")
-                st.rerun()
-
-        # Per-scenario download + delete
-        for i, s in enumerate(list(saved)):
-            meta = s.get("meta", {})
-            c1, c2 = st.columns([3, 1])
-            c1.download_button(
-                f"⬇️ {meta.get('name', 'scenario')}",
-                data=json.dumps(s, indent=2, default=str),
-                file_name=f"{meta.get('name','scenario').replace(' ','_')}_{meta.get('date','')}.json",
-                mime="application/json", key=f"dl_scen_{i}", use_container_width=True,
-            )
-            if c2.button("🗑️", key=f"del_scen_{i}"):
-                saved.pop(i)
-                st.rerun()
-
-    with st.sidebar.expander("Load Scenario (from file)"):
-        up = st.file_uploader("Upload JSON", type=["json"], key="scen_load_upload")
-        if up:
-            try:
-                data = json.load(up)
-                if "meta" in data and "inputs" in data:
-                    from modules.state.session_manager import load_scenario
-                    load_scenario(data)
-                    st.success(f"Loaded: {data['meta']['name']}")
-                    st.rerun()
-                else:
-                    st.error("Invalid scenario file.")
-            except Exception as e:
-                st.error(str(e))
+                sb.error("Invalid scenario file.")
+        except Exception as e:
+            sb.error(str(e))
 
 
 def render_saved_calc_sidebar():
@@ -72,10 +71,11 @@ def render_saved_calc_sidebar():
     from modules.state.estimate_store import store_configured
     st.sidebar.divider()
     st.sidebar.markdown("### 📁 Saved Calculations")
+    st.sidebar.caption("Your cloud system-of-record — save named, versioned estimates and reopen them anytime.")
 
     if not store_configured():
-        st.sidebar.caption("Cloud storage not configured — use **Scenarios** above to "
-                           "download/upload JSON instead.")
+        st.sidebar.caption("⚠️ Cloud storage not configured — use **🗂️ Compare / File** below "
+                           "to download/upload JSON instead.")
         return
 
     from modules.state.estimate_store import save_estimate, list_estimates, load_estimate

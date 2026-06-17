@@ -146,12 +146,21 @@ section[data-testid="stSidebar"] button[kind="primary"]:hover {
 section[data-testid="stSidebar"] .st-key-btn_save_est button,
 section[data-testid="stSidebar"] .st-key-btn_refresh_est button,
 section[data-testid="stSidebar"] .st-key-btn_load_est button,
+section[data-testid="stSidebar"] .st-key-btn_save_scen button,
+section[data-testid="stSidebar"] .st-key-dl_scen_file button,
+section[data-testid="stSidebar"] .st-key-btn_reset_all button,
 section[data-testid="stSidebar"] .st-key-btn_save_est button:hover,
 section[data-testid="stSidebar"] .st-key-btn_refresh_est button:hover,
 section[data-testid="stSidebar"] .st-key-btn_load_est button:hover,
+section[data-testid="stSidebar"] .st-key-btn_save_scen button:hover,
+section[data-testid="stSidebar"] .st-key-dl_scen_file button:hover,
+section[data-testid="stSidebar"] .st-key-btn_reset_all button:hover,
 section[data-testid="stSidebar"] .st-key-btn_save_est button:focus,
 section[data-testid="stSidebar"] .st-key-btn_refresh_est button:focus,
-section[data-testid="stSidebar"] .st-key-btn_load_est button:focus {
+section[data-testid="stSidebar"] .st-key-btn_load_est button:focus,
+section[data-testid="stSidebar"] .st-key-btn_save_scen button:focus,
+section[data-testid="stSidebar"] .st-key-dl_scen_file button:focus,
+section[data-testid="stSidebar"] .st-key-btn_reset_all button:focus {
     background-color: #00C4B4 !important;
     color: #FFFFFF !important;
     border: none !important;
@@ -159,7 +168,10 @@ section[data-testid="stSidebar"] .st-key-btn_load_est button:focus {
 }
 section[data-testid="stSidebar"] .st-key-btn_save_est button *,
 section[data-testid="stSidebar"] .st-key-btn_refresh_est button *,
-section[data-testid="stSidebar"] .st-key-btn_load_est button * {
+section[data-testid="stSidebar"] .st-key-btn_load_est button *,
+section[data-testid="stSidebar"] .st-key-btn_save_scen button *,
+section[data-testid="stSidebar"] .st-key-dl_scen_file button *,
+section[data-testid="stSidebar"] .st-key-btn_reset_all button * {
     color: #FFFFFF !important;
 }
 /* Disabled Save button (no project name yet): keep it readable, muted teal */

@@ -186,7 +186,7 @@ with st.sidebar:
     render_scenario_sidebar()
 
     st.divider()
-    if st.button("🔄 Reset All", use_container_width=True, type="secondary"):
+    if st.button("🔄 Reset All", key="btn_reset_all", use_container_width=True, type="secondary"):
         from modules.state.session_manager import reset_all
         reset_all()
         st.rerun()

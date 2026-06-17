@@ -32,11 +32,33 @@ def callout(text: str, kind: str = "info"):
     st.markdown(f'<div class="callout-{kind}">{text}</div>', unsafe_allow_html=True)
 
 
+def render_glossary():
+    """Plain-language glossary of the domain terms used across the tool."""
+    with st.expander("📖 Glossary — what the terms mean"):
+        st.markdown(
+            "- **L1 / L2 / L3** — support tiers (frontline → specialist). Each ticket's effort "
+            "is split across them.\n"
+            "- **Genus** — the grade/band in your rate card that sets a role's hourly rate.\n"
+            "- **FTE** — Full-Time Equivalent (one full-time person = 1.0 FTE).\n"
+            "- **Raw vs Rounded FTE** — *Raw* is the exact computed FTE; *Rounded* rounds up to the "
+            "next 0.5 with a 0.5 minimum (the delivery staffing view).\n"
+            "- **Buffer %** — per-row padding added to effort for unknowns (default 20%).\n"
+            "- **Contingency %** — an overall effort buffer applied across the whole estimate.\n"
+            "- **Overhead roles** — Architect / SDM / SSDM effort, set as a % of total operational effort.\n"
+            "- **Coverage model** — the support window (e.g. 24×7); scales L1/L2 staffing.\n"
+            "- **Utilisation %** — share of working hours spent on billable delivery (typical ~75%).\n"
+            "- **SLA provision %** — a percentage added to cover potential SLA penalties.\n"
+            "- **Transition cost** — a one-time onboarding cost, billed separately from the monthly fee."
+        )
+
+
 # ── Step 1 ─────────────────────────────────────────────────────────────────────
 
 def render_step1() -> bool:
     page_header(1, "Monthly Workload Volumes",
                 "Enter the total monthly ticket / alert volume for each category.")
+
+    render_glossary()
 
     # ── Estimate identity (required) ──────────────────────────
     section_hdr("📇 Estimate Details")
