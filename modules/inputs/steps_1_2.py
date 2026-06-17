@@ -52,6 +52,63 @@ def render_glossary():
         )
 
 
+# ── Relocatable input blocks (same session keys → calculations unchanged) ──────
+
+def render_coverage_model():
+    """Support coverage model selector (lives on Step 1; multiplier used on Step 6)."""
+    from config.settings import COVERAGE_MODELS
+    section_hdr("📅 Support Coverage Model")
+    model_options = list(COVERAGE_MODELS.keys())
+    prev = st.session_state.get("coverage_model")
+    idx = model_options.index(prev) if prev in model_options else 0
+    model = st.radio("**Support Coverage Model** *(required)*", options=model_options,
+                     index=idx, key="coverage_model_w", horizontal=True,
+                     help="Coverage window sets the shift multiplier applied to L1 & L2 staffing.")
+    st.session_state["coverage_model"] = model
+    if model == "Custom":
+        cc1, cc2 = st.columns(2)
+        hpd = cc1.number_input("Hours Per Day", min_value=1, max_value=24, step=1,
+                               value=int(st.session_state.get("custom_hours_per_day", 8)),
+                               key="custom_hours_per_day_w")
+        st.session_state["custom_hours_per_day"] = hpd
+        dpw = cc2.number_input("Days Per Week", min_value=1, max_value=7, step=1,
+                               value=int(st.session_state.get("custom_days_per_week", 5)),
+                               key="custom_days_per_week_w")
+        st.session_state["custom_days_per_week"] = dpw
+
+
+def render_overhead_inputs():
+    """Architect/SDM/SSDM overhead % (lives on Step 5)."""
+    section_hdr("🏗️ Overhead Role Effort (% of Total Operational Hours)")
+    callout("Architect, SDM and SSDM hours are a percentage of total operational effort. "
+            "These are <strong>additive</strong> — they don't reduce L1/L2/L3 hours.", "info")
+    overhead = st.session_state.overhead_pcts
+    oc1, oc2, oc3 = st.columns(3)
+    arch = oc1.number_input("Architect (%)", min_value=0.0, max_value=50.0, step=0.5,
+                            value=float(overhead.get("Architect", 5.0)), key="overhead_architect",
+                            help="Architect hours = this % × total operational effort.")
+    sdm = oc2.number_input("SDM (%)", min_value=0.0, max_value=50.0, step=0.5,
+                           value=float(overhead.get("SDM", 5.0)), key="overhead_sdm")
+    ssdm = oc3.number_input("SSDM (%)", min_value=0.0, max_value=50.0, step=0.5,
+                            value=float(overhead.get("SSDM", 3.0)), key="overhead_ssdm")
+    overhead["Architect"], overhead["SDM"], overhead["SSDM"] = arch, sdm, ssdm
+    if arch + sdm + ssdm > 30:
+        callout(f"⚠️ Overhead total {arch+sdm+ssdm:.1f}% — above typical range. Please confirm.", "warning")
+
+
+def render_patching_role():
+    """Which role absorbs patching effort (lives on Step 3)."""
+    from config.settings import ALL_ROLES
+    section_hdr("🔧 Patching Effort Assignment")
+    callout("All patching effort hours are added to this role's total. "
+            "Typically L2 for tool-based, L1 for manual bulk patching.", "info")
+    _pr = st.selectbox("Assign patching effort to role:", options=ALL_ROLES,
+                       index=ALL_ROLES.index(st.session_state.get("patching_role", "L2")),
+                       key="patching_role_w",
+                       help="Patching hours are added to this role's monthly hours.")
+    st.session_state["patching_role"] = _pr
+
+
 # ── Step 1 ─────────────────────────────────────────────────────────────────────
 
 def render_step1() -> bool:
@@ -72,6 +129,16 @@ def render_step1() -> bool:
         "Prepared By", value=st.session_state.get("prepared_by", ""),
         key="prepared_by_w", placeholder="Your name")
     st.session_state["prepared_by"] = prep
+    st.divider()
+
+    # ── Engagement setup: coverage + delivery location (relocated to Step 1) ──
+    render_coverage_model()
+    try:
+        from modules.inputs.steps_6_7 import auto_load_rate_card, render_delivery_location
+        auto_load_rate_card()
+        render_delivery_location()
+    except Exception as _e:
+        callout(f"Delivery location unavailable here: {_e}", "info")
     st.divider()
 
     callout(
@@ -308,58 +375,6 @@ def render_step2() -> bool:
     m1.metric("L1 Total Hours", f"{role_hours['L1']:.1f} hrs")
     m2.metric("L2 Total Hours", f"{role_hours['L2']:.1f} hrs")
     m3.metric("L3 Total Hours", f"{role_hours['L3']:.1f} hrs")
-
-    st.divider()
-
-    # ── Overhead roles ────────────────────────────────────────
-    section_hdr("🏗️ Overhead Role Effort (% of Total Operational Hours)")
-    callout(
-        "Architect, SDM and SSDM hours are calculated as a percentage of total operational effort. "
-        "These are <strong>additive</strong> — they do not reduce L1/L2/L3 hours.",
-        "info",
-    )
-    overhead = st.session_state.overhead_pcts
-    oc1, oc2, oc3 = st.columns(3)
-    with oc1:
-        arch = st.number_input(
-            "Architect (%)", min_value=0.0, max_value=50.0, step=0.5,
-            value=float(overhead.get("Architect", 5.0)), key="overhead_architect",
-            help="Architect hours = this % × total operational effort.",
-        )
-    with oc2:
-        sdm = st.number_input(
-            "SDM (%)", min_value=0.0, max_value=50.0, step=0.5,
-            value=float(overhead.get("SDM", 5.0)), key="overhead_sdm",
-        )
-    with oc3:
-        ssdm = st.number_input(
-            "SSDM (%)", min_value=0.0, max_value=50.0, step=0.5,
-            value=float(overhead.get("SSDM", 3.0)), key="overhead_ssdm",
-        )
-    overhead["Architect"] = arch
-    overhead["SDM"]       = sdm
-    overhead["SSDM"]      = ssdm
-    if arch + sdm + ssdm > 30:
-        callout(f"⚠️ Overhead total {arch+sdm+ssdm:.1f}% — above typical range. Please confirm.", "warning")
-
-    st.divider()
-
-    # ── Patching role ─────────────────────────────────────────
-    section_hdr("🔧 Patching Effort Assignment")
-    callout(
-        "All patching effort hours will be added to this role's total. "
-        "Typically L2 for tool-based patching, L1 for manual bulk patching.",
-        "info",
-    )
-    from config.settings import ALL_ROLES
-    _pr = st.selectbox(
-        "Assign patching effort to role:",
-        options=ALL_ROLES,
-        index=ALL_ROLES.index(st.session_state.get("patching_role", "L2")),
-        key="patching_role_w",
-        help="Patching hours are added to this role's monthly hours.",
-    )
-    st.session_state["patching_role"] = _pr
 
     if not all_valid:
         callout(

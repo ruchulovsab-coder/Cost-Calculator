@@ -28,45 +28,18 @@ def render_step6() -> bool:
     page_header(6, "Coverage Model & FTE Calculation",
                 "Define support coverage window and calculate staffing requirements.")
 
-    # ── Coverage Model ────────────────────────────────────────
-    section_hdr("📅 Coverage Model")
-    model_options = list(COVERAGE_MODELS.keys())
-
-    prev_model = st.session_state.get("coverage_model")
-    default_idx = model_options.index(prev_model) if prev_model in model_options else 0
-
-    model = st.radio(
-        "**Support Coverage Model** *(required)*",
-        options=model_options,
-        index=default_idx,
-        key="coverage_model_w",
-        horizontal=True,
-        help="Coverage window determines shift multiplier for L1 and L2 FTE only.",
-    )
-    # Persist to a plain (non-widget) key so it survives navigation to later steps.
-    st.session_state["coverage_model"] = model
-
+    # ── Coverage model is chosen on Step 1; here we use it ────
+    model = st.session_state.get("coverage_model") or "8×5"
     custom_hpd = st.session_state.get("custom_hours_per_day", 8)
     custom_dpw = st.session_state.get("custom_days_per_week", 5)
-
-    if model == "Custom":
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            custom_hpd = st.number_input("Hours Per Day", min_value=1, max_value=24, step=1,
-                                         value=int(custom_hpd), key="custom_hours_per_day_w")
-            st.session_state["custom_hours_per_day"] = custom_hpd
-        with cc2:
-            custom_dpw = st.number_input("Days Per Week", min_value=1, max_value=7, step=1,
-                                         value=int(custom_dpw), key="custom_days_per_week_w")
-            st.session_state["custom_days_per_week"] = custom_dpw
-
     multiplier = calc_coverage_multiplier(model, custom_hpd, custom_dpw)
     st.session_state["_coverage_multiplier"] = multiplier
 
     callout(
-        f"📊 <strong>Coverage Multiplier: {multiplier:.2f}×</strong> — "
-        f"Applied to <strong>L1 and L2</strong> FTE only. "
-        f"L3, Architect, SDM, SSDM are standard-hours roles.",
+        f"📊 Coverage model <strong>{model}</strong> → multiplier "
+        f"<strong>{multiplier:.2f}×</strong>, applied to <strong>L1 and L2</strong> FTE only "
+        f"(L3 / Architect / SDM / SSDM are standard-hours). "
+        f"Change the coverage model on <strong>Step 1</strong>.",
         "info",
     )
 
@@ -229,46 +202,24 @@ def render_step7() -> bool:
     elif src == "upload":
         st.caption("✅ Loaded from your uploaded file (session override).")
 
-    # ── Delivery Location ─────────────────────────────────────
+    # ── Delivery Location (selected on Step 1) ────────────────
     st.divider()
     section_hdr("📍 Delivery Location")
     from modules.calculations.engine import filter_rate_card
 
-    countries = sorted(df["country"].dropna().astype(str).str.strip().unique().tolist())
-
-    def _default_idx(options, current, fallback_contains="india"):
-        if current and current in options:
-            return options.index(current)
-        for i, o in enumerate(options):
-            if fallback_contains in o.lower():
-                return i
-        return 0
-
-    lc1, lc2 = st.columns(2)
-    with lc1:
-        country = st.selectbox(
-            "Delivery Country", countries,
-            index=_default_idx(countries, st.session_state.get("delivery_country")),
-            key="dc_select", help="Defaults to India when present in the rate card.",
-        )
-    st.session_state["delivery_country"] = country
-
-    locs = sorted(
-        df[df["country"].astype(str).str.strip().str.lower() == country.lower()]
-        ["location"].dropna().astype(str).str.strip().unique().tolist()
-    )
-    loc_options = ["(All locations)"] + locs
-    with lc2:
-        prev_loc = st.session_state.get("delivery_location")
-        loc_idx = loc_options.index(prev_loc) if prev_loc in loc_options else 0
-        loc_sel = st.selectbox("Delivery Location", loc_options, index=loc_idx, key="dl_select")
-    location = None if loc_sel == "(All locations)" else loc_sel
-    st.session_state["delivery_location"] = location
+    country = st.session_state.get("delivery_country")
+    location = st.session_state.get("delivery_location")
+    if not country:
+        # default to India / first country if it hasn't been chosen on Step 1 yet
+        countries = sorted(df["country"].dropna().astype(str).str.strip().unique().tolist())
+        country = next((c for c in countries if "india" in c.lower()),
+                       countries[0] if countries else None)
+        st.session_state["delivery_country"] = country
 
     scoped = filter_rate_card(df, country, location)
     filtered = scoped.drop_duplicates(subset=["genus"], keep="first")
-    scope_label = f"{country}" + (f" / {location}" if location else "")
-    st.info(f"**{len(filtered)} grade(s) found** for {scope_label}")
+    scope_label = f"{country or 'All'}" + (f" / {location}" if location else "")
+    st.info(f"**{len(filtered)} grade(s)** for {scope_label} — change the location on **Step 1**.")
 
     st.session_state["_filtered_rate_card"] = filtered
 
@@ -349,3 +300,67 @@ def render_step7() -> bool:
         callout("❌ Some active roles are missing grade mappings. Please resolve before continuing.", "error")
 
     return all_mapped
+
+
+# ── Shared helpers (rate card load + delivery-location selector on Step 1) ──────
+
+def _store_rate_card(data: bytes, source: str):
+    """Parse + validate raw .xlsx bytes and store the cleaned df. Returns (ok, msg)."""
+    df_raw = _parse_rate_card(data)
+    ok, msg = validate_rate_card(df_raw)
+    if not ok:
+        return False, msg
+    df_clean = df_raw.copy()
+    df_clean.columns = [c.lower().strip() for c in df_clean.columns]
+    df_clean["hourly rate"] = pd.to_numeric(df_clean["hourly rate"], errors="coerce")
+    st.session_state.rate_card_df = df_clean
+    st.session_state["_rate_card_source"] = source
+    return True, msg
+
+
+def auto_load_rate_card():
+    """Load the rate card from Azure Blob if configured and none is loaded yet.
+    Safe to call anywhere (e.g. Step 1) so the delivery-location options populate."""
+    if st.session_state.get("rate_card_df") is not None:
+        return
+    from modules.inputs.rate_card_source import blob_configured, fetch_rate_card_bytes
+    if not blob_configured():
+        return
+    try:
+        data = fetch_rate_card_bytes()
+        if data:
+            _store_rate_card(data, "cloud")
+    except Exception:
+        pass
+
+
+def render_delivery_location():
+    """Country/location selectors (relocated to Step 1). Needs a loaded rate card."""
+    section_hdr("📍 Delivery Location")
+    df = st.session_state.get("rate_card_df")
+    if df is None:
+        callout("Delivery-location options appear once a rate card is loaded "
+                "(auto-loaded from the cloud, or upload one on Step 7).", "info")
+        return
+    countries = sorted(df["country"].dropna().astype(str).str.strip().unique().tolist())
+
+    def _default_idx(options, current, fb="india"):
+        if current and current in options:
+            return options.index(current)
+        for i, o in enumerate(options):
+            if fb in o.lower():
+                return i
+        return 0
+
+    lc1, lc2 = st.columns(2)
+    country = lc1.selectbox("Delivery Country", countries,
+                            index=_default_idx(countries, st.session_state.get("delivery_country")),
+                            key="dc_select", help="Defaults to India when present in the rate card.")
+    st.session_state["delivery_country"] = country
+    locs = sorted(df[df["country"].astype(str).str.strip().str.lower() == country.lower()]
+                  ["location"].dropna().astype(str).str.strip().unique().tolist())
+    loc_options = ["(All locations)"] + locs
+    prev = st.session_state.get("delivery_location")
+    idx = loc_options.index(prev) if prev in loc_options else 0
+    loc_sel = lc2.selectbox("Delivery Location", loc_options, index=idx, key="dl_select")
+    st.session_state["delivery_location"] = None if loc_sel == "(All locations)" else loc_sel

@@ -85,6 +85,11 @@ def render_step3() -> bool:
         f"{effort:.0f} min = <strong>{result['hours']:.1f} hours/month</strong>",
         "success",
     )
+
+    # Patching effort assignment (relocated here from Step 2)
+    st.divider()
+    from modules.inputs.steps_1_2 import render_patching_role
+    render_patching_role()
     return True
 
 
@@ -325,6 +330,11 @@ def render_step5() -> bool:
     m1.metric("Base Effort",        f"{base_effort:.1f} hrs")
     m2.metric("Contingency Hours",  f"{cont['contingency_hours']:.1f} hrs")
     m3.metric("Total Operational Effort", f"{total_effort:.1f} hrs")
+
+    # Overhead role effort (relocated here from Step 2)
+    st.divider()
+    from modules.inputs.steps_1_2 import render_overhead_inputs
+    render_overhead_inputs()
 
     # ── Role hours preview (from resolution split) ─────────────
     st.divider()
