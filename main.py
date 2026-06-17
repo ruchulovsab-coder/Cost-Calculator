@@ -117,7 +117,7 @@ STEPS = [
     (4, "Additional Activities"),
     (5, "Effort Summary"),
     (6, "Coverage & FTE"),
-    (7, "Rate Card & Mapping"),
+    (7, "Grade Mapping"),
     (8, "Cost, Pricing & Dashboard"),
     (9, "Scenario Comparison"),
 ]
@@ -128,7 +128,7 @@ RENDERERS = {
     3: (render_step3, "Next: Additional Activities →"),
     4: (render_step4, "Next: Effort Summary →"),
     5: (render_step5, "Next: Coverage & FTE →"),
-    6: (render_step6, "Next: Rate Card & Mapping →"),
+    6: (render_step6, "Next: Grade Mapping →"),
     7: (render_step7, "Next: Cost, Pricing & Dashboard →"),
     8: (render_step8, None),
     9: (render_comparison, None),

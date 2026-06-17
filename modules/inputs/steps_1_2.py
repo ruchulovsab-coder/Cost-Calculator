@@ -131,14 +131,15 @@ def render_step1() -> bool:
     st.session_state["prepared_by"] = prep
     st.divider()
 
-    # ── Engagement setup: coverage + delivery location (relocated to Step 1) ──
+    # ── Engagement setup: coverage + rate card + delivery location (on Step 1) ──
     render_coverage_model()
     try:
-        from modules.inputs.steps_6_7 import auto_load_rate_card, render_delivery_location
-        auto_load_rate_card()
+        from modules.inputs.steps_6_7 import render_rate_card_source, render_delivery_location
+        st.divider()
+        render_rate_card_source()
         render_delivery_location()
     except Exception as _e:
-        callout(f"Delivery location unavailable here: {_e}", "info")
+        callout(f"Rate card / delivery location unavailable here: {_e}", "info")
     st.divider()
 
     callout(
