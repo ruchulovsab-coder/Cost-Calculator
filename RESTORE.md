@@ -4,7 +4,11 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.3`** — *current stable.* Builds on v1.2 with the full **UX/design-system pass**:
+- **`v1.4`** — *current stable.* Builds on v1.3: **Step 4 (Additional Activities)**
+  rebuilt with `st.data_editor` (dynamic add/delete rows, Auto/derived hours + role-%
+  split, read-only validation table) — completing the input-grid redesign begun with
+  Step 2. Calculation contract unchanged. 55 passing tests.
+- **`v1.3`** — Builds on v1.2 with the full **UX/design-system pass**:
   a central **design-token** layer (`config.settings.THEME` + CSS `:root`) shared by the
   web app, PDF and Excel so all three share one brand palette; the **Step 2** resolution
   grid rebuilt with `st.data_editor`; **PDF** page numbers + repeating header + zebra
@@ -25,9 +29,16 @@ to that exact snapshot, so you can always return to it no matter what changes la
   local upload. Builds on v1.0. (9-step flow.)
 - **`v1.0`** — first production-ready release. (9-step flow.)
 
-> In the commands below, replace `v1.0` with the version you want (e.g. `v1.3`).
+> In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.3` contains (current stable)
+## What `v1.4` contains (current stable)
+- Everything in v1.3 (below), plus: **Step 4 (Additional Activities)** rebuilt with
+  `st.data_editor` — dynamic add/delete rows, an Auto toggle that derives hours from
+  servers/volumes, the six role-% split columns, and a read-only validation table.
+  This completes the input-grid redesign started with Step 2; the calculation contract
+  (`name / auto / custom / hours / dist`) is unchanged.
+
+## What `v1.3` contains
 - Everything in v1.2 (below), plus the complete UX/design-system pass:
   - **Design tokens** — `config.settings.THEME` + CSS `:root` variables drive the web app,
     PDF (reportlab) and Excel (openpyxl) from one palette; `kind=` button selectors
@@ -121,6 +132,9 @@ git push origin v1.2
 
 git tag -a v1.3 -m "Stable Version 1.3 — UX/design-system pass: tokens, Step 2 data-editor, export polish, branding"
 git push origin v1.3
+
+git tag -a v1.4 -m "Stable Version 1.4 — Step 4 Additional Activities rebuilt with st.data_editor"
+git push origin v1.4
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
