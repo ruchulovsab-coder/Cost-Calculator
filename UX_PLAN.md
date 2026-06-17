@@ -40,7 +40,7 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   - [x] Hide +/- number steppers; right-align numeric values
   - [x] Scroll to top on page change
   - [x] Per-page **Reset this page** with confirmation dialog
-  - [x] Step 2: collapse buffer columns behind a toggle (hidden by default; 20% still applies)
+  - [x] Step 2: single L1/L2/L3 buffer per category at the heading (replaces per-row buffer columns); 20% default
   - [x] Move rate card + coverage + delivery location to Step 1; rate-card grades as a collapsible table
   - [ ] Split **Step 8 → 8 Costing inputs / 9 Results / 10 Approve & Export** (+ 11 Compare)
   - [ ] Units in every label; reduce mid-edit reruns; live running totals; reset-to-defaults per category

@@ -207,11 +207,11 @@ def render_step1() -> bool:
 
 # ── Step 2 ─────────────────────────────────────────────────────────────────────
 
-def _render_category_block(cat_key: str, cat_label: str, show_buffers: bool = False) -> bool:
+def _render_category_block(cat_key: str, cat_label: str) -> bool:
     """
     Distribution + effort + resolution-split for one ticket category.
-    Per role: resolution %, hours = base × (1 + buffer/100). Buffer % columns are
-    shown only when show_buffers is True (default 20% still applies when hidden).
+    A single set of L1/L2/L3 buffer % is set at the category heading and applied to
+    every row: hours = base × (1 + role_buffer/100). Default 20% each.
     """
     from config.settings import DEFAULT_ROLE_BUFFER_PCT
     sublabels = CATEGORY_SUBLABELS[cat_key]
@@ -230,17 +230,24 @@ def _render_category_block(cat_key: str, cat_label: str, show_buffers: bool = Fa
         st.caption("Volume is 0 — set a total in Step 1 first.")
         return True
 
+    # ── Per-category buffers (one L1/L2/L3, applied to every row below) ──
+    first = cat_data.get(sublabels[0], {})
+    st.markdown("<div style='font-size:0.8rem;color:#1A5F6A;font-weight:600;margin:2px 0'>"
+                "Buffer % — applied to every row in this category</div>", unsafe_allow_html=True)
+    bcols = st.columns([1, 1, 1, 4])
+    cat_buf = {}
+    for j, role in enumerate(("L1", "L2", "L3")):
+        cat_buf[role] = bcols[j].number_input(
+            role, min_value=0.0, max_value=200.0, step=5.0, format="%.0f",
+            value=float(first.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT)),
+            key=f"{cat_key}_buf_{role}",
+            help=f"Buffer % added to all {role} effort in {cat_label}. Default 20%.")
+
     all_valid = True
 
-    if show_buffers:
-        cols_w = [1.5, 0.9, 0.8, 0.85, 0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.75]
-        headers = ["Severity / Type", "Dist %", "Count", "Min",
-                   "L1 %", "L1 Buf%", "L1 Hrs", "L2 %", "L2 Buf%", "L2 Hrs",
-                   "L3 %", "L3 Buf%", "L3 Hrs", "✓"]
-    else:
-        cols_w = [1.7, 1.0, 0.9, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85]
-        headers = ["Severity / Type", "Dist %", "Count", "Min",
-                   "L1 %", "L1 Hrs", "L2 %", "L2 Hrs", "L3 %", "L3 Hrs", "✓"]
+    cols_w = [1.7, 1.0, 0.9, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85]
+    headers = ["Severity / Type", "Dist %", "Count", "Min",
+               "L1 %", "L1 Hrs", "L2 %", "L2 Hrs", "L3 %", "L3 Hrs", "✓"]
     hc = st.columns(cols_w)
     for col, txt in zip(hc, headers):
         col.markdown(
@@ -293,14 +300,7 @@ def _render_category_block(cat_key: str, cat_label: str, show_buffers: bool = Fa
                 value=float(row.get(f"{role}_pct", DEFAULT_RESOLUTION_PCT[cat_key][label][role])),
                 key=f"{cat_key}_{label}_{role}p", label_visibility="collapsed",
                 help=f"% of these tickets resolved by {role}."); idx += 1
-            if show_buffers:
-                buf = cc[idx].number_input(
-                    f"{role}b", min_value=0.0, max_value=200.0, step=5.0, format="%.0f",
-                    value=float(row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT)),
-                    key=f"{cat_key}_{label}_{role}buf", label_visibility="collapsed",
-                    help=f"Buffer % added on top of {role} effort. Default 20%."); idx += 1
-            else:
-                buf = float(row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT))
+            buf = cat_buf[role]
             hrs = total_h * pct / 100.0 * (1.0 + buf / 100.0)
             _hrs(cc[idx], hrs, hcolor); idx += 1
             buffers[role] = buf
@@ -361,11 +361,6 @@ def render_step2() -> bool:
         "info",
     )
 
-    show_buffers = st.toggle(
-        "Show per-role buffer % columns", value=False, key="show_buffers",
-        help="Off (default): a 20% buffer is applied and the columns are hidden for a "
-             "cleaner table. On: edit each role's buffer % per row.")
-
     CATEGORY_CONFIG = [
         ("alerts",           "🚨 Monitoring Alerts"),
         ("service_requests", "📋 Service Requests"),
@@ -375,7 +370,7 @@ def render_step2() -> bool:
 
     all_valid = True
     for cat_key, cat_label in CATEGORY_CONFIG:
-        valid = _render_category_block(cat_key, cat_label, show_buffers)
+        valid = _render_category_block(cat_key, cat_label)
         if not valid:
             all_valid = False
         st.divider()
