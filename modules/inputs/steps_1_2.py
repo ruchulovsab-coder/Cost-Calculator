@@ -207,11 +207,11 @@ def render_step1() -> bool:
 
 # ── Step 2 ─────────────────────────────────────────────────────────────────────
 
-def _render_category_block(cat_key: str, cat_label: str) -> bool:
+def _render_category_block(cat_key: str, cat_label: str, show_buffers: bool = False) -> bool:
     """
-    Render the distribution + effort + resolution-split block for one ticket category.
-    Per role (L1/L2/L3): resolution %, an editable buffer % (default 20%), and the
-    resulting BUFFERED hours = base × (1 + buffer/100). Returns True when all rows valid.
+    Distribution + effort + resolution-split for one ticket category.
+    Per role: resolution %, hours = base × (1 + buffer/100). Buffer % columns are
+    shown only when show_buffers is True (default 20% still applies when hidden).
     """
     from config.settings import DEFAULT_ROLE_BUFFER_PCT
     sublabels = CATEGORY_SUBLABELS[cat_key]
@@ -232,12 +232,15 @@ def _render_category_block(cat_key: str, cat_label: str) -> bool:
 
     all_valid = True
 
-    # Severity | Dist% | Count | Min | L1% L1Buf% L1Hrs | L2% L2Buf% L2Hrs | L3% L3Buf% L3Hrs | ✓
-    cols_w = [1.5, 0.9, 0.8, 0.85,
-              0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.75]
-    headers = ["Severity / Type", "Dist %", "Count", "Min",
-               "L1 %", "L1 Buf%", "L1 Hrs", "L2 %", "L2 Buf%", "L2 Hrs",
-               "L3 %", "L3 Buf%", "L3 Hrs", "✓"]
+    if show_buffers:
+        cols_w = [1.5, 0.9, 0.8, 0.85, 0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.8, 0.95, 0.9, 0.75]
+        headers = ["Severity / Type", "Dist %", "Count", "Min",
+                   "L1 %", "L1 Buf%", "L1 Hrs", "L2 %", "L2 Buf%", "L2 Hrs",
+                   "L3 %", "L3 Buf%", "L3 Hrs", "✓"]
+    else:
+        cols_w = [1.7, 1.0, 0.9, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85]
+        headers = ["Severity / Type", "Dist %", "Count", "Min",
+                   "L1 %", "L1 Hrs", "L2 %", "L2 Hrs", "L3 %", "L3 Hrs", "✓"]
     hc = st.columns(cols_w)
     for col, txt in zip(hc, headers):
         col.markdown(
@@ -257,61 +260,70 @@ def _render_category_block(cat_key: str, cat_label: str) -> bool:
     for label in sublabels:
         row = cat_data.get(label, {})
         cc  = st.columns(cols_w)
+        idx = 0
 
-        cc[0].markdown(f"<div style='padding-top:5px'><em>{label}</em></div>", unsafe_allow_html=True)
+        cc[idx].markdown(f"<div style='padding-top:5px'><em>{label}</em></div>", unsafe_allow_html=True); idx += 1
 
-        dist_pct_val = cc[1].number_input(
+        dist_pct_val = cc[idx].number_input(
             "dp", min_value=0.0, max_value=100.0, step=1.0, format="%.0f",
             value=float(row.get("dist_pct", DEFAULT_VOLUME_DIST_PCT[cat_key][label])),
             key=f"{cat_key}_{label}_dist_pct", label_visibility="collapsed",
-            help=f"% of total {cat_label} volume that are {label}. All rows must sum to 100%.")
+            help=f"% of total {cat_label} volume that are {label}. All rows must sum to 100%."); idx += 1
         dist_pct_sum += dist_pct_val
 
         derived_count = round(total_vol * dist_pct_val / 100)
-        cc[2].markdown(f"<div style='padding-top:5px;text-align:right;font-weight:600'>{derived_count:,}</div>",
-                       unsafe_allow_html=True)
+        cc[idx].markdown(f"<div style='padding-top:5px;text-align:right;font-weight:600'>{derived_count:,}</div>",
+                         unsafe_allow_html=True); idx += 1
 
-        minutes = cc[3].number_input(
+        minutes = cc[idx].number_input(
             "min", min_value=0.0, step=1.0, format="%.0f",
             value=float(row.get("minutes", DEFAULT_EFFORT_MINUTES[cat_key][label])),
             key=f"{cat_key}_{label}_min", label_visibility="collapsed",
-            help=f"Average minutes to fully resolve one {label} {cat_label}.")
+            help=f"Average minutes to fully resolve one {label} {cat_label}."); idx += 1
 
         total_h = (derived_count * minutes) / 60.0
         cat_total_h += total_h
 
-        def _role_inputs(role, col_pct, col_buf, col_hrs, hcolor):
-            pct = cc[col_pct].number_input(
+        buffers = {}
+
+        def _role(role, hcolor):
+            nonlocal idx
+            pct = cc[idx].number_input(
                 f"{role}p", min_value=0.0, max_value=100.0, step=1.0, format="%.0f",
                 value=float(row.get(f"{role}_pct", DEFAULT_RESOLUTION_PCT[cat_key][label][role])),
                 key=f"{cat_key}_{label}_{role}p", label_visibility="collapsed",
-                help=f"% of these tickets resolved by {role}.")
-            buf = cc[col_buf].number_input(
-                f"{role}b", min_value=0.0, max_value=200.0, step=5.0, format="%.0f",
-                value=float(row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT)),
-                key=f"{cat_key}_{label}_{role}buf", label_visibility="collapsed",
-                help=f"Buffer % added on top of {role} effort for {label}. Default 20%.")
+                help=f"% of these tickets resolved by {role}."); idx += 1
+            if show_buffers:
+                buf = cc[idx].number_input(
+                    f"{role}b", min_value=0.0, max_value=200.0, step=5.0, format="%.0f",
+                    value=float(row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT)),
+                    key=f"{cat_key}_{label}_{role}buf", label_visibility="collapsed",
+                    help=f"Buffer % added on top of {role} effort. Default 20%."); idx += 1
+            else:
+                buf = float(row.get(f"{role}_buffer", DEFAULT_ROLE_BUFFER_PCT))
             hrs = total_h * pct / 100.0 * (1.0 + buf / 100.0)
-            _hrs(cc[col_hrs], hrs, hcolor)
-            return pct, buf, hrs
+            _hrs(cc[idx], hrs, hcolor); idx += 1
+            buffers[role] = buf
+            return pct, hrs
 
-        l1p, l1b, l1h = _role_inputs("L1", 4, 5, 6, "#1A7A6A")
-        l2p, l2b, l2h = _role_inputs("L2", 7, 8, 9, "#0D1B2A")
-        l3p, l3b, l3h = _role_inputs("L3", 10, 11, 12, "#8A5A2A")
+        l1p, l1h = _role("L1", "#1A7A6A")
+        l2p, l2h = _role("L2", "#0D1B2A")
+        l3p, l3h = _role("L3", "#8A5A2A")
 
         role_buffered["L1"] += l1h; role_buffered["L2"] += l2h; role_buffered["L3"] += l3h
 
         pct_sum = l1p + l2p + l3p
         if abs(pct_sum - 100.0) < 0.5:
-            cc[13].markdown('<span class="pill-ok">✓</span>', unsafe_allow_html=True)
+            cc[idx].markdown('<span class="pill-ok">✓</span>', unsafe_allow_html=True)
         else:
-            cc[13].markdown(f'<span class="pill-err">{pct_sum:.0f}%</span>', unsafe_allow_html=True)
+            cc[idx].markdown(f'<span class="pill-err">{pct_sum:.0f}%</span>', unsafe_allow_html=True)
             all_valid = False
+        idx += 1
 
         cat_data[label] = {
             "dist_pct": dist_pct_val, "count": derived_count, "minutes": minutes,
             "L1_pct": l1p, "L2_pct": l2p, "L3_pct": l3p,
-            "L1_buffer": l1b, "L2_buffer": l2b, "L3_buffer": l3b,
+            "L1_buffer": buffers["L1"], "L2_buffer": buffers["L2"], "L3_buffer": buffers["L3"],
         }
 
     if abs(dist_pct_sum - 100.0) < 0.5:
@@ -349,6 +361,11 @@ def render_step2() -> bool:
         "info",
     )
 
+    show_buffers = st.toggle(
+        "Show per-role buffer % columns", value=False, key="show_buffers",
+        help="Off (default): a 20% buffer is applied and the columns are hidden for a "
+             "cleaner table. On: edit each role's buffer % per row.")
+
     CATEGORY_CONFIG = [
         ("alerts",           "🚨 Monitoring Alerts"),
         ("service_requests", "📋 Service Requests"),
@@ -358,7 +375,7 @@ def render_step2() -> bool:
 
     all_valid = True
     for cat_key, cat_label in CATEGORY_CONFIG:
-        valid = _render_category_block(cat_key, cat_label)
+        valid = _render_category_block(cat_key, cat_label, show_buffers)
         if not valid:
             all_valid = False
         st.divider()
