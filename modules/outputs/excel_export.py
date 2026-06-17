@@ -1,10 +1,28 @@
 """Excel export — multi-sheet workbook. Reads from the unified compute model."""
 import io
+import os
 from datetime import date
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
+
+_LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                          "assets", "nagarro_logo.png")
+
+
+def _add_logo(ws, anchor="E1"):
+    """Place the Nagarro logo on a sheet (parity with the PDF). No-op if missing."""
+    try:
+        if not os.path.exists(_LOGO_PATH):
+            return
+        from openpyxl.drawing.image import Image as XLImage
+        img = XLImage(_LOGO_PATH)
+        w = float(img.width or 120); h = float(img.height or 40)
+        img.width = 130; img.height = int(130 * (h / w)) if w else 40
+        ws.add_image(img, anchor)
+    except Exception:
+        pass
 from config.settings import (
     ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT, REPORTING_CURRENCIES, hx,
 )
@@ -70,6 +88,7 @@ def _title(ws, t, sub=""):
 
 def _build_exec(wb, model):
     ws = wb.create_sheet("Executive Summary")
+    _add_logo(ws)
     _title(ws, f"{APP_NAME} — Executive Summary")
     cost = model["cost_result"]; price = model["price_result"]
     te = model["total_effort"]; base = model["base_effort"]

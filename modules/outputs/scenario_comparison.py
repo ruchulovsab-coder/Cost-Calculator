@@ -223,12 +223,17 @@ def render_comparison():
         table.append(r)
     st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
 
-    # Visual price comparison
+    # Visual price comparison (sorted most → least expensive for easy reading)
+    prices = dict(sorted(
+        {lbl: models[lbl][1]["price_result"]["selling_price"] for lbl in labels}.items(),
+        key=lambda kv: kv[1], reverse=True))
     if PLOTLY_OK:
-        prices = {lbl: models[lbl][1]["price_result"]["selling_price"] for lbl in labels}
         fig = px.bar(x=list(prices.keys()), y=list(prices.values()),
                      text=[f"₹{v:,.0f}" for v in prices.values()],
                      color_discrete_sequence=[THEME["primary"]])
         fig.update_layout(height=340, margin=dict(l=0, r=0, t=20, b=10),
                           xaxis_title="", yaxis_title="Monthly Selling Price (INR)", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        for lbl, v in prices.items():
+            st.write(f"{lbl}: {fmt_currency(v)}")

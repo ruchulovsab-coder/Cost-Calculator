@@ -301,11 +301,11 @@ def render_step9() -> bool:
         rc_rows_html += (
             f"<tr><td>{role}</td><td>{r['genus'] or '—'}</td>"
             f"<td class='r'>{fte_disp}</td><td class='r'>{r['billed_hours']:,.0f}</td>"
-            f"<td class='r'>₹{r['rate_inr']:,.0f}</td><td class='r'>₹{r['cost_inr']:,.0f}</td></tr>"
+            f"<td class='r'>{fmt_currency(r['rate_inr'])}</td><td class='r'>{fmt_currency(r['cost_inr'])}</td></tr>"
         )
     rc_rows_html += (
         f"<tr class='total-row'><td colspan='5'><strong>Total Resource Cost</strong></td>"
-        f"<td class='r'><strong>₹{model['total_resource_cost']:,.0f}</strong></td></tr>"
+        f"<td class='r'><strong>{fmt_currency(model['total_resource_cost'])}</strong></td></tr>"
     )
     st.markdown(f"""
     <table class="styled-table">
@@ -366,6 +366,8 @@ def render_step9() -> bool:
         elif nz:
             for k, v in sorted(nz.items(), key=lambda kv: -kv[1]):
                 st.write(f"{k}: {v:.1f} hrs")
+        else:
+            callout("No role hours yet — enter volumes on Step 1.", "info")
 
     eff_rows = ""
     for k, v in effort_sources.items():
@@ -455,6 +457,11 @@ def render_step9() -> bool:
         fig_wf.update_layout(showlegend=False, height=420, margin=dict(l=0, r=0, t=20, b=40),
                              yaxis_title=f"Amount ({currency})")
         st.plotly_chart(fig_wf, use_container_width=True)
+    else:
+        # Plotly unavailable — fall back to a labelled value list so the section
+        # never renders blank.
+        for lbl, val in zip(wf_labels, wf_conv):
+            st.write(f"{lbl}: {fmt_currency(val, currency)}")
 
     # ── Financial summary ─────────────────────────────────────
     st.divider()
@@ -477,7 +484,7 @@ def render_step9() -> bool:
         if inr_val is None:
             fin_rows += f"<tr{cls}><td>{b}{label}{eb}</td><td class='r'>—</td><td class='r'>{b}{fmt_pct(margin)}{eb}</td></tr>"
         else:
-            fin_rows += (f"<tr{cls}><td>{b}{label}{eb}</td><td class='r'>{b}₹{inr_val:,.0f}{eb}</td>"
+            fin_rows += (f"<tr{cls}><td>{b}{label}{eb}</td><td class='r'>{b}{fmt_currency(inr_val)}{eb}</td>"
                          f"<td class='r'>{b}{fmt_currency(conv(inr_val), currency)}{eb}</td></tr>")
     st.markdown(f"""
     <table class="styled-table"><thead><tr><th>Component</th><th class="r">INR</th><th class="r">{currency}</th></tr></thead>

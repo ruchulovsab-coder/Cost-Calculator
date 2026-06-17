@@ -26,7 +26,8 @@ def page_header(step: int, title: str, subtitle: str = ""):
 
 
 def section_hdr(text: str):
-    st.markdown(f'<div class="section-hdr">{text}</div>', unsafe_allow_html=True)
+    # Semantic <h3> (styled by .section-hdr) — better for accessibility/scannability.
+    st.markdown(f'<h3 class="section-hdr">{text}</h3>', unsafe_allow_html=True)
 
 
 def callout(text: str, kind: str = "info"):
