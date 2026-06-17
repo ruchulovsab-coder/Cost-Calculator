@@ -9,6 +9,34 @@ APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Too
 APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
 ORG_NAME       = "Nagarro"
 
+# ── Design tokens (single source of truth) ────────────────────────────────────
+# These hex values are mirrored in assets/styles.css :root (CSS can't read Python).
+# Web CSS, Plotly charts, the PDF (reportlab) and Excel (openpyxl) all draw from
+# THEME so the app, proposal and workbook share one brand palette.
+# Note: openpyxl wants hex WITHOUT the leading '#'. Use hx(name) for that.
+THEME = {
+    "primary":       "#00C4B4",   # primary CTA, chart accent
+    "primary_hover": "#00A396",
+    "teal_dark":     "#1A5F6A",   # section headers, table totals
+    "navy":          "#0D1B2A",   # headings, page-header / report header bg
+    "badge":         "#2A8A8A",   # badges, table heads
+    "bg":            "#F4FAFA",   # app background
+    "card":          "#FFFFFF",   # surfaces
+    "tint":          "#D6F0ED",   # zebra rows / subtle fills
+    "accent_light":  "#A8DDD8",   # light captions on dark
+    "text":          "#0D1B2A",
+    "text_body":     "#0D4A4A",
+    "text_muted":    "#6B7B7B",
+    "success":       "#1A7A6A",
+    "warning":       "#F39C12",
+    "error":         "#E74C3C",
+}
+
+
+def hx(name: str) -> str:
+    """THEME color as a bare hex (no '#') — convenient for openpyxl fills/fonts."""
+    return THEME[name].lstrip("#")
+
 # ── Roles ─────────────────────────────────────────────────────────────────────
 ALL_ROLES = ["L1", "L2", "L3", "Architect", "SDM", "SSDM"]
 COVERAGE_APPLICABLE_ROLES = ["L1", "L2"]

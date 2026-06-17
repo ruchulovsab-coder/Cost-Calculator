@@ -12,16 +12,17 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
 )
 
-from config.settings import ALL_ROLES, CURRENCY_SYMBOLS, APP_NAME, ORG_NAME
+from config.settings import ALL_ROLES, CURRENCY_SYMBOLS, APP_NAME, ORG_NAME, THEME
 from modules.state.session_manager import run_model
 
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                           "assets", "nagarro_logo.png")
 
-NAVY = colors.HexColor("#1F3864")
-TEAL = colors.HexColor("#1A5F6A")
-LB = colors.HexColor("#D5E8F0")
-GREY = colors.HexColor("#767676")
+# Brand tokens (shared with the web app and Excel via config.settings.THEME)
+NAVY = colors.HexColor(THEME["navy"])
+TEAL = colors.HexColor(THEME["teal_dark"])
+LB = colors.HexColor(THEME["tint"])
+GREY = colors.HexColor(THEME["text_muted"])
 
 
 def _sym(currency: str) -> str:

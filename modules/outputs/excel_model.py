@@ -15,10 +15,11 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
 
-from config.settings import ALL_ROLES, COVERAGE_APPLICABLE_ROLES, CATEGORY_SUBLABELS, APP_NAME
+from config.settings import ALL_ROLES, COVERAGE_APPLICABLE_ROLES, CATEGORY_SUBLABELS, APP_NAME, hx
 from modules.state.session_manager import run_model
 
-NAVY = "1F3864"; YEL = "FFF2CC"; LB = "D5E8F0"; GREY = "767676"
+# Brand tokens (shared via config.settings.THEME). YEL stays a yellow input-cell marker.
+NAVY = hx("navy"); YEL = "FFF2CC"; LB = hx("tint"); GREY = hx("text_muted")
 _thin = Side(style="thin", color="CCCCCC")
 BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 

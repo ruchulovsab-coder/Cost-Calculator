@@ -22,7 +22,7 @@ from modules.calculations.engine import convert_to_currency, compute_full_model
 from modules.state.session_manager import run_model, build_model_state
 from config.settings import (
     ALL_ROLES, CATEGORY_SUBLABELS, CURRENCY_SYMBOLS, REPORTING_CURRENCIES, COVERAGE_MODELS,
-    DEFAULT_ROLE_BUFFER_PCT,
+    DEFAULT_ROLE_BUFFER_PCT, THEME,
 )
 from utils.formatters import fmt_currency, fmt_pct, fmt_hours
 
@@ -341,7 +341,7 @@ def render_step9() -> bool:
         st.markdown("**By Source (hrs)**")
         if PLOTLY_OK:
             fig = px.bar(x=list(effort_sources.values()), y=list(effort_sources.keys()),
-                         orientation="h", color_discrete_sequence=["#00C4B4"],
+                         orientation="h", color_discrete_sequence=[THEME["primary"]],
                          text=[f"{v:.0f}" for v in effort_sources.values()])
             fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=10),
                               xaxis_title="Hours", yaxis_title="", showlegend=False)
@@ -358,7 +358,7 @@ def render_step9() -> bool:
             # reads better than a 6-slice pie.
             ordered = dict(sorted(nz.items(), key=lambda kv: kv[1]))
             fig2 = px.bar(x=list(ordered.values()), y=list(ordered.keys()),
-                          orientation="h", color_discrete_sequence=["#00C4B4"],
+                          orientation="h", color_discrete_sequence=[THEME["primary"]],
                           text=[f"{v:.0f}" for v in ordered.values()])
             fig2.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=10),
                                xaxis_title="Hours", yaxis_title="", showlegend=False)
@@ -448,9 +448,9 @@ def render_step9() -> bool:
         fig_wf = go.Figure(go.Waterfall(
             orientation="v", measure=wf_measure, x=wf_labels, y=wf_conv,
             connector={"line": {"color": "rgba(42, 138, 138, 0.5)"}},
-            increasing={"marker": {"color": "#00C4B4"}},
-            decreasing={"marker": {"color": "#E74C3C"}},
-            totals={"marker": {"color": "#1A5F6A"}},
+            increasing={"marker": {"color": THEME["primary"]}},
+            decreasing={"marker": {"color": THEME["error"]}},
+            totals={"marker": {"color": THEME["teal_dark"]}},
             texttemplate="%{y:,.0f}", textposition="outside"))
         fig_wf.update_layout(showlegend=False, height=420, margin=dict(l=0, r=0, t=20, b=40),
                              yaxis_title=f"Amount ({currency})")

@@ -5,10 +5,11 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import streamlit as st
-from config.settings import ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT
+from config.settings import ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT, hx
 from modules.state.session_manager import run_model
 
-NAVY = "1F3864"; BLUE = "2E75B6"; LB = "D5E8F0"; ACCENT = "ED7D31"
+# Brand tokens (shared with the web app and PDF via config.settings.THEME)
+NAVY = hx("navy"); BLUE = hx("badge"); LB = hx("tint"); ACCENT = hx("primary")
 LGRAY = "F2F2F2"; WHITE = "FFFFFF"
 
 def _fill(c): return PatternFill("solid", fgColor=c)
@@ -174,8 +175,8 @@ def generate_excel_report() -> bytes:
     wb = openpyxl.Workbook(); wb.remove(wb.active)
     _build_exec(wb, model); _build_effort(wb, model); _build_resolution(wb, model)
     _build_fte(wb, model); _build_costs(wb, model); _build_financial(wb, model); _build_audit(wb, model)
-    colors = [NAVY, BLUE, "2E75B6", "375623", "ED7D31", ACCENT, "767676"]
+    tab_colors = [NAVY, hx("teal_dark"), BLUE, ACCENT, hx("success"), hx("text_muted")]
     for i,ws in enumerate(wb.worksheets):
-        ws.sheet_properties.tabColor = colors[i % len(colors)]
+        ws.sheet_properties.tabColor = tab_colors[i % len(tab_colors)]
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.getvalue()

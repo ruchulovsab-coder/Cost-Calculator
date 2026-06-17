@@ -17,6 +17,7 @@ except ImportError:
 
 from modules.inputs.steps_1_2 import section_hdr, callout
 from utils.formatters import fmt_currency, fmt_hours
+from config.settings import THEME
 
 
 def render_scenario_sidebar():
@@ -227,7 +228,7 @@ def render_comparison():
         prices = {lbl: models[lbl][1]["price_result"]["selling_price"] for lbl in labels}
         fig = px.bar(x=list(prices.keys()), y=list(prices.values()),
                      text=[f"₹{v:,.0f}" for v in prices.values()],
-                     color_discrete_sequence=["#00C4B4"])
+                     color_discrete_sequence=[THEME["primary"]])
         fig.update_layout(height=340, margin=dict(l=0, r=0, t=20, b=10),
                           xaxis_title="", yaxis_title="Monthly Selling Price (INR)", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
