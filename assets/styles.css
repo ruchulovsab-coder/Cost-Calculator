@@ -45,6 +45,7 @@ html, body {
 h1, h2, h3, h4, h5, h6, .page-header h2, .section-hdr {
     color: var(--navy) !important;
     font-weight: 600 !important;
+    line-height: 1.35 !important;   /* room so underlines/descenders aren't clipped */
 }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
@@ -138,11 +139,22 @@ section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:ho
 .section-hdr {
     font-size: 1.05rem;
     font-weight: 600;
+    line-height: 1.4;
     color: var(--teal-dark);
     border-bottom: 2px solid var(--border-strong);
-    padding-bottom: 5px;
-    margin: var(--space-3) 0 var(--space-2) 0;
+    padding-bottom: var(--space-2);          /* space between text and its underline */
+    margin: var(--space-4) 0 var(--space-4) 0; /* clear gap below the underline so the
+                                                  next widget label + help icon aren't clipped */
 }
+
+/* The help "?" tooltip icon next to a widget label was being clipped by the
+   element above; never clip widget-label content and give it breathing room. */
+[data-testid="stWidgetLabel"] {
+    overflow: visible !important;
+    line-height: 1.45 !important;
+    margin-top: 2px;
+}
+[data-testid="stWidgetLabel"] p { margin-bottom: 0.15rem !important; }
 
 /* ── Styled tables ────────────────────────────────────────── */
 .styled-table { width:100%; border-collapse:collapse; font-size:0.87rem; border: 1px solid var(--border); }
