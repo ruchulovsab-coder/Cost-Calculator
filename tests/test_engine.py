@@ -101,10 +101,16 @@ def test_patching_manual_default_45_per_server():
     assert res["hours"] == pytest.approx(20 * 45 / 60.0)  # 15.0
 
 
-def test_patching_automated_default_30_per_server():
-    res = calc_patching_effort(True, 20, "Tool-Based", auto_effort_per_server=30.0)
-    assert res["effort_per_server_min"] == 30.0
-    assert res["hours"] == pytest.approx(20 * 30 / 60.0)  # 10.0
+def test_patching_tool_based_uses_error_rate():
+    # 100 servers, 15% error -> 15 failed servers × 30 min = 7.5 hrs
+    res = calc_patching_effort(True, 100, "Tool-Based", auto_effort_per_server=30.0, error_rate_pct=15)
+    assert res["failed_servers"] == 15
+    assert res["hours"] == pytest.approx(15 * 30 / 60.0)  # 7.5
+
+
+def test_patching_tool_based_zero_error_is_zero():
+    res = calc_patching_effort(True, 100, "Tool-Based", auto_effort_per_server=30.0, error_rate_pct=0)
+    assert res["failed_servers"] == 0 and res["hours"] == 0.0
 
 
 # ── Auto-derived activity efforts ──────────────────────────────────────────────

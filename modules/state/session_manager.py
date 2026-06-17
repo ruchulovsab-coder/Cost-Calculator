@@ -90,6 +90,7 @@ def _build_initial_state():
         "patching_method":          "Tool-Based",
         "manual_effort_per_server": 45.0,
         "auto_effort_per_server":   30.0,
+        "patch_error_rate":         10.0,   # Tool-Based: % of servers needing manual effort
 
         # ── Step 4: Additional Activities ────────────────────────────
         "additional_activities": copy.deepcopy(DEFAULT_ADDITIONAL_ACTIVITIES),
@@ -225,9 +226,10 @@ _STEP_RESET = {
     2: (["alerts", "service_requests", "incidents", "changes"],
         [], ["alerts_", "service_requests_", "incidents_", "changes_"]),
     3: (["patching_included", "num_servers", "patching_method",
-         "manual_effort_per_server", "auto_effort_per_server", "patching_role"],
+         "manual_effort_per_server", "auto_effort_per_server", "patch_error_rate", "patching_role"],
         ["patching_included_w", "num_servers_w", "patching_method_w",
-         "manual_effort_per_server_w", "auto_effort_per_server_w", "patching_role_w"], []),
+         "manual_effort_per_server_w", "auto_effort_per_server_w", "patch_error_rate_w",
+         "patching_role_w"], []),
     4: (["additional_activities"], [], ["act_"]),
     5: (["contingency_pct", "overhead_pcts"],
         ["contingency_pct_w", "overhead_architect", "overhead_sdm", "overhead_ssdm"], []),
@@ -306,7 +308,7 @@ def apply_total_volume(cat_key: str, new_total: int):
 _MODEL_KEYS = [
     "alerts", "service_requests", "incidents", "changes",
     "patching_included", "num_servers", "patching_method",
-    "manual_effort_per_server", "auto_effort_per_server",
+    "manual_effort_per_server", "auto_effort_per_server", "patch_error_rate",
     "patching_role", "additional_activities", "contingency_pct", "overhead_pcts",
     "coverage_model", "custom_hours_per_day", "custom_days_per_week",
     "monthly_working_hours", "productive_utilisation", "role_genus",

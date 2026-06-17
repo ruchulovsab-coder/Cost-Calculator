@@ -69,20 +69,31 @@ def render_step3() -> bool:
         result = calc_patching_effort(True, servers, "Manual", manual_effort_per_server=effort)
     else:
         section_hdr("Automated (Tool-Based) Patching Configuration")
-        effort = st.number_input(
-            "**Effort Per Server (Minutes)**",
+        tc1, tc2 = st.columns(2)
+        error_rate = tc1.number_input(
+            "**Error / Failure Rate (%)**",
+            min_value=0.0, max_value=100.0, step=1.0, format="%.0f",
+            value=float(st.session_state.get("patch_error_rate", 10.0)),
+            key="patch_error_rate_w",
+            help="% of servers where the tool fails and manual effort is needed. "
+                 "e.g. 100 servers × 15% = 15 servers needing manual effort.",
+        )
+        st.session_state["patch_error_rate"] = error_rate
+        effort = tc2.number_input(
+            "**Effort Per Failed Server (Minutes)**",
             min_value=0.0, step=5.0, format="%.0f",
             value=float(st.session_state.get("auto_effort_per_server", PATCHING_EFFORT_DEFAULTS["Tool-Based"])),
             key="auto_effort_per_server_w",
-            help="Average minutes of effort per server for tool-based patching "
-                 "(orchestration, verification, exception handling). Default: 30.",
+            help="Manual effort for each failed (error-rate) server. Default: 30. "
+                 "Servers patched successfully by the tool need no manual effort.",
         )
         st.session_state["auto_effort_per_server"] = effort
-        result = calc_patching_effort(True, servers, "Tool-Based", auto_effort_per_server=effort)
+        result = calc_patching_effort(True, servers, "Tool-Based",
+                                      auto_effort_per_server=effort, error_rate_pct=error_rate)
 
     callout(
-        f"📊 <strong>Patching Effort:</strong> {servers} servers × "
-        f"{effort:.0f} min = <strong>{result['hours']:.1f} hours/month</strong>",
+        f"📊 <strong>Patching Effort:</strong> {result['detail']} = "
+        f"<strong>{result['hours']:.1f} hours/month</strong>",
         "success",
     )
 
@@ -270,6 +281,7 @@ def _compute_all_effort():
         st.session_state.get("patching_method") or "Manual",
         st.session_state.get("manual_effort_per_server", 45),
         st.session_state.get("auto_effort_per_server", 30),
+        error_rate_pct=st.session_state.get("patch_error_rate", 0),
     )
     add_h = sum(r["hours"] for r in st.session_state.additional_activities)
 

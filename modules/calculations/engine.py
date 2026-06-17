@@ -84,23 +84,36 @@ def calc_patching_effort(
     method: str,
     manual_effort_per_server: float = 45.0,
     auto_effort_per_server: float = 30.0,
+    error_rate_pct: float = 0.0,
     **_legacy,
 ) -> Dict[str, Any]:
     """
-    Patching effort = minutes-per-server × server count (÷ 60 for hours).
-    Manual and automated (Tool-Based) patching differ only in the per-server
-    minutes (defaults: Manual 45, Tool-Based 30). All values are user-editable.
+    Patching effort (÷ 60 for hours):
+      Manual      = num_servers × manual_effort_per_server
+      Tool-Based  = failed_servers × auto_effort_per_server,
+                    where failed_servers = round(num_servers × error_rate_pct / 100)
+                    (the tool auto-handles the rest; only failures need manual effort).
     """
     if not included:
         return {"hours": 0.0, "detail": "Not included"}
-    per = manual_effort_per_server if method == "Manual" else auto_effort_per_server
-    hours = (num_servers * per) / 60.0
+    num_servers = num_servers or 0
+    if method == "Manual":
+        per = manual_effort_per_server
+        hours = (num_servers * per) / 60.0
+        return {
+            "hours": hours, "servers": num_servers, "method": "Manual",
+            "effort_per_server_min": per,
+            "detail": f"{num_servers} servers × {per:.0f} min/server",
+        }
+    # Tool-Based: only the error-rate share of servers needs manual effort
+    failed = round(num_servers * (error_rate_pct or 0) / 100.0)
+    hours = (failed * auto_effort_per_server) / 60.0
     return {
-        "hours": hours,
-        "servers": num_servers,
-        "method": method,
-        "effort_per_server_min": per,
-        "detail": f"{num_servers} servers × {per:.0f} min/server",
+        "hours": hours, "servers": num_servers, "method": "Tool-Based",
+        "failed_servers": failed, "error_rate_pct": error_rate_pct,
+        "effort_per_server_min": auto_effort_per_server,
+        "detail": f"{failed} of {num_servers} servers ({error_rate_pct:.0f}% error) "
+                  f"× {auto_effort_per_server:.0f} min/server",
     }
 
 
@@ -515,6 +528,7 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         g("patching_method") or "Manual",
         g("manual_effort_per_server", 45) or 45,
         g("auto_effort_per_server", 30) or 30,
+        error_rate_pct=g("patch_error_rate", 0) or 0,
     )
     patch_h = patching["hours"]
 
