@@ -87,16 +87,16 @@ section[data-testid="stSidebar"] button[kind="secondary"]:hover * {
     font-size: 1rem;
     font-weight: 600;
     color: #1A5F6A; /* Section headers */
-    border-bottom: 2px solid rgba(42, 138, 138, 0.1); /* Border / dividers */
+    border-bottom: 2px solid rgba(42, 138, 138, 0.45); /* Border / dividers (darker) */
     padding-bottom: 5px;
-    margin: 18px 0 10px 0;
+    margin: 12px 0 6px 0;
 }
 
 /* ── Styled tables ────────────────────────────────────────── */
-.styled-table { width:100%; border-collapse:collapse; font-size:0.87rem; border: 1px solid rgba(42, 138, 138, 0.1); }
-.styled-table th { background-color:#2A8A8A; color:#FFFFFF; padding:8px 10px; text-align:left; font-weight:600; border-radius: 4px 4px 0 0; }
+.styled-table { width:100%; border-collapse:collapse; font-size:0.87rem; border: 1px solid rgba(42, 138, 138, 0.3); }
+.styled-table th { background-color:#2A8A8A; color:#FFFFFF; padding:7px 10px; text-align:left; font-weight:600; border-radius: 4px 4px 0 0; }
 .styled-table th.r { text-align:right; }
-.styled-table td { padding:6px 10px; border-bottom:1px solid rgba(42, 138, 138, 0.1); color:#0D4A4A; }
+.styled-table td { padding:5px 10px; border-bottom:1px solid rgba(42, 138, 138, 0.28); color:#0D4A4A; }
 .styled-table td.r { text-align:right; }
 .styled-table tr:nth-child(even) td { background-color:#D6F0ED; } /* secondary cards / subtle tint */
 .styled-table tr.total-row td { background-color:#1A5F6A; font-weight:700; color:#FFFFFF; }
@@ -205,7 +205,18 @@ section[data-testid="stSidebar"] textarea::placeholder {
     text-align: right;
 }
 
-/* Generic Streamlit modifications */
+/* ── Density: tighter page padding + less vertical gap (reduces scrolling) ── */
+[data-testid="stMainBlockContainer"],
+[data-testid="stMain"] .block-container {
+    padding: 1.3rem 2.5rem 2.5rem 2.5rem !important;
+    max-width: 100% !important;
+}
+[data-testid="stMain"] [data-testid="stVerticalBlock"] {
+    gap: 0.55rem !important;
+}
+
+/* Generic Streamlit modifications — dividers darker + tighter */
 hr {
-    border-color: rgba(42, 138, 138, 0.1) !important;
+    border-color: rgba(42, 138, 138, 0.4) !important;
+    margin: 0.5rem 0 !important;
 }
