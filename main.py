@@ -94,7 +94,7 @@ def _maybe_load_review():
             st.session_state["_current_estimate_ref"] = {
                 "slug": slug, "version": ver,
                 "project": rec.get("project", slug), "blob": rec["estimate_blob"]}
-        st.session_state["current_step"] = 8
+        st.session_state["current_step"] = 10  # Approve & Export page
     except Exception:
         pass
 
@@ -104,10 +104,8 @@ _maybe_load_review()
 from modules.inputs.steps_1_2 import render_step1, render_step2
 from modules.inputs.steps_3_5 import render_step3, render_step4, render_step5
 from modules.inputs.steps_6_7 import render_step6, render_step7
-from modules.outputs.dashboard import render_step8
+from modules.outputs.dashboard import render_step8, render_step9, render_step10
 from modules.outputs.scenario_comparison import render_scenario_sidebar, render_comparison, render_saved_calc_sidebar
-from modules.outputs.excel_export import generate_excel_report
-from modules.outputs.pdf_export import generate_pdf_report
 
 # ── Step manifest ──────────────────────────────────────────────────────────────
 STEPS = [
@@ -118,8 +116,10 @@ STEPS = [
     (5, "Effort Summary"),
     (6, "Coverage & FTE"),
     (7, "Grade Mapping"),
-    (8, "Cost, Pricing & Dashboard"),
-    (9, "Scenario Comparison"),
+    (8, "Costing Inputs"),
+    (9, "Results Dashboard"),
+    (10, "Approve & Export"),
+    (11, "Compare"),
 ]
 
 RENDERERS = {
@@ -129,9 +129,11 @@ RENDERERS = {
     4: (render_step4, "Next: Effort Summary →"),
     5: (render_step5, "Next: Coverage & FTE →"),
     6: (render_step6, "Next: Grade Mapping →"),
-    7: (render_step7, "Next: Cost, Pricing & Dashboard →"),
-    8: (render_step8, None),
-    9: (render_comparison, None),
+    7: (render_step7, "Next: Costing Inputs →"),
+    8: (render_step8, "Next: Results Dashboard →"),
+    9: (render_step9, "Next: Approve & Export →"),
+    10: (render_step10, None),
+    11: (render_comparison, None),
 }
 
 
@@ -244,51 +246,3 @@ if render_fn:
                 st.rerun()
         elif next_label and not step_valid:
             st.warning("⚠️ Please fix the validation errors above before proceeding.")
-
-        # Dashboard export buttons
-        if current == 8 and step_valid:
-            ec1, ec2, ec3, ec4 = st.columns(4)
-            with ec1:
-                try:
-                    xl = generate_excel_report()
-                    st.download_button(
-                        "⬇️ Excel Report",
-                        data=xl,
-                        file_name="IT_MS_Calculator_Report.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary",
-                        key="dl_excel",
-                    )
-                except Exception as e:
-                    st.error(f"Excel error: {e}")
-            with ec2:
-                try:
-                    from modules.outputs.excel_model import generate_excel_model
-                    xlm = generate_excel_model()
-                    st.download_button(
-                        "⬇️ Editable Excel (formulas)",
-                        data=xlm,
-                        file_name="IT_MS_Editable_Model.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary",
-                        key="dl_excel_model",
-                    )
-                except Exception as e:
-                    st.error(f"Editable Excel error: {e}")
-            with ec3:
-                try:
-                    pdf = generate_pdf_report()
-                    st.download_button(
-                        "⬇️ PDF Proposal",
-                        data=pdf,
-                        file_name="IT_MS_Proposal.pdf",
-                        mime="application/pdf",
-                        type="primary",
-                        key="dl_pdf",
-                    )
-                except Exception as e:
-                    st.error(f"PDF error: {e}")
-            with ec4:
-                if st.button("📊 Compare Scenarios", type="secondary", key="btn_compare"):
-                    st.session_state.current_step = 9
-                    st.rerun()

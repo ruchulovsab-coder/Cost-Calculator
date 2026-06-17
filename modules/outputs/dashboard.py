@@ -220,23 +220,62 @@ def _render_what_if(base_model, conv, currency):
               delta=f"{new_sp - base_sp:+,.0f}")
 
 
-def render_step8() -> bool:
-    page_header(8, "Cost, Pricing & Output Dashboard",
-                "Configure expenses and margin, then view the complete results.")
-
-    _render_cost_inputs()
-
-    # ── Single compute ────────────────────────────────────────
+def _get_model_conv():
+    """Compute the full model once and build a currency converter.
+    Returns (model, conv, currency) or (None, None, None) if the model is
+    invalid (error already rendered)."""
     try:
         model = run_model()
     except ValueError as e:
         callout(f"❌ {e}", "error")
-        return False
+        return None, None, None
     st.session_state["_model"] = model  # reused by exports / scenarios
-
     currency = model["reporting_currency"]
     fx = dict(st.session_state.get("exchange_rates", {}) or {}); fx.setdefault("INR", 1.0)
     def conv(v): return convert_to_currency(v, currency, fx)
+    return model, conv, currency
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# STEP 8 — Costing Inputs
+# ════════════════════════════════════════════════════════════════════════════
+def render_step8() -> bool:
+    page_header(8, "Costing Inputs",
+                "Configure expenses, provisions and target margin. "
+                "The full breakdown follows on the Results Dashboard.")
+
+    _render_cost_inputs()
+
+    # Validate the model (e.g. margin < 100) and show a compact headline so the
+    # user sees the effect of the cost inputs without leaving the page.
+    model, conv, currency = _get_model_conv()
+    if model is None:
+        return False
+
+    st.divider()
+    section_hdr("📊 Estimate Headline")
+    _raw = model["fte_basis"] == "raw"
+    h1, h2, h3 = st.columns(3)
+    h1.metric("Total FTE (Raw)" if _raw else "Total FTE (Rounded)",
+              f"{model['total_fte']:.2f}" if _raw else f"{model['total_fte']:.1f}")
+    h2.metric(f"Delivery Cost ({currency})",
+              fmt_currency(conv(model["cost_result"]["total_delivery_cost"]), currency))
+    h3.metric(f"Selling Price ({currency})",
+              fmt_currency(conv(model["price_result"]["selling_price"]), currency))
+    st.caption("➡️ Continue to **Results Dashboard** for the complete breakdown.")
+    return True
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# STEP 9 — Results Dashboard (read-only outputs)
+# ════════════════════════════════════════════════════════════════════════════
+def render_step9() -> bool:
+    page_header(9, "Results Dashboard",
+                "The complete computed estimate. Inputs live on the previous pages.")
+
+    model, conv, currency = _get_model_conv()
+    if model is None:
+        return False
 
     cost_result   = model["cost_result"]
     price_result  = model["price_result"]
@@ -246,23 +285,11 @@ def render_step8() -> bool:
     total_effort  = model["total_effort"]
     margin        = price_result["margin_pct"]
 
-    # ══════════════════════════════════════════════════════════
-    # OUTPUT DASHBOARD
-    # ══════════════════════════════════════════════════════════
-    st.divider()
     st.markdown(
         '<div style="text-align:center; font-size:1.5rem; font-weight:700; color:#0D1B2A; '
         'padding:8px 0;">📊 OUTPUT DASHBOARD</div>', unsafe_allow_html=True)
 
-    # Approval (reviewer approve/reject via tokened link; preparer sees status)
-    try:
-        from modules.outputs.approval import render_approval_panel
-        render_approval_panel()
-    except Exception as _e:
-        st.caption(f"Approval panel unavailable: {_e}")
-
     # ── Resource cost summary ─────────────────────────────────
-    st.divider()
     basis_txt = "Raw FTE" if model["fte_basis"] == "raw" else "Rounded FTE (⌈0.5⌉)"
     section_hdr("💰 Resource Cost Summary")
     st.caption(f"Costed on **{basis_txt}** — change this with the FTE Basis toggle above.")
@@ -448,6 +475,67 @@ def render_step8() -> bool:
     <table class="styled-table"><thead><tr><th>Component</th><th class="r">INR</th><th class="r">{currency}</th></tr></thead>
       <tbody>{fin_rows}</tbody></table>""", unsafe_allow_html=True)
 
+    return True
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# STEP 10 — Approve & Export
+# ════════════════════════════════════════════════════════════════════════════
+def render_step10() -> bool:
+    page_header(10, "Approve & Export",
+                "Request approval, test what-if scenarios, and download the reports.")
+
+    model, conv, currency = _get_model_conv()
+    if model is None:
+        return False
+
+    # ── Approval (reviewer approve/reject via tokened link; preparer sees status)
+    section_hdr("✅ Approval")
+    try:
+        from modules.outputs.approval import render_approval_panel
+        render_approval_panel()
+    except Exception as _e:
+        st.caption(f"Approval panel unavailable: {_e}")
+
+    # ── What-if ───────────────────────────────────────────────
     _render_what_if(model, conv, currency)
 
+    # ── Downloads ─────────────────────────────────────────────
+    st.divider()
+    section_hdr("⬇️ Download Reports")
+    ec1, ec2, ec3 = st.columns(3)
+    with ec1:
+        try:
+            from modules.outputs.excel_export import generate_excel_report
+            xl = generate_excel_report()
+            st.download_button(
+                "⬇️ Excel Report", data=xl,
+                file_name="IT_MS_Calculator_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary", key="dl_excel", use_container_width=True)
+        except Exception as e:
+            st.error(f"Excel error: {e}")
+    with ec2:
+        try:
+            from modules.outputs.excel_model import generate_excel_model
+            xlm = generate_excel_model()
+            st.download_button(
+                "⬇️ Editable Excel (formulas)", data=xlm,
+                file_name="IT_MS_Editable_Model.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary", key="dl_excel_model", use_container_width=True)
+        except Exception as e:
+            st.error(f"Editable Excel error: {e}")
+    with ec3:
+        try:
+            from modules.outputs.pdf_export import generate_pdf_report
+            pdf = generate_pdf_report()
+            st.download_button(
+                "⬇️ PDF Proposal", data=pdf,
+                file_name="IT_MS_Proposal.pdf", mime="application/pdf",
+                type="primary", key="dl_pdf", use_container_width=True)
+        except Exception as e:
+            st.error(f"PDF error: {e}")
+
+    st.caption("Use the **Compare** step in the sidebar to view saved scenarios side-by-side.")
     return True

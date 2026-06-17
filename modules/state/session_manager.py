@@ -454,4 +454,4 @@ def load_scenario(data: dict):
         elif key in _get_initial_state():
             st.session_state[key] = val
     sanitize_additional_activities()
-    st.session_state["current_step"] = 8
+    st.session_state["current_step"] = 9  # land on Results Dashboard
