@@ -9,7 +9,9 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
 - Cloud saves, approval flow, scale-to-zero hosting.
 
 ## Critical issues (prioritized)
-- [ ] **Step 2 mega-table** (14 columns) — too dense, hard to fill.
+- [x] **Step 2 mega-table** — replaced the faked 11-column grid with an
+  `st.data_editor` (inputs) + read-only computed results table; buffers stay at the
+  category heading; calculation contract unchanged.
 - [ ] **Step 8 overload** — entry + dashboard + approval + what-if + exports on one page.
 - [ ] **Two competing save systems** — cloud "Saved Calculations" vs file "Scenarios".
 - [ ] **Jargon without guidance** — Genus, FTE, L1/L2/L3, Contingency, Buffer, Overhead, SLA.
@@ -44,7 +46,7 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   - [x] Move rate card + coverage + delivery location to Step 1; rate-card grades as a collapsible table
   - [x] Split **Step 8 → 8 Costing inputs / 9 Results / 10 Approve & Export** (+ 11 Compare)
   - [ ] Units in every label; reduce mid-edit reruns; live running totals; reset-to-defaults per category
-- [ ] **Phase 3 — Inputs:** Step 2 & Step 4 table redesign.
+- **Phase 3 — Inputs:** [x] Step 2 → `st.data_editor`; [ ] Step 4 table redesign.
 - [ ] **Phase 4 — Outputs:** shared header/section order; PDF cover; email HTML template; Excel polish.
 - [ ] **Phase 5 — Design system:** documented tokens/components + CSS refactor.
 

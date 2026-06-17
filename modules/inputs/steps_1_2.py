@@ -3,6 +3,7 @@ Step 1 — Monthly Workload Totals
 Step 2 — Severity Distribution, Effort Minutes & Resolution Split
 """
 import streamlit as st
+import pandas as pd
 from config.settings import (
     CATEGORY_SUBLABELS, DEFAULT_VOLUME_DIST_PCT,
     DEFAULT_EFFORT_MINUTES, DEFAULT_RESOLUTION_PCT,
@@ -210,8 +211,13 @@ def render_step1() -> bool:
 def _render_category_block(cat_key: str, cat_label: str) -> bool:
     """
     Distribution + effort + resolution-split for one ticket category.
+
+    Inputs (Dist %, Min/Ticket, L1/L2/L3 %) are edited in a single st.data_editor;
+    Count and role-hours are derived and shown in a read-only results table below.
     A single set of L1/L2/L3 buffer % is set at the category heading and applied to
     every row: hours = base × (1 + role_buffer/100). Default 20% each.
+    The session_state contract (count, minutes, dist_pct, L*_pct, L*_buffer) is
+    unchanged, so the calculation engine is unaffected.
     """
     from config.settings import DEFAULT_ROLE_BUFFER_PCT
     sublabels = CATEGORY_SUBLABELS[cat_key]
@@ -243,88 +249,82 @@ def _render_category_block(cat_key: str, cat_label: str) -> bool:
             key=f"{cat_key}_buf_{role}",
             help=f"Buffer % added to all {role} effort in {cat_label}. Default 20%.")
 
+    # ── Editable inputs grid (st.data_editor) ──
+    in_rows = [{
+        "Severity / Type": label,
+        "Dist %":     float(cat_data.get(label, {}).get("dist_pct", DEFAULT_VOLUME_DIST_PCT[cat_key][label])),
+        "Min/Ticket": float(cat_data.get(label, {}).get("minutes",  DEFAULT_EFFORT_MINUTES[cat_key][label])),
+        "L1 %":       float(cat_data.get(label, {}).get("L1_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L1"])),
+        "L2 %":       float(cat_data.get(label, {}).get("L2_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L2"])),
+        "L3 %":       float(cat_data.get(label, {}).get("L3_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L3"])),
+    } for label in sublabels]
+
+    edited = st.data_editor(
+        pd.DataFrame(in_rows), key=f"{cat_key}_editor",
+        hide_index=True, use_container_width=True,
+        column_config={
+            "Severity / Type": st.column_config.TextColumn(disabled=True),
+            "Dist %": st.column_config.NumberColumn(
+                "Dist %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
+                help="% of this category's total volume that are this severity. Rows must sum to 100%."),
+            "Min/Ticket": st.column_config.NumberColumn(
+                "Min/Ticket", min_value=0.0, step=1.0, format="%d",
+                help="Average minutes to fully resolve one ticket of this severity."),
+            "L1 %": st.column_config.NumberColumn("L1 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
+                                                  help="% of these tickets resolved by L1."),
+            "L2 %": st.column_config.NumberColumn("L2 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
+                                                  help="% of these tickets resolved by L2."),
+            "L3 %": st.column_config.NumberColumn("L3 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
+                                                  help="% of these tickets resolved by L3."),
+        },
+    )
+
+    # ── Recompute, persist to the session contract, and validate ──
     all_valid = True
-
-    cols_w = [1.7, 1.0, 0.9, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85, 0.95, 0.85]
-    headers = ["Severity / Type", "Dist %", "Count", "Min",
-               "L1 %", "L1 Hrs", "L2 %", "L2 Hrs", "L3 %", "L3 Hrs", "✓"]
-    hc = st.columns(cols_w)
-    for col, txt in zip(hc, headers):
-        col.markdown(
-            f"<div style='font-size:0.72rem;font-weight:700;color:#0D1B2A;"
-            f"padding-bottom:2px'>{txt}</div>",
-            unsafe_allow_html=True,
-        )
-
-    def _hrs(col, val, color):
-        col.markdown(f"<div style='padding-top:5px;text-align:right;color:{color};"
-                     f"font-weight:600'>{val:.1f}</div>", unsafe_allow_html=True)
-
     dist_pct_sum = 0.0
     cat_total_h = 0.0
     role_buffered = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+    detail = ""
+    for i, label in enumerate(sublabels):
+        r = edited.iloc[i]
+        dist_pct = float(r["Dist %"] or 0)
+        minutes  = float(r["Min/Ticket"] or 0)
+        l1p = float(r["L1 %"] or 0); l2p = float(r["L2 %"] or 0); l3p = float(r["L3 %"] or 0)
+        dist_pct_sum += dist_pct
 
-    for label in sublabels:
-        row = cat_data.get(label, {})
-        cc  = st.columns(cols_w)
-        idx = 0
-
-        cc[idx].markdown(f"<div style='padding-top:5px'><em>{label}</em></div>", unsafe_allow_html=True); idx += 1
-
-        dist_pct_val = cc[idx].number_input(
-            "dp", min_value=0.0, max_value=100.0, step=1.0, format="%.0f",
-            value=float(row.get("dist_pct", DEFAULT_VOLUME_DIST_PCT[cat_key][label])),
-            key=f"{cat_key}_{label}_dist_pct", label_visibility="collapsed",
-            help=f"% of total {cat_label} volume that are {label}. All rows must sum to 100%."); idx += 1
-        dist_pct_sum += dist_pct_val
-
-        derived_count = round(total_vol * dist_pct_val / 100)
-        cc[idx].markdown(f"<div style='padding-top:5px;text-align:right;font-weight:600'>{derived_count:,}</div>",
-                         unsafe_allow_html=True); idx += 1
-
-        minutes = cc[idx].number_input(
-            "min", min_value=0.0, step=1.0, format="%.0f",
-            value=float(row.get("minutes", DEFAULT_EFFORT_MINUTES[cat_key][label])),
-            key=f"{cat_key}_{label}_min", label_visibility="collapsed",
-            help=f"Average minutes to fully resolve one {label} {cat_label}."); idx += 1
-
-        total_h = (derived_count * minutes) / 60.0
+        count = round(total_vol * dist_pct / 100)
+        total_h = (count * minutes) / 60.0
         cat_total_h += total_h
-
-        buffers = {}
-
-        def _role(role, hcolor):
-            nonlocal idx
-            pct = cc[idx].number_input(
-                f"{role}p", min_value=0.0, max_value=100.0, step=1.0, format="%.0f",
-                value=float(row.get(f"{role}_pct", DEFAULT_RESOLUTION_PCT[cat_key][label][role])),
-                key=f"{cat_key}_{label}_{role}p", label_visibility="collapsed",
-                help=f"% of these tickets resolved by {role}."); idx += 1
-            buf = cat_buf[role]
-            hrs = total_h * pct / 100.0 * (1.0 + buf / 100.0)
-            _hrs(cc[idx], hrs, hcolor); idx += 1
-            buffers[role] = buf
-            return pct, hrs
-
-        l1p, l1h = _role("L1", "#1A7A6A")
-        l2p, l2h = _role("L2", "#0D1B2A")
-        l3p, l3h = _role("L3", "#8A5A2A")
-
+        l1h = total_h * l1p / 100.0 * (1.0 + cat_buf["L1"] / 100.0)
+        l2h = total_h * l2p / 100.0 * (1.0 + cat_buf["L2"] / 100.0)
+        l3h = total_h * l3p / 100.0 * (1.0 + cat_buf["L3"] / 100.0)
         role_buffered["L1"] += l1h; role_buffered["L2"] += l2h; role_buffered["L3"] += l3h
 
-        pct_sum = l1p + l2p + l3p
-        if abs(pct_sum - 100.0) < 0.5:
-            cc[idx].markdown('<span class="pill-ok">✓</span>', unsafe_allow_html=True)
-        else:
-            cc[idx].markdown(f'<span class="pill-err">{pct_sum:.0f}%</span>', unsafe_allow_html=True)
-            all_valid = False
-        idx += 1
-
         cat_data[label] = {
-            "dist_pct": dist_pct_val, "count": derived_count, "minutes": minutes,
+            "dist_pct": dist_pct, "count": count, "minutes": minutes,
             "L1_pct": l1p, "L2_pct": l2p, "L3_pct": l3p,
-            "L1_buffer": buffers["L1"], "L2_buffer": buffers["L2"], "L3_buffer": buffers["L3"],
+            "L1_buffer": cat_buf["L1"], "L2_buffer": cat_buf["L2"], "L3_buffer": cat_buf["L3"],
         }
+
+        pct_sum = l1p + l2p + l3p
+        ok = abs(pct_sum - 100.0) < 0.5
+        if not ok:
+            all_valid = False
+        pill = ('<span class="pill-ok">✓</span>' if ok
+                else f'<span class="pill-err">{pct_sum:.0f}%</span>')
+        detail += (
+            f"<tr><td>{label}</td><td class='r'>{count:,}</td><td class='r'>{minutes:.0f}</td>"
+            f"<td class='r'>{total_h:.1f}</td><td class='r'>{l1h:.1f}</td>"
+            f"<td class='r'>{l2h:.1f}</td><td class='r'>{l3h:.1f}</td>"
+            f"<td style='text-align:center'>{pill}</td></tr>"
+        )
+
+    st.markdown(f"""
+    <table class="styled-table"><thead><tr>
+      <th>Severity / Type</th><th class="r">Count</th><th class="r">Min</th>
+      <th class="r">Total Hrs</th><th class="r">L1 Hrs</th><th class="r">L2 Hrs</th>
+      <th class="r">L3 Hrs</th><th style="text-align:center">L1+L2+L3</th>
+    </tr></thead><tbody>{detail}</tbody></table>""", unsafe_allow_html=True)
 
     if abs(dist_pct_sum - 100.0) < 0.5:
         st.markdown(
@@ -353,11 +353,11 @@ def render_step2() -> bool:
                 "Review and adjust auto-populated defaults for each ticket category.")
 
     callout(
-        "All three tables below are <strong>pre-filled with industry-standard defaults</strong> "
-        "based on the total volumes you entered in Step 1. "
-        "Edit any value — counts, effort minutes, or L1/L2/L3 split percentages. "
-        "Each row's L1 + L2 + L3 must sum to 100%. "
-        "Each category's sub-counts must sum to its total volume.",
+        "Each category has an editable grid <strong>pre-filled with industry-standard "
+        "defaults</strong> based on the totals from Step 1. Edit <strong>Dist %</strong>, "
+        "<strong>Min/Ticket</strong> or the <strong>L1/L2/L3 split</strong> directly in the "
+        "grid — counts and role-hours recompute in the results table below each grid. "
+        "Each row's L1 + L2 + L3 must sum to 100%, and each category's Dist % must sum to 100%.",
         "info",
     )
 
