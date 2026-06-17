@@ -4,26 +4,39 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
+- **`v1.2`** — *current stable.* **11-step** flow (split the old combined Step 8 into
+  **8 Costing Inputs / 9 Results Dashboard / 10 Approve & Export / 11 Compare**) and
+  relocated rate card, coverage model and delivery location onto Step 1. Adds the
+  **Tool-Based patching error-rate** model, **Saved Calculations** (versioned Blob
+  saves keyed by Customer/RFP), the **email approval workflow** (token-gated, Azure
+  Communication Services), the **editable Excel formula workbook**, per-category
+  L1/L2/L3 buffers at the heading, and the UX Phase 1+2 polish (Nagarro branding,
+  select-all-on-focus, scroll-to-top, per-page reset, tighter density). 55 passing tests.
 - **`v1.1`** — adds Step 2 per-role buffer % (default 20%) + the missing L3 Hrs column,
   and loads the rate card from **Azure Blob Storage** (managed identity) instead of a
-  local upload. Builds on v1.0.
-- **`v1.0`** — first production-ready release.
+  local upload. Builds on v1.0. (9-step flow.)
+- **`v1.0`** — first production-ready release. (9-step flow.)
 
-> In the commands below, replace `v1.0` with the version you want (e.g. `v1.1`).
+> In the commands below, replace `v1.0` with the version you want (e.g. `v1.2`).
 
-## What `v1.0` contains
-- Full Streamlit app: 9-step Ops effort/cost/pricing flow
-- Per-server patching model + auto-derived activities (Scheduled Maintenance, RCA,
-  Problem Management, Documentation & KB)
-- Multi-location rate cards + multi-currency reporting (default India / INR)
-- Excel + PDF export, in-session scenario comparison, what-if sliders,
-  Raw/Rounded FTE toggle
-- Single pure pipeline `engine.compute_full_model` (no display/export drift)
-- Cross-step input persistence fix (no silent reset to defaults on Step 8)
-- 39 passing tests
-- Azure deploy: GitHub Actions OIDC → Container Apps (scale-to-zero)
+## What `v1.2` contains (current stable)
+- Full Streamlit app: **11-step** Ops effort/cost/pricing flow (see the table in README).
+  - Inputs 1–8; outputs 9 Results / 10 Approve & Export / 11 Compare.
+  - Step 1 carries the rate-card source, coverage model and delivery location.
+- Patching: Manual (min/server × servers) **and** Tool-Based (failed servers = servers ×
+  error-rate %, × min/failed-server). Auto-derived activities (Scheduled Maintenance,
+  RCA, Problem Management, Documentation & KB).
+- Multi-location rate cards + multi-currency reporting (default India / INR).
+- Outputs: dashboard, multi-sheet Excel report, **editable Excel formula workbook**,
+  branded PDF, scenario comparison, what-if sliders, Raw/Rounded FTE toggle.
+- **Saved Calculations** — versioned, timestamped Blob saves keyed by Customer/RFP name.
+- **Email approval workflow** — token-gated review link via Azure Communication Services
+  (reviewer approves/rejects; preparer sees status only). Entra ID sign-in deferred.
+- Single pure pipeline `engine.compute_full_model` (no display/export drift).
+- Azure deploy: GitHub Actions OIDC → Container Apps (scale-to-zero); Blob via managed identity.
+- 55 passing tests.
 
-> Tip: `git show v1.0` shows the tagged commit; `git tag -n` lists tags with messages.
+> Tip: `git show v1.2` shows the tagged commit; `git tag -n` lists tags with messages.
 
 ---
 
@@ -80,6 +93,9 @@ git push origin v1.0
 # next stable releases
 git tag -a v1.1 -m "Stable Version 1.1"
 git push origin v1.1
+
+git tag -a v1.2 -m "Stable Version 1.2 — 11-step flow, error-rate patching, saved calcs, approvals"
+git push origin v1.2
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

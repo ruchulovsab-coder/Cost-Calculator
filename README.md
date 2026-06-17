@@ -26,17 +26,27 @@ Push-to-deploy to Azure via GitHub Actions (OIDC, no stored secrets). See **[DEP
 
 ## Step Flow
 
+The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
+9–11 are outputs.
+
 | Step | Name | Purpose |
 |------|------|---------|
-| 1 | Workload Volumetrics | Monthly alert/ticket volumes |
-| 2 | Resolution Split | L1/L2/L3 % + severity distribution + effort minutes + overhead roles + patching role |
-| 3 | Patching | Server count + method (per-server effort model) |
-| 4 | Additional Activities | Auto-derived (toggle) + custom monthly operational hours |
-| 5 | Effort Summary | Contingency buffer + role hours preview |
-| 6 | Coverage & FTE | Coverage model, shift multiplier, FTE calculation |
-| 7 | Rate Card & Mapping | Upload Genus rate card, pick country/location, map roles to grades |
-| 8 | Cost, Pricing & Dashboard | Expenses, margin, reporting currency, Raw/Rounded FTE toggle, dashboard, Excel/PDF export, what-if |
-| 9 | Scenario Comparison | Compare saved/uploaded scenarios side by side |
+| 1 | Workload Volumetrics | Estimate details (Customer/RFP name, prepared by) · **Support Coverage Model** · **rate-card source** (collapsible grades table) · **Delivery Location** (country/location) · monthly alert/ticket volumes |
+| 2 | Resolution Split | L1/L2/L3 % + severity distribution + effort minutes. One **L1/L2/L3 buffer %** per category, set at the category heading (default 20%) |
+| 3 | Patching | Server count + method. **Manual** = min/server × servers; **Tool-Based** = (servers × error-rate %) failed servers × min/failed-server. Plus the patching role assignment |
+| 4 | Additional Activities | Auto-derived (per-row Auto toggle) + custom monthly operational hours |
+| 5 | Effort Summary | Contingency buffer + **Overhead Role Effort** (Architect/SDM/SSDM %) + role-hours preview |
+| 6 | Coverage & FTE | Shift multiplier (from the Step 1 coverage model), working hours, productive utilisation, FTE |
+| 7 | Grade Mapping | Map each role to a Genus grade from the loaded rate card |
+| 8 | Costing Inputs | Transition, expenses, SLA provision, target margin, reporting currency + FX, Raw/Rounded FTE toggle, plus a compact estimate headline |
+| 9 | Results Dashboard | Resource Cost, Executive Summary, Effort breakdown + charts, Resolution detail, FTE Summary, Cost Waterfall, Financial Summary |
+| 10 | Approve & Export | Approval workflow (request / approve / reject), What-If sliders, downloads (Excel report, Editable Excel, PDF) |
+| 11 | Compare | Compare saved/uploaded scenarios side by side |
+
+> **History note:** through v1.1 this was a **9-step** flow with the rate card,
+> coverage model and delivery location on later pages, and a single combined
+> "Cost, Pricing & Dashboard" Step 8. v1.2 relocated those inputs to Step 1 and
+> split the old Step 8 into Steps 8–11.
 
 ---
 
@@ -72,8 +82,11 @@ included in the monthly delivery cost.
 
 All defaults are **editable recommendations**.
 
-**Patching** = minutes-per-server × server count:
-- Manual: **45 min/server**, Automated (tool-based): **30 min/server**, default **20 servers**.
+**Patching** (Step 3), default **20 servers**:
+- **Manual** = min/server × servers (default **45 min/server**) — every server is patched by hand.
+- **Tool-Based** = `round(servers × error-rate %)` failed servers × min/failed-server
+  (default **30 min/failed server**, **10%** error rate). Only the servers the tool
+  fails on need manual effort; e.g. 100 servers × 15% = 15 failed × 30 min = 7.5 hrs/month.
 
 **Auto-derived additional activities** (Step 4) — each has an **Auto** toggle (on by
 default) and a tooltip/expander showing its formula. Monthly hours = (Σ terms) ÷ 60:
@@ -91,9 +104,9 @@ Excel (.xlsx) with columns: **Country, Location, Genus, Hourly Rate, Rate Curren
 
 Sample rate card included: `sample_rate_card.xlsx`
 
-Step 7 lets you pick any **country / location** present in the card (defaults to
-India). Rates quoted in a non-INR currency are converted to INR using the
-exchange rates you enter on Step 8.
+**Step 1** lets you load the card and pick any **country / location** present in it
+(defaults to India); **Step 7** maps each role to a Genus grade. Rates quoted in a
+non-INR currency are converted to INR using the exchange rates you enter on Step 8.
 
 ## Multi-Currency Reporting
 
@@ -108,8 +121,12 @@ provide.
 - **PDF proposal** — client-facing branded quote
 - **Scenario comparison** — save scenarios in-session and compare effort / FTE /
   cost / price side by side (or import/export as JSON)
-- **What-If analysis** — live sliders on the dashboard for volume, margin,
-  contingency and coverage
+- **What-If analysis** — live sliders (Step 10) for volume, margin, contingency
+  and coverage; never mutate your saved inputs
+- **Approval workflow** (Step 10) — request approval by email; reviewer approves /
+  rejects via a tokened link; preparer sees status only
+- **Saved Calculations** — versioned, timestamped saves keyed by Customer/RFP name
+  (Azure Blob), reloadable across sessions
 
 ## Architecture
 
