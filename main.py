@@ -228,92 +228,26 @@ def _resume_draft_now(slug: str):
     st.session_state["prepared_by"] = rec.get("prepared_by", "")
     st.session_state["current_step"] = rec.get("inputs", {}).get("current_step", 1)
     st.session_state["_active_draft_slug"] = slug
-    st.session_state["_restore_resolved_slug"] = slug
+    st.session_state["_resume_resolved"] = True
     st.rerun()
 
 
-@st.dialog("Resume previous work?")
-def _restore_dialog(slug, rec):
-    proj = rec.get("project") or slug
-    when = rec.get("saved_at", "")
-    by = rec.get("prepared_by") or "—"
-    st.write(f"An unsaved draft for **{proj}** already exists "
-             f"(last edited {when} UTC, by {by}).")
-    st.caption("Load it to continue where it was left off, or start afresh. "
-               "Starting afresh keeps the old draft as an orphan — it is not deleted.")
-    c1, c2 = st.columns(2)
-    if c1.button("↩️ Continue previous", type="primary", key="restore_continue",
-                 use_container_width=True):
-        _resume_draft_now(slug)
-    if c2.button("🆕 Start afresh", key="restore_fresh", use_container_width=True):
-        from modules.state.draft_store import orphan_draft
-        from modules.state.session_manager import reset_all
-        orphan_draft(slug)
-        keep_name = st.session_state.get("project_name", proj)
-        keep_by = st.session_state.get("prepared_by", "")
-        reset_all()
-        st.session_state["project_name"] = keep_name
-        st.session_state["prepared_by"] = keep_by
-        st.session_state["current_step"] = 1
-        st.session_state["_active_draft_slug"] = slug
-        st.session_state["_restore_resolved_slug"] = slug
-        st.rerun()
-
-
-def _maybe_prompt_restore():
-    """When the user identifies a project (Step 1) that has a resumable draft this
-    session didn't create, offer to resume it. Name-driven discovery."""
-    if st.session_state.get("_review") or st.session_state.get("_confirm_reset_all"):
-        return
-    try:
-        from modules.state.estimate_store import store_configured, slugify
-        if not store_configured():
-            return
-        project = (st.session_state.get("project_name") or "").strip()
-        if not project:
-            return
-        slug = slugify(project)
-        if st.session_state.get("_active_draft_slug") == slug:
-            return  # our own in-progress work
-        if st.session_state.get("_restore_resolved_slug") == slug:
-            return  # already chosen for this project
-        from modules.state.draft_store import get_draft, is_resumable
-        rec = get_draft(slug)
-        if not rec or not is_resumable(rec.get("saved_at", "")):
-            return
-        _restore_dialog(slug, rec)
-    except Exception:
-        pass
-
-
-def render_resumable_sidebar():
-    """Backstop discovery: list every resumable draft so work can be picked up even
-    when the exact Customer/RFP name isn't remembered."""
-    try:
-        from modules.state.estimate_store import store_configured
-        if not store_configured():
-            return
-        from modules.state.draft_store import list_drafts
-        drafts = list_drafts()
-    except Exception:
-        return
-    active = st.session_state.get("_active_draft_slug")
-    others = [d for d in drafts if d["slug"] != active]
-    if not others:
-        return
-    st.divider()
-    st.markdown(
-        "<div style='color:#A8DDD8;font-size:0.72rem;text-transform:uppercase;"
-        "letter-spacing:1px;margin-bottom:4px'>Resume a draft</div>",
-        unsafe_allow_html=True,
+# ── Identity gate: a valid Nagarro email unlocks the app ─────────────────────────
+# Token-link visitors (approval reviewer / orphan-deletion recipient) are identified
+# by their token, not an email, so they bypass the gate.
+_token_mode = bool(st.session_state.get("_review") or st.session_state.get("_orphan_review"))
+if not _token_mode:
+    from modules.inputs.identity_gate import (
+        valid_nagarro_email, render_email_gate, render_resume_modal, drafts_for_email,
     )
-    for d in others[:8]:
-        label = d["project"] or d["slug"]
-        age = d["age_days"]
-        agestr = "today" if age < 1 else f"{int(age)}d ago"
-        if st.button(f"↩️ {label}  ·  {agestr}", key=f"resume_{d['slug']}",
-                     use_container_width=True, type="secondary"):
-            _resume_draft_now(d["slug"])
+    if not valid_nagarro_email(st.session_state.get("user_email", "")):
+        render_email_gate()
+        st.stop()
+    if not st.session_state.get("_resume_resolved"):
+        if drafts_for_email(st.session_state["user_email"]):
+            render_resume_modal(st.session_state["user_email"], _resume_draft_now)
+            st.stop()
+        st.session_state["_resume_resolved"] = True
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -355,7 +289,6 @@ with st.sidebar:
                      use_container_width=True, type=btn_type):
             goto_step(n)
 
-    render_resumable_sidebar()
     render_saved_calc_sidebar()
     render_scenario_sidebar()
 
@@ -445,9 +378,6 @@ def _confirm_reset_all():
 
 if st.session_state.get("_confirm_reset_all"):
     _confirm_reset_all()
-else:
-    # Offer to resume a prior unsaved draft once the user names the project.
-    _maybe_prompt_restore()
 
 if render_fn:
     step_valid = render_fn()

@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.5`** — *current stable.* Builds on v1.4: **draft autosave + orphan recovery**.
+- **`v1.6`** — *current stable.* Builds on v1.5: **email identity gate + blocking resume
+  modal**. The app is gated behind a **Nagarro email** (`@nagarro.com`, auto-lowercased) —
+  nothing else renders until a valid one is entered, so all fields/buttons/nav stay
+  locked. That email becomes the owner key for the user's drafts and saved versions and
+  pre-fills "Prepared By" (the editable Prepared-By field is removed from Step 1). The
+  "Resume a draft" sidebar list is replaced by a **non-dismissible full-screen modal**
+  (shown only when that email has drafts) offering *Resume* (lists the user's own drafts
+  with details) or *Start afresh*. Token-link visitors (approval reviewer / orphan
+  deletion) bypass the gate. Calculation contract unchanged. 71 passing tests.
+- **`v1.5`** — Builds on v1.4: **draft autosave + orphan recovery**.
   Work-in-progress is silently saved per Customer/RFP on every page navigation
   (`__drafts__/<slug>.json`); naming a project with an existing draft prompts to
   resume or start afresh, and a sidebar lists resumable drafts. Abandoned drafts
@@ -40,7 +49,20 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.5` contains (current stable)
+## What `v1.6` contains (current stable)
+- Everything in v1.5 (below), plus the **email identity gate + blocking resume modal**:
+  - **Gate** (`modules/inputs/identity_gate.py`) — a valid `@nagarro.com` email (auto
+    lower-cased, regex-validated) is required before anything else renders; the screen
+    halts via `st.stop()` so every field, button and the step nav stay locked.
+  - **Owner key** — that email is stored on each draft (`prepared_by`) and used to scope
+    "Resume a draft" to the current user; it also pre-fills approval emails. The editable
+    Prepared-By text field is removed from Step 1 (shown read-only instead).
+  - **Resume modal** — replaces the sidebar "Resume a draft" list with a full-screen,
+    non-dismissible modal shown only when the email has drafts; offers *Resume* (lists the
+    user's own drafts with details) or *Start afresh* (drafts are kept, not orphaned).
+  - **Token bypass** — approval-reviewer and orphan-deletion token links skip the gate.
+
+## What `v1.5` contains
 - Everything in v1.4 (below), plus **per-project draft autosave + orphan recovery**:
   - **Autosave** — WIP is saved to `__drafts__/<slug>.json` on every page navigation
     (centralised through `goto_step()`); silent, keyed by the Customer/RFP slug.
@@ -166,6 +188,9 @@ git push origin v1.4
 
 git tag -a v1.5 -m "Stable Version 1.5 — draft autosave + orphan recovery (token-gated cleanup)"
 git push origin v1.5
+
+git tag -a v1.6 -m "Stable Version 1.6 — Nagarro email identity gate + blocking resume modal"
+git push origin v1.6
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
