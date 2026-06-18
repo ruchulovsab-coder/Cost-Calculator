@@ -121,18 +121,13 @@ def render_step1() -> bool:
 
     # ── Estimate identity (required) ──────────────────────────
     section_hdr("📇 Estimate Details")
-    ic1, ic2 = st.columns(2)
-    proj = ic1.text_input(
+    proj = st.text_input(
         "Customer / RFP Name *", value=st.session_state.get("project_name", ""),
         key="project_name_w", placeholder="e.g. Acme Corp — Infra RFP 2026",
         help="Every estimate is identified and saved under this name.")
     st.session_state["project_name"] = proj
-    prep = ic2.text_input(
-        "Prepared By *", value=st.session_state.get("prepared_by", ""),
-        key="prepared_by_w", placeholder="Your name",
-        help="Identifies who prepared the estimate — used on approval emails and to "
-             "label any saved/recovered drafts.")
-    st.session_state["prepared_by"] = prep
+    st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — used on "
+               "approval emails and to label your saved versions and drafts.")
     st.divider()
 
     # ── Engagement setup: coverage + rate card + delivery location (on Step 1) ──
@@ -202,9 +197,6 @@ def render_step1() -> bool:
     ok = True
     if not proj.strip():
         callout("Enter a <strong>Customer / RFP name</strong> above to begin.", "warning")
-        ok = False
-    if not prep.strip():
-        callout("Enter <strong>Prepared By</strong> above (who is preparing this estimate).", "warning")
         ok = False
     if grand == 0:
         callout("Enter at least one volume to proceed to Step 2.", "warning")
