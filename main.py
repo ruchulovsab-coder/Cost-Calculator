@@ -50,6 +50,20 @@ def inject_auto_select():
         width=0,
     )
 
+def inject_close_warning(active: bool):
+    """Native browser 'leave site?' prompt while there's unsaved work in progress.
+    Autosave persists on every navigation, so this guards in-page edits made since
+    the last navigation. Cleared when there's no active WIP."""
+    if active:
+        body = (
+            "try { window.parent.onbeforeunload = function (e) {"
+            " e.preventDefault(); e.returnValue = ''; return ''; }; } catch (e) {}"
+        )
+    else:
+        body = "try { window.parent.onbeforeunload = null; } catch (e) {}"
+    components.html(f"<script>{body}</script>", height=0, width=0)
+
+
 st.set_page_config(
     page_title="Cloud & Infrastructure Practices — Ops Effort Estimation Tool",
     page_icon="⚙️",
@@ -377,6 +391,13 @@ if st.session_state.get("_scroll_last") != current:
         try { window.parent.scrollTo(0, 0); } catch (x) {}
         </script>""", height=0, width=0,
     )
+
+# Warn before closing the tab while an estimate is in progress (not on the
+# token-gated orphan-deletion page, which carries no WIP of its own).
+inject_close_warning(
+    bool((st.session_state.get("project_name") or "").strip())
+    and not st.session_state.get("_orphan_review")
+)
 
 
 # ── Full-page orphan clean-up views (bypass the step nav) ────────────────────────

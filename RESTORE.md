@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.4`** — *current stable.* Builds on v1.3: **Step 4 (Additional Activities)**
+- **`v1.5`** — *current stable.* Builds on v1.4: **draft autosave + orphan recovery**.
+  Work-in-progress is silently saved per Customer/RFP on every page navigation
+  (`__drafts__/<slug>.json`); naming a project with an existing draft prompts to
+  resume or start afresh, and a sidebar lists resumable drafts. Abandoned drafts
+  (declined, or untouched > 30 days) become **orphans** (`__orphans__/…`), cleaned up
+  via a token-gated, emailed deletion link (same pattern as the approval workflow) —
+  never deleted directly on screen. **Prepared By** is now required on Step 1, and a
+  browser warn-on-close guards unsaved in-page edits. Calculation contract unchanged.
+  69 passing tests.
+- **`v1.4`** — Builds on v1.3: **Step 4 (Additional Activities)**
   rebuilt with `st.data_editor` (dynamic add/delete rows, Auto/derived hours + role-%
   split, read-only validation table) — completing the input-grid redesign begun with
   Step 2. Calculation contract unchanged. 55 passing tests.
@@ -31,7 +40,26 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.4` contains (current stable)
+## What `v1.5` contains (current stable)
+- Everything in v1.4 (below), plus **per-project draft autosave + orphan recovery**:
+  - **Autosave** — WIP is saved to `__drafts__/<slug>.json` on every page navigation
+    (centralised through `goto_step()`); silent, keyed by the Customer/RFP slug.
+  - **Restore** — naming a project that has a resumable draft (≤ 30 days, not created
+    this session) prompts *Continue previous* / *Start afresh*; a sidebar lists all
+    resumable drafts as a backstop.
+  - **Orphans** — declined or > 30-day-old drafts surface as orphans
+    (`__orphans__/<slug>__<ts>.json`); the 30-day clock is evaluated lazily on read
+    (no background job — the app is scale-to-zero).
+  - **Token-gated cleanup** — the "🧹 Clean up drafts" indicator opens a review page
+    to email a recipient a `?orphan=<token>` link; deletion is confirmed by the
+    recipient on a scoped page (reuses the approval email + tokened-link pattern).
+    Nothing is deleted directly on screen.
+  - **Prepared By** is required on Step 1; a browser **warn-on-close** guards unsaved
+    in-page edits. New modules: `modules/state/draft_store.py`,
+    `modules/state/orphan_review.py`, `modules/outputs/orphan_admin.py`.
+    `config.DRAFT_ORPHAN_DAYS = 30`. Calculation contract unchanged.
+
+## What `v1.4` contains
 - Everything in v1.3 (below), plus: **Step 4 (Additional Activities)** rebuilt with
   `st.data_editor` — dynamic add/delete rows, an Auto toggle that derives hours from
   servers/volumes, the six role-% split columns, and a read-only validation table.
@@ -135,6 +163,9 @@ git push origin v1.3
 
 git tag -a v1.4 -m "Stable Version 1.4 — Step 4 Additional Activities rebuilt with st.data_editor"
 git push origin v1.4
+
+git tag -a v1.5 -m "Stable Version 1.5 — draft autosave + orphan recovery (token-gated cleanup)"
+git push origin v1.5
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
