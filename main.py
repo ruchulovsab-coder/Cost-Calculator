@@ -160,6 +160,136 @@ def step_icon(n):
     return "○"
 
 
+# ── Draft autosave + restore ────────────────────────────────────────────────────
+def _autosave_draft():
+    """Silently persist the current WIP as this project's live draft (best-effort).
+    Fires on every page navigation. No-op when the store is unconfigured or the
+    project is still unnamed."""
+    try:
+        from modules.state.estimate_store import store_configured, slugify
+        if not store_configured():
+            return
+        project = (st.session_state.get("project_name") or "").strip()
+        if not project:
+            return
+        from modules.state.draft_store import save_draft
+        from modules.state.session_manager import serialize_inputs
+        slug = slugify(project)
+        if save_draft(slug, project, st.session_state.get("prepared_by", ""), serialize_inputs()):
+            # This session now "owns" the draft for this slug, so we don't prompt to
+            # restore our own in-progress work.
+            st.session_state["_active_draft_slug"] = slug
+    except Exception:
+        pass
+
+
+def goto_step(n: int):
+    """Single navigation entry point: autosave the current draft, then move."""
+    _autosave_draft()
+    st.session_state.current_step = n
+    st.rerun()
+
+
+def _resume_draft_now(slug: str):
+    """Load a stored draft back into the session and land where it was left off."""
+    from modules.state.draft_store import get_draft
+    from modules.state.session_manager import load_scenario
+    rec = get_draft(slug)
+    if not rec:
+        return
+    load_scenario({"inputs": rec.get("inputs", {})})
+    st.session_state["project_name"] = rec.get("project", "")
+    st.session_state["prepared_by"] = rec.get("prepared_by", "")
+    st.session_state["current_step"] = rec.get("inputs", {}).get("current_step", 1)
+    st.session_state["_active_draft_slug"] = slug
+    st.session_state["_restore_resolved_slug"] = slug
+    st.rerun()
+
+
+@st.dialog("Resume previous work?")
+def _restore_dialog(slug, rec):
+    proj = rec.get("project") or slug
+    when = rec.get("saved_at", "")
+    by = rec.get("prepared_by") or "—"
+    st.write(f"An unsaved draft for **{proj}** already exists "
+             f"(last edited {when} UTC, by {by}).")
+    st.caption("Load it to continue where it was left off, or start afresh. "
+               "Starting afresh keeps the old draft as an orphan — it is not deleted.")
+    c1, c2 = st.columns(2)
+    if c1.button("↩️ Continue previous", type="primary", key="restore_continue",
+                 use_container_width=True):
+        _resume_draft_now(slug)
+    if c2.button("🆕 Start afresh", key="restore_fresh", use_container_width=True):
+        from modules.state.draft_store import orphan_draft
+        from modules.state.session_manager import reset_all
+        orphan_draft(slug)
+        keep_name = st.session_state.get("project_name", proj)
+        keep_by = st.session_state.get("prepared_by", "")
+        reset_all()
+        st.session_state["project_name"] = keep_name
+        st.session_state["prepared_by"] = keep_by
+        st.session_state["current_step"] = 1
+        st.session_state["_active_draft_slug"] = slug
+        st.session_state["_restore_resolved_slug"] = slug
+        st.rerun()
+
+
+def _maybe_prompt_restore():
+    """When the user identifies a project (Step 1) that has a resumable draft this
+    session didn't create, offer to resume it. Name-driven discovery."""
+    if st.session_state.get("_review") or st.session_state.get("_confirm_reset_all"):
+        return
+    try:
+        from modules.state.estimate_store import store_configured, slugify
+        if not store_configured():
+            return
+        project = (st.session_state.get("project_name") or "").strip()
+        if not project:
+            return
+        slug = slugify(project)
+        if st.session_state.get("_active_draft_slug") == slug:
+            return  # our own in-progress work
+        if st.session_state.get("_restore_resolved_slug") == slug:
+            return  # already chosen for this project
+        from modules.state.draft_store import get_draft, is_resumable
+        rec = get_draft(slug)
+        if not rec or not is_resumable(rec.get("saved_at", "")):
+            return
+        _restore_dialog(slug, rec)
+    except Exception:
+        pass
+
+
+def render_resumable_sidebar():
+    """Backstop discovery: list every resumable draft so work can be picked up even
+    when the exact Customer/RFP name isn't remembered."""
+    try:
+        from modules.state.estimate_store import store_configured
+        if not store_configured():
+            return
+        from modules.state.draft_store import list_drafts
+        drafts = list_drafts()
+    except Exception:
+        return
+    active = st.session_state.get("_active_draft_slug")
+    others = [d for d in drafts if d["slug"] != active]
+    if not others:
+        return
+    st.divider()
+    st.markdown(
+        "<div style='color:#A8DDD8;font-size:0.72rem;text-transform:uppercase;"
+        "letter-spacing:1px;margin-bottom:4px'>Resume a draft</div>",
+        unsafe_allow_html=True,
+    )
+    for d in others[:8]:
+        label = d["project"] or d["slug"]
+        age = d["age_days"]
+        agestr = "today" if age < 1 else f"{int(age)}d ago"
+        if st.button(f"↩️ {label}  ·  {agestr}", key=f"resume_{d['slug']}",
+                     use_container_width=True, type="secondary"):
+            _resume_draft_now(d["slug"])
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     _logo = os.path.join(os.path.dirname(__file__), "assets", "nagarro_logo.png")
@@ -197,9 +327,9 @@ with st.sidebar:
         btn_type = "primary" if is_cur else "secondary"
         if st.button(f"{icon}  {n}. {name}", key=f"nav_{n}",
                      use_container_width=True, type=btn_type):
-            st.session_state.current_step = n
-            st.rerun()
+            goto_step(n)
 
+    render_resumable_sidebar()
     render_saved_calc_sidebar()
     render_scenario_sidebar()
 
@@ -254,6 +384,9 @@ def _confirm_reset_all():
 
 if st.session_state.get("_confirm_reset_all"):
     _confirm_reset_all()
+else:
+    # Offer to resume a prior unsaved draft once the user names the project.
+    _maybe_prompt_restore()
 
 if render_fn:
     step_valid = render_fn()
@@ -264,8 +397,7 @@ if render_fn:
     with nav_l:
         if current > 1:
             if st.button("← Back", type="secondary", key="btn_back"):
-                st.session_state.current_step = current - 1
-                st.rerun()
+                goto_step(current - 1)
     with nav_mid:
         if step_has_reset(current):
             if st.button("↺ Reset this page", type="secondary", key="btn_reset_page"):
@@ -274,7 +406,6 @@ if render_fn:
     with nav_r:
         if next_label and step_valid:
             if st.button(next_label, type="primary", key="btn_next"):
-                st.session_state.current_step = current + 1
-                st.rerun()
+                goto_step(current + 1)
         elif next_label and not step_valid:
             st.warning("⚠️ Please fix the validation errors above before proceeding.")

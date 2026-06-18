@@ -150,6 +150,12 @@ RESOLUTION_ROLES = ["L1", "L2", "L3"]
 # Default per-row, per-role effort buffer (%) applied to L1/L2/L3 hours in Step 2.
 DEFAULT_ROLE_BUFFER_PCT = 20.0
 
+# Draft autosave / orphan recovery: a per-project WIP draft is "resumable" while it
+# is at most this many days old. Older drafts (and any draft the user explicitly
+# abandons via "start afresh") are treated as orphans. The clock is evaluated lazily
+# on read — the app is scale-to-zero, so no background job runs to expire drafts.
+DRAFT_ORPHAN_DAYS = 30
+
 # ── Server patching effort defaults ───────────────────────────────────────────
 # Effort is modelled as (minutes per server × server count). All values are
 # user-editable; these are the recommended starting points.

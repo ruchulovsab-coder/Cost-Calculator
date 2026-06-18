@@ -128,8 +128,10 @@ def render_step1() -> bool:
         help="Every estimate is identified and saved under this name.")
     st.session_state["project_name"] = proj
     prep = ic2.text_input(
-        "Prepared By", value=st.session_state.get("prepared_by", ""),
-        key="prepared_by_w", placeholder="Your name")
+        "Prepared By *", value=st.session_state.get("prepared_by", ""),
+        key="prepared_by_w", placeholder="Your name",
+        help="Identifies who prepared the estimate — used on approval emails and to "
+             "label any saved/recovered drafts.")
     st.session_state["prepared_by"] = prep
     st.divider()
 
@@ -200,6 +202,9 @@ def render_step1() -> bool:
     ok = True
     if not proj.strip():
         callout("Enter a <strong>Customer / RFP name</strong> above to begin.", "warning")
+        ok = False
+    if not prep.strip():
+        callout("Enter <strong>Prepared By</strong> above (who is preparing this estimate).", "warning")
         ok = False
     if grand == 0:
         callout("Enter at least one volume to proceed to Step 2.", "warning")
