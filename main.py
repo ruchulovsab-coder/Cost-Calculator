@@ -116,6 +116,18 @@ def _maybe_load_review():
 
 _maybe_load_review()
 
+
+# ── Deep link: orphan-deletion review  (?orphan=<token>) ─────────────────────────
+def _maybe_load_orphan_review():
+    qp = st.query_params
+    tok = qp.get("orphan")
+    if not tok or st.session_state.get("_orphan_loaded"):
+        return
+    st.session_state["_orphan_loaded"] = True
+    st.session_state["_orphan_review"] = {"token": tok}
+
+_maybe_load_orphan_review()
+
 # ── Step renderers ─────────────────────────────────────────────────────────────
 from modules.inputs.steps_1_2 import render_step1, render_step2
 from modules.inputs.steps_3_5 import render_step3, render_step4, render_step5
@@ -337,6 +349,18 @@ with st.sidebar:
     if st.button("🔄 Reset All", key="btn_reset_all", use_container_width=True, type="secondary"):
         st.session_state["_confirm_reset_all"] = True
 
+    # Orphaned-draft clean-up indicator (only shown when there's something to clean up)
+    try:
+        from modules.outputs.orphan_admin import orphan_count_cached
+        _orphans = orphan_count_cached()
+    except Exception:
+        _orphans = 0
+    if _orphans:
+        if st.button(f"🧹 Clean up drafts ({_orphans})", key="btn_orphan_admin",
+                     use_container_width=True, type="secondary"):
+            st.session_state["_show_orphan_admin"] = True
+            st.rerun()
+
 
 # ── Main content ───────────────────────────────────────────────────────────────
 current = st.session_state.get("current_step", 1)
@@ -353,6 +377,22 @@ if st.session_state.get("_scroll_last") != current:
         try { window.parent.scrollTo(0, 0); } catch (x) {}
         </script>""", height=0, width=0,
     )
+
+
+# ── Full-page orphan clean-up views (bypass the step nav) ────────────────────────
+if st.session_state.get("_orphan_review"):
+    from modules.outputs.orphan_admin import render_orphan_delete
+    render_orphan_delete(st.session_state["_orphan_review"]["token"])
+    st.stop()
+
+if st.session_state.get("_show_orphan_admin"):
+    from modules.outputs.orphan_admin import render_orphan_admin
+    render_orphan_admin()
+    st.divider()
+    if st.button("← Back to estimate", key="orph_back", type="secondary"):
+        st.session_state.pop("_show_orphan_admin", None)
+        st.rerun()
+    st.stop()
 
 
 @st.dialog("Reset this page?")

@@ -17,26 +17,36 @@ def email_configured() -> bool:
     return bool(sender and (conn or endpoint))
 
 
-def send_review_email(reviewer_email: str, project: str, version, link: str, requested_by: str = ""):
-    """Send the approval-review email. Raises on failure; returns the send result."""
+def _email_client():
+    """Build an ACS EmailClient from a connection string or managed identity."""
     from azure.communication.email import EmailClient
-
-    sender = os.environ["ACS_SENDER"].strip()
     conn = os.environ.get("ACS_CONNECTION_STRING", "").strip()
     if conn:
-        client = EmailClient.from_connection_string(conn)
-    else:
-        from azure.identity import DefaultAzureCredential
-        endpoint = os.environ["ACS_ENDPOINT"].strip()
-        client = EmailClient(endpoint, DefaultAzureCredential(exclude_interactive_browser_credential=True))
+        return EmailClient.from_connection_string(conn)
+    from azure.identity import DefaultAzureCredential
+    endpoint = os.environ["ACS_ENDPOINT"].strip()
+    return EmailClient(endpoint, DefaultAzureCredential(exclude_interactive_browser_credential=True))
 
-    from modules.notify.email_templates import review_request
-    subject, text, html = review_request(project, version, link, requested_by)
 
+def _send(recipient_email: str, subject: str, text: str, html: str):
+    """Dispatch one email. Raises on failure; returns the send result."""
     message = {
-        "senderAddress": sender,
-        "recipients": {"to": [{"address": reviewer_email}]},
+        "senderAddress": os.environ["ACS_SENDER"].strip(),
+        "recipients": {"to": [{"address": recipient_email}]},
         "content": {"subject": subject, "plainText": text, "html": html},
     }
-    poller = client.begin_send(message)
-    return poller.result()
+    return _email_client().begin_send(message).result()
+
+
+def send_review_email(reviewer_email: str, project: str, version, link: str, requested_by: str = ""):
+    """Send the approval-review email. Raises on failure; returns the send result."""
+    from modules.notify.email_templates import review_request
+    subject, text, html = review_request(project, version, link, requested_by)
+    return _send(reviewer_email, subject, text, html)
+
+
+def send_orphan_review_email(recipient_email: str, requested_by: str, count, link: str):
+    """Send the orphan-cleanup deletion-request email. Raises on failure."""
+    from modules.notify.email_templates import orphan_review_request
+    subject, text, html = orphan_review_request(requested_by, count, link)
+    return _send(recipient_email, subject, text, html)
