@@ -4,7 +4,15 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.6`** — *current stable.* Builds on v1.5: **email identity gate + blocking resume
+- **`v1.7`** — *current stable.* Builds on v1.6: **Chat/Manual mode chooser (Phase 1)**.
+  After the email gate the user picks how to build the estimate — **Manual** opens the
+  existing app unchanged; **Chat** is a placeholder ("coming soon") carrying the PII /
+  scope note (the full conversational flow + Azure OpenAI land in Phase 2). The chooser
+  is shown every session and is switchable from either side (sidebar **Switch to Chat**;
+  in-chat **Switch to manual**); the resume-draft modal is now scoped to Manual mode.
+  Pure routing — no AI, calculation engine untouched. Token-link visitors bypass it.
+  71 passing tests.
+- **`v1.6`** — Builds on v1.5: **email identity gate + blocking resume
   modal**. The app is gated behind a **Nagarro email** (`@nagarro.com`, auto-lowercased) —
   nothing else renders until a valid one is entered, so all fields/buttons/nav stay
   locked. That email becomes the owner key for the user's drafts and saved versions and
@@ -49,7 +57,17 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.6` contains (current stable)
+## What `v1.7` contains (current stable)
+- Everything in v1.6 (below), plus the **Chat/Manual mode chooser (Phase 1)**:
+  - After the email gate, a blocking **"How would you like to build this estimate?"**
+    screen (`modules/inputs/mode_gate.py`) offering **💬 Chat** or **✍️ Manual**.
+  - **Manual** routes to the existing app **verbatim** — no feature/function change.
+  - **Chat** is a **Phase-1 placeholder** ("coming soon") with the PII / scope note; the
+    conversational flow + **Azure OpenAI** (India delivery rates) arrive in Phase 2.
+  - Shown **every session**; switchable both ways; the resume-draft modal is scoped to
+    Manual mode; token-link visitors (approval / orphan) bypass the chooser.
+
+## What `v1.6` contains
 - Everything in v1.5 (below), plus the **email identity gate + blocking resume modal**:
   - **Gate** (`modules/inputs/identity_gate.py`) — a valid `@nagarro.com` email (auto
     lower-cased, regex-validated) is required before anything else renders; the screen
@@ -191,6 +209,9 @@ git push origin v1.5
 
 git tag -a v1.6 -m "Stable Version 1.6 — Nagarro email identity gate + blocking resume modal"
 git push origin v1.6
+
+git tag -a v1.7 -m "Stable Version 1.7 — Chat/Manual mode chooser (Phase 1; Chat placeholder)"
+git push origin v1.7
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
