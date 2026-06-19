@@ -21,21 +21,21 @@ def test_normalize_coverage_fallback():
 
 
 def test_model_id_default_and_override(monkeypatch):
-    monkeypatch.delenv("GEMINI_MODEL", raising=False)
-    assert CA.model_id() == "gemini-2.0-flash"
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-flash")
-    assert CA.model_id() == "gemini-2.5-flash"
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
+    assert CA.model_id() == "llama-3.3-70b-versatile"
+    monkeypatch.setenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    assert CA.model_id() == "llama-3.1-8b-instant"
 
 
 def test_llm_configured_reflects_env(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     assert CA.llm_configured() is False
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
     assert CA.llm_configured() is True
 
 
 def test_run_chat_turn_unconfigured_returns_error(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     out = CA.run_chat_turn([{"role": "user", "content": "hi"}])
     assert out["type"] == "error"
 
@@ -61,11 +61,11 @@ def test_parse_response_garbage_falls_back_to_question():
     assert out["type"] == "question" and out["text"]
 
 
-def test_to_contents_maps_roles():
-    contents = CA._to_contents([
+def test_to_messages_prepends_system_and_maps_roles():
+    out = CA._to_messages([
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "hello"},
     ])
-    assert contents[0]["role"] == "user"
-    assert contents[1]["role"] == "model"
-    assert contents[1]["parts"][0]["text"] == "hello"
+    assert out[0]["role"] == "system" and out[0]["content"]
+    assert out[1] == {"role": "user", "content": "hi"}
+    assert out[2] == {"role": "assistant", "content": "hello"}

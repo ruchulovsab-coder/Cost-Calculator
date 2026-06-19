@@ -4,7 +4,13 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.9`** — *current stable.* Bug-fix on v1.8: the Chat reply loop is rebuilt to the
+- **`v1.10`** — *current stable.* Chat AI provider switched from Google Gemini to **Groq**
+  (free tier, OpenAI-compatible) — Gemini's free tier returned `limit: 0` for the user's
+  account. Model `llama-3.3-70b-versatile` (override with `GROQ_MODEL`), via `GROQ_API_KEY`;
+  `groq` dependency; workflow injects `GROQ_API_KEY` (Secret/Var) + `GROQ_MODEL`. Same guarded
+  chat + JSON `{action,message,inputs}` contract + India-rates cook-it flow; degrades gracefully
+  when the key is unset. 80 passing tests.
+- **`v1.9`** — Bug-fix on v1.8: the Chat reply loop is rebuilt to the
   standard Streamlit pattern — the assistant's question/answer (and, crucially, any **error**
   such as a Gemini rate-limit or auth failure) now renders **inline and stays visible** instead
   of being wiped by an immediate rerun (which made it look like "nothing happened" after the
@@ -251,6 +257,9 @@ git push origin v1.8
 
 git tag -a v1.9 -m "Stable Version 1.9 — fix Chat reply/error rendering (inline, persistent)"
 git push origin v1.9
+
+git tag -a v1.10 -m "Stable Version 1.10 — Chat AI provider switched to Groq (free tier)"
+git push origin v1.10
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
