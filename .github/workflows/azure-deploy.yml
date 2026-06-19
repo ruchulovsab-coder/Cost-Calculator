@@ -58,6 +58,11 @@ jobs:
       ACS_ENDPOINT: ${{ vars.ACS_ENDPOINT }}
       ACS_SENDER: ${{ vars.ACS_SENDER }}
       ACS_CONNECTION_STRING: ${{ secrets.ACS_CONNECTION_STRING }}
+      # Conversational "Chat to estimate" (Google Gemini, free tier) — optional.
+      # Accept the key from Secrets (recommended — encrypted/masked) OR Variables.
+      # GEMINI_MODEL is an optional Variable (defaults to gemini-2.0-flash in code).
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || vars.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -144,6 +149,8 @@ jobs:
           [ -n "${ACS_SENDER:-}" ] && ENVPAIRS+=("ACS_SENDER=$ACS_SENDER")
           [ -n "${ACS_ENDPOINT:-}" ] && ENVPAIRS+=("ACS_ENDPOINT=$ACS_ENDPOINT")
           [ -n "${ACS_CONNECTION_STRING:-}" ] && ENVPAIRS+=("ACS_CONNECTION_STRING=$ACS_CONNECTION_STRING")
+          [ -n "${GEMINI_API_KEY:-}" ] && ENVPAIRS+=("GEMINI_API_KEY=$GEMINI_API_KEY")
+          [ -n "${GEMINI_MODEL:-}" ] && ENVPAIRS+=("GEMINI_MODEL=$GEMINI_MODEL")
           if [ ${#ENVPAIRS[@]} -gt 0 ]; then
             az containerapp update -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --only-show-errors \
               --set-env-vars "${ENVPAIRS[@]}"

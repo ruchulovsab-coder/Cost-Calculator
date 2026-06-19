@@ -11,7 +11,6 @@ chosen. Styling reuses the identity-gate card CSS for consistency.
 """
 import streamlit as st
 
-from modules.inputs.steps_1_2 import callout
 from modules.inputs.identity_gate import _GATE_CSS
 
 
@@ -40,31 +39,3 @@ def render_mode_gate():
                     st.rerun()
                 st.caption("Go step by step through the full calculator — the classic flow, "
                            "unchanged.")
-
-
-def render_chat_page():
-    """Phase-1 placeholder for the conversational flow. Carries the PII/scope note and a
-    route back to manual entry / the mode chooser."""
-    st.markdown(_GATE_CSS, unsafe_allow_html=True)
-    _, mid, _ = st.columns([1, 2.4, 1])
-    with mid:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="gate-title">💬 Chat to estimate</div>'
-                '<div class="gate-sub">Conversational estimation is coming soon — the '
-                'assistant will take your brief, ask for anything missing, and produce the '
-                'estimate (India delivery rates). For now, please use manual entry.</div>',
-                unsafe_allow_html=True,
-            )
-            callout("⚠️ <strong>Do not enter personal or client-identifying information</strong> "
-                    "(customer names, locations, contacts). The assistant only handles "
-                    "managed-services effort &amp; cost estimation — nothing outside that scope.",
-                    "warning")
-            if st.button("✍️ Switch to manual entry", type="primary", use_container_width=True,
-                         key="chat_to_manual"):
-                st.session_state["app_mode"] = "manual"
-                st.rerun()
-            if st.button("← Back to mode selection", use_container_width=True,
-                         key="chat_back_mode"):
-                st.session_state.pop("app_mode", None)
-                st.rerun()

@@ -249,8 +249,8 @@ if not _token_mode:
         render_mode_gate()
         st.stop()
     if st.session_state["app_mode"] == "chat":
-        from modules.inputs.mode_gate import render_chat_page
-        render_chat_page()
+        from modules.inputs.chat_page import render_chat
+        render_chat()
         st.stop()
     # ── Manual mode: offer to resume one of this user's drafts ──
     if not st.session_state.get("_resume_resolved"):
@@ -394,6 +394,17 @@ def _confirm_reset_all():
 
 if st.session_state.get("_confirm_reset_all"):
     _confirm_reset_all()
+
+# One-time banner after a chat-built estimate lands on the Results Dashboard.
+if st.session_state.get("_chat_cooked") and current == 9:
+    st.success("✅ Estimate built from your chat — using **India delivery location and "
+               "India genus rates**.")
+    _asm = st.session_state.get("_chat_assumptions") or []
+    if _asm:
+        st.markdown("**Assumptions I made:**\n" + "\n".join(f"- {a}" for a in _asm))
+    st.caption("Review and adjust any field via the steps on the left, then export or save "
+               "as usual.")
+    st.session_state.pop("_chat_cooked", None)
 
 if render_fn:
     step_valid = render_fn()

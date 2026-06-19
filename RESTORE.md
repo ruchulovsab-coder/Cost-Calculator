@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.7`** — *current stable.* Builds on v1.6: **Chat/Manual mode chooser (Phase 1)**.
+- **`v1.8`** — *current stable.* Builds on v1.7: **conversational "Chat to estimate" (Phase 2,
+  Google Gemini — free tier)**. In Chat mode a guarded assistant (model `gemini-2.0-flash`, via
+  `GEMINI_API_KEY`) takes a plain-language brief, refuses off-topic / PII input, asks for
+  anything missing, then "cooks it" — applying the inputs with **India delivery rates**
+  (auto-loaded rate card + auto role→genus mapping) and landing on the Results Dashboard with
+  an assumptions banner; every field stays editable. Degrades gracefully when the key is unset
+  (Chat says "not configured", Manual unchanged). New `modules/llm/chat_assist.py` +
+  `modules/inputs/chat_page.py`; `google-genai` dependency; workflow injects `GEMINI_API_KEY`
+  (Secret) / `GEMINI_MODEL` (Var). Calculation engine untouched. 77 passing tests.
+- **`v1.7`** — Builds on v1.6: **Chat/Manual mode chooser (Phase 1)**.
   After the email gate the user picks how to build the estimate — **Manual** opens the
   existing app unchanged; **Chat** is a placeholder ("coming soon") carrying the PII /
   scope note (the full conversational flow + Azure OpenAI land in Phase 2). The chooser
@@ -57,7 +66,25 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.7` contains (current stable)
+## What `v1.8` contains (current stable)
+- Everything in v1.7 (below), plus the **conversational "Chat to estimate" flow (Phase 2)**:
+  - **Provider:** **Google Gemini** free tier (`modules/llm/chat_assist.py`), model
+    `gemini-2.0-flash` (override with `GEMINI_MODEL`); needs the `GEMINI_API_KEY` Secret (free
+    key from aistudio.google.com — no card). The assistant replies with a strict JSON
+    `{action, message, inputs}` contract (no provider function-calling). Added the
+    `google-genai` dependency and wired the env vars into the deploy workflow.
+  - **Guarded chat** (`modules/inputs/chat_page.py`): a `st.chat_input` conversation that is
+    scope-locked to managed-services estimation, refuses off-topic questions, and never
+    requests/echoes PII (on-screen note + system-prompt rule).
+  - **Extraction → cook:** the assistant gathers the headline drivers (volumes, servers,
+    coverage, contingency, margin), lists its assumptions, then emits them via a
+    `submit_estimate` tool. The app applies them with **India delivery rates** (auto-loads the
+    cloud rate card, auto-maps role→genus from `GRADE_ELIGIBILITY`), and lands on the **Results
+    Dashboard** (Step 9) in Manual mode with a one-time assumptions + "India rates" banner.
+  - **Graceful degradation:** with no `ANTHROPIC_API_KEY`, Chat shows "not configured" and
+    points to Manual; Manual is entirely unchanged. The calculation engine is untouched.
+
+## What `v1.7` contains
 - Everything in v1.6 (below), plus the **Chat/Manual mode chooser (Phase 1)**:
   - After the email gate, a blocking **"How would you like to build this estimate?"**
     screen (`modules/inputs/mode_gate.py`) offering **💬 Chat** or **✍️ Manual**.
@@ -212,6 +239,9 @@ git push origin v1.6
 
 git tag -a v1.7 -m "Stable Version 1.7 — Chat/Manual mode chooser (Phase 1; Chat placeholder)"
 git push origin v1.7
+
+git tag -a v1.8 -m "Stable Version 1.8 — conversational Chat to estimate (Google Gemini, India rates)"
+git push origin v1.8
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
