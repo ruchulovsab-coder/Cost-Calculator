@@ -243,6 +243,16 @@ if not _token_mode:
     if not valid_nagarro_email(st.session_state.get("user_email", "")):
         render_email_gate()
         st.stop()
+    # Mode selection (Chat vs Manual) — asked every session; switchable from either side.
+    if not st.session_state.get("app_mode"):
+        from modules.inputs.mode_gate import render_mode_gate
+        render_mode_gate()
+        st.stop()
+    if st.session_state["app_mode"] == "chat":
+        from modules.inputs.mode_gate import render_chat_page
+        render_chat_page()
+        st.stop()
+    # ── Manual mode: offer to resume one of this user's drafts ──
     if not st.session_state.get("_resume_resolved"):
         if drafts_for_email(st.session_state["user_email"]):
             render_resume_modal(st.session_state["user_email"], _resume_draft_now)
@@ -307,6 +317,12 @@ with st.sidebar:
                      use_container_width=True, type="secondary"):
             st.session_state["_show_orphan_admin"] = True
             st.rerun()
+
+    st.divider()
+    if st.button("💬 Switch to Chat mode", key="btn_switch_chat",
+                 use_container_width=True, type="secondary"):
+        st.session_state["app_mode"] = "chat"
+        st.rerun()
 
 
 # ── Main content ───────────────────────────────────────────────────────────────
