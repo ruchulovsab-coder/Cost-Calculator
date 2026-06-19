@@ -5,14 +5,14 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 ## Stable versions (latest first)
 - **`v1.8`** — *current stable.* Builds on v1.7: **conversational "Chat to estimate" (Phase 2,
-  Claude / Anthropic API)**. In Chat mode a guarded assistant (model `claude-haiku-4-5`, via
-  `ANTHROPIC_API_KEY`) takes a plain-language brief, refuses off-topic / PII input, asks for
+  Google Gemini — free tier)**. In Chat mode a guarded assistant (model `gemini-2.0-flash`, via
+  `GEMINI_API_KEY`) takes a plain-language brief, refuses off-topic / PII input, asks for
   anything missing, then "cooks it" — applying the inputs with **India delivery rates**
   (auto-loaded rate card + auto role→genus mapping) and landing on the Results Dashboard with
   an assumptions banner; every field stays editable. Degrades gracefully when the key is unset
   (Chat says "not configured", Manual unchanged). New `modules/llm/chat_assist.py` +
-  `modules/inputs/chat_page.py`; `anthropic` dependency; workflow injects `ANTHROPIC_API_KEY`
-  (Secret) / `ANTHROPIC_MODEL` (Var). Calculation engine untouched. 77 passing tests.
+  `modules/inputs/chat_page.py`; `google-genai` dependency; workflow injects `GEMINI_API_KEY`
+  (Secret) / `GEMINI_MODEL` (Var). Calculation engine untouched. 77 passing tests.
 - **`v1.7`** — Builds on v1.6: **Chat/Manual mode chooser (Phase 1)**.
   After the email gate the user picks how to build the estimate — **Manual** opens the
   existing app unchanged; **Chat** is a placeholder ("coming soon") carrying the PII /
@@ -68,9 +68,11 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 ## What `v1.8` contains (current stable)
 - Everything in v1.7 (below), plus the **conversational "Chat to estimate" flow (Phase 2)**:
-  - **Provider:** Claude via the **Anthropic API** (`modules/llm/chat_assist.py`), model
-    `claude-haiku-4-5` (override with `ANTHROPIC_MODEL`); needs the `ANTHROPIC_API_KEY` Secret.
-    Added the `anthropic` dependency and wired the env vars into the deploy workflow.
+  - **Provider:** **Google Gemini** free tier (`modules/llm/chat_assist.py`), model
+    `gemini-2.0-flash` (override with `GEMINI_MODEL`); needs the `GEMINI_API_KEY` Secret (free
+    key from aistudio.google.com — no card). The assistant replies with a strict JSON
+    `{action, message, inputs}` contract (no provider function-calling). Added the
+    `google-genai` dependency and wired the env vars into the deploy workflow.
   - **Guarded chat** (`modules/inputs/chat_page.py`): a `st.chat_input` conversation that is
     scope-locked to managed-services estimation, refuses off-topic questions, and never
     requests/echoes PII (on-screen note + system-prompt rule).
@@ -238,7 +240,7 @@ git push origin v1.6
 git tag -a v1.7 -m "Stable Version 1.7 — Chat/Manual mode chooser (Phase 1; Chat placeholder)"
 git push origin v1.7
 
-git tag -a v1.8 -m "Stable Version 1.8 — conversational Chat to estimate (Claude/Anthropic API, India rates)"
+git tag -a v1.8 -m "Stable Version 1.8 — conversational Chat to estimate (Google Gemini, India rates)"
 git push origin v1.8
 ```
 Optionally turn a tag into a downloadable GitHub Release:

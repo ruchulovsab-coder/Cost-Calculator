@@ -1,6 +1,4 @@
-"""Unit tests for the pure chat-assist helpers (no Anthropic SDK / network needed)."""
-import os
-
+"""Unit tests for the pure chat-assist helpers (no Gemini SDK / network needed)."""
 from modules.llm import chat_assist as CA
 
 
@@ -17,35 +15,57 @@ def test_normalize_coverage_variants():
 def test_normalize_coverage_fallback():
     assert CA.normalize_coverage("") == "8×5"
     assert CA.normalize_coverage("whatever") == "8×5"
-    # All normalized values must be real COVERAGE_MODELS keys
     from config.settings import COVERAGE_MODELS
     for v in ["24x7", "16x5", "8*5", "nonsense", ""]:
         assert CA.normalize_coverage(v) in COVERAGE_MODELS
 
 
 def test_model_id_default_and_override(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
-    assert CA.model_id() == "claude-haiku-4-5"
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-opus-4-8")
-    assert CA.model_id() == "claude-opus-4-8"
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    assert CA.model_id() == "gemini-2.0-flash"
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-flash")
+    assert CA.model_id() == "gemini-2.5-flash"
 
 
 def test_llm_configured_reflects_env(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert CA.llm_configured() is False
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     assert CA.llm_configured() is True
 
 
 def test_run_chat_turn_unconfigured_returns_error(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     out = CA.run_chat_turn([{"role": "user", "content": "hi"}])
     assert out["type"] == "error"
 
 
-def test_submit_tool_schema_shape():
-    schema = CA.SUBMIT_TOOL["input_schema"]
-    for f in ["monthly_alerts", "monthly_incidents", "num_servers", "coverage_model",
-              "contingency_pct", "target_margin_pct", "assumptions"]:
-        assert f in schema["properties"]
-        assert f in schema["required"]
+def test_parse_response_ask():
+    out = CA.parse_response('{"action": "ask", "message": "How many servers?"}')
+    assert out["type"] == "question"
+    assert out["text"] == "How many servers?"
+
+
+def test_parse_response_submit_with_fences():
+    raw = ('```json\n{"action": "submit", "message": "let me cook it", '
+           '"inputs": {"monthly_alerts": 2000, "num_servers": 500, "assumptions": ["24x7 assumed"]}}\n```')
+    out = CA.parse_response(raw)
+    assert out["type"] == "submit"
+    assert out["data"]["monthly_alerts"] == 2000
+    assert out["data"]["num_servers"] == 500
+    assert out["preface"]
+
+
+def test_parse_response_garbage_falls_back_to_question():
+    out = CA.parse_response("not json at all")
+    assert out["type"] == "question" and out["text"]
+
+
+def test_to_contents_maps_roles():
+    contents = CA._to_contents([
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ])
+    assert contents[0]["role"] == "user"
+    assert contents[1]["role"] == "model"
+    assert contents[1]["parts"][0]["text"] == "hello"

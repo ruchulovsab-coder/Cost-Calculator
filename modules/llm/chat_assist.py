@@ -1,33 +1,35 @@
 """
-Conversational estimation assistant (Claude / Anthropic API).
+Conversational estimation assistant (Google Gemini — free tier).
 
 A guarded chat that takes a plain-language brief for a managed-services estimate, asks
-for anything missing, and — once it has enough — emits the structured inputs via the
-`submit_estimate` tool. The caller (chat_page) applies those inputs to the model using
-India delivery rates and lands on the Results Dashboard.
+for anything missing, and — once it has enough — returns the structured inputs. The
+caller (chat_page) applies those inputs to the model using India delivery rates and
+lands on the Results Dashboard.
 
-Scope is locked to managed-services effort/cost estimation; the model is instructed to
-refuse anything else and to never request or retain PII. No AI runs unless
-ANTHROPIC_API_KEY is set, so the Chat option degrades gracefully otherwise.
+The model is instructed to reply with a single JSON object every turn:
+    {"action": "ask"|"submit", "message": "<text>", "inputs": { ... }}
+so we don't depend on provider-specific function-calling. Scope is locked to managed-
+services estimation; the model refuses anything else and never requests/retains PII.
 
-Model defaults to Claude Haiku 4.5 (plenty for input extraction); override with the
-ANTHROPIC_MODEL env var. The `anthropic` SDK is imported lazily so this module imports
-fine in environments where the package/key isn't present (e.g. local tests).
+No AI runs unless GEMINI_API_KEY is set (the Chat option degrades gracefully). Model
+defaults to gemini-2.0-flash (free tier); override with GEMINI_MODEL. The google-genai
+SDK is imported lazily so this module imports fine without the package/key (e.g. tests).
 """
+import json
 import os
 
-DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "gemini-2.0-flash"
 
 # Coverage options the engine understands (config.settings.COVERAGE_MODELS keys).
 COVERAGE_OPTIONS = ["8×5", "12×5", "16×5", "24×5", "24×7"]
 
 
 def llm_configured() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    return bool(os.environ.get("GEMINI_API_KEY", "").strip())
 
 
 def model_id() -> str:
-    return os.environ.get("ANTHROPIC_MODEL", "").strip() or DEFAULT_MODEL
+    return os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
 
 
 def normalize_coverage(value: str) -> str:
@@ -65,88 +67,97 @@ volunteers any, do not echo it; silently ignore it and continue.
 DELIVERY: This estimate always uses India delivery rates. Do not ask about location, currency, \
 or rates.
 
-WHAT TO COLLECT (monthly figures unless noted):
-- Monitoring alerts per month
-- Service requests per month
-- Incidents per month
-- Change requests per month
-- Number of servers (and, if any, whether patching is Manual or Tool-Based)
-- Support coverage window (one of: 8×5, 12×5, 16×5, 24×5, 24×7)
-- Contingency % (effort buffer) — default 10 if unstated
-- Target margin % — default 20 if unstated
+WHAT TO COLLECT (monthly figures unless noted): monitoring alerts/month, service requests/\
+month, incidents/month, change requests/month, number of servers (and, if any, whether \
+patching is Manual or Tool-Based), support coverage window (one of 8×5, 12×5, 16×5, 24×5, \
+24×7), contingency % (default 10 if unstated), target margin % (default 20 if unstated).
 
-HOW TO BEHAVE:
-- Ask brief, batched clarifying questions for the essential drivers you don't yet have \
-(volumes, servers, coverage). Keep it to a couple of short turns.
-- You MAY assume reasonable industry defaults for anything the user doesn't give, but every \
-assumption you make MUST be listed in the `assumptions` array when you submit.
-- When you have enough to proceed, FIRST tell the user "I have sufficient information — let me \
-cook it for you." THEN call the `submit_estimate` tool with your best values and the full list \
-of assumptions. Do not call the tool before you have at least the monthly volumes and the \
-server count (assume coverage/contingency/margin defaults if needed, and list them)."""
+OUTPUT CONTRACT — every reply MUST be a single JSON object, nothing else, of the form:
+{"action": "ask" | "submit", "message": "<what to say to the user>", "inputs": { ... }}
+- Use action "ask" while you still need essential drivers (volumes, server count, coverage). \
+Put your brief, batched question in "message"; omit or empty "inputs".
+- You MAY assume reasonable industry defaults for anything not given, but every assumption you \
+make MUST appear in inputs.assumptions when you submit.
+- When you have enough (at least the monthly volumes and the server count), use action \
+"submit", set "message" to "I have sufficient information — let me cook it for you.", and fill \
+"inputs" with: monthly_alerts, monthly_service_requests, monthly_incidents, monthly_changes, \
+num_servers (all integers), patching_included (boolean), patching_method ("Manual" or \
+"Tool-Based"), coverage_model (one of 8×5/12×5/16×5/24×5/24×7), contingency_pct, \
+target_margin_pct (numbers), and assumptions (array of short strings).
+Respond with ONLY the JSON object — no markdown, no prose around it."""
 
 
-SUBMIT_TOOL = {
-    "name": "submit_estimate",
-    "description": "Submit the gathered inputs to run the managed-services estimate (India rates).",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "monthly_alerts": {"type": "integer", "minimum": 0},
-            "monthly_service_requests": {"type": "integer", "minimum": 0},
-            "monthly_incidents": {"type": "integer", "minimum": 0},
-            "monthly_changes": {"type": "integer", "minimum": 0},
-            "num_servers": {"type": "integer", "minimum": 0},
-            "patching_included": {"type": "boolean"},
-            "patching_method": {"type": "string", "enum": ["Manual", "Tool-Based"]},
-            "coverage_model": {"type": "string"},
-            "contingency_pct": {"type": "number"},
-            "target_margin_pct": {"type": "number"},
-            "assumptions": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": [
-            "monthly_alerts", "monthly_service_requests", "monthly_incidents",
-            "monthly_changes", "num_servers", "coverage_model",
-            "contingency_pct", "target_margin_pct", "assumptions",
-        ],
-    },
-}
+def _loads(raw: str):
+    """Parse the model's JSON reply, tolerating ```json fences / surrounding text."""
+    if not raw:
+        return None
+    s = raw.strip()
+    if s.startswith("```"):
+        s = s.strip("`")
+        if s[:4].lower() == "json":
+            s = s[4:]
+    try:
+        return json.loads(s)
+    except Exception:
+        a, b = s.find("{"), s.rfind("}")
+        if a != -1 and b != -1 and b > a:
+            try:
+                return json.loads(s[a:b + 1])
+            except Exception:
+                return None
+    return None
+
+
+_FALLBACK_Q = ("Could you share the monthly volumes (alerts, service requests, incidents, "
+               "changes) and the number of servers?")
+
+
+def parse_response(raw: str) -> dict:
+    """Pure: turn the model's raw JSON text into a result dict (unit-tested)."""
+    data = _loads(raw)
+    if not isinstance(data, dict):
+        return {"type": "question", "text": _FALLBACK_Q}
+    if str(data.get("action", "")).lower() == "submit":
+        return {
+            "type": "submit",
+            "preface": data.get("message") or "I have sufficient information — let me cook it for you.",
+            "data": data.get("inputs") or {},
+        }
+    return {"type": "question", "text": data.get("message") or _FALLBACK_Q}
+
+
+def _to_contents(messages: list) -> list:
+    """Map our [{role: user|assistant, content}] history to Gemini contents
+    ([{role: user|model, parts:[{text}]}])."""
+    out = []
+    for m in messages:
+        role = "model" if m.get("role") == "assistant" else "user"
+        out.append({"role": role, "parts": [{"text": m.get("content", "")}]})
+    return out
 
 
 def run_chat_turn(messages: list) -> dict:
-    """Send the conversation to Claude and return one of:
-       {"type": "question", "text": <assistant text>}
-       {"type": "submit",  "preface": <assistant text>, "data": <tool input dict>}
-       {"type": "error",   "text": <message>}
-    `messages` is a list of {"role": "user"|"assistant", "content": str}.
+    """Send the conversation to Gemini and return one of:
+       {"type": "question", "text": ...}
+       {"type": "submit",  "preface": ..., "data": {...}}
+       {"type": "error",   "text": ...}
     """
     if not llm_configured():
-        return {"type": "error", "text": "AI chat isn't configured (ANTHROPIC_API_KEY not set)."}
+        return {"type": "error", "text": "AI chat isn't configured (GEMINI_API_KEY not set)."}
     try:
-        import anthropic
-        client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
-        resp = client.messages.create(
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
+        resp = client.models.generate_content(
             model=model_id(),
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=[SUBMIT_TOOL],
-            messages=messages,
+            contents=_to_contents(messages),
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                temperature=0.2,
+            ),
         )
+        raw = resp.text
     except Exception as e:  # network/auth/SDK errors — surface, don't crash the app
         return {"type": "error", "text": f"AI request failed: {e}"}
-
-    text = " ".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
-    tool = next((b for b in resp.content
-                 if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == "submit_estimate"),
-                None)
-    if tool is not None:
-        return {
-            "type": "submit",
-            "preface": text or "I have sufficient information — let me cook it for you.",
-            "data": dict(tool.input),
-        }
-    return {
-        "type": "question",
-        "text": text or ("Could you share the monthly volumes (alerts, service requests, "
-                         "incidents, changes) and the number of servers?"),
-    }
+    return parse_response(raw)
