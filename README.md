@@ -31,7 +31,7 @@ The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
 
 | Step | Name | Purpose |
 |------|------|---------|
-| 1 | Workload Volumetrics | Estimate details (Customer/RFP name, prepared by) · **Support Coverage Model** · **rate-card source** (collapsible grades table) · **Delivery Location** (country/location) · monthly alert/ticket volumes |
+| 1 | Workload Volumetrics | Estimate details (Customer/RFP name; **prepared-by = your Nagarro email**, captured at the sign-in gate) · **Support Coverage Model** · **rate-card source** (collapsible grades table) · **Delivery Location** (country/location) · monthly alert/ticket volumes |
 | 2 | Resolution Split | L1/L2/L3 % + severity distribution + effort minutes. One **L1/L2/L3 buffer %** per category, set at the category heading (default 20%) |
 | 3 | Patching | Server count + method. **Manual** = min/server × servers; **Tool-Based** = (servers × error-rate %) failed servers × min/failed-server. Plus the patching role assignment |
 | 4 | Additional Activities | Auto-derived (per-row Auto toggle) + custom monthly operational hours |
@@ -47,6 +47,34 @@ The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
 > coverage model and delivery location on later pages, and a single combined
 > "Cost, Pricing & Dashboard" Step 8. v1.2 relocated those inputs to Step 1 and
 > split the old Step 8 into Steps 8–11.
+
+---
+
+## Identity, Drafts & Recovery
+
+**Email gate (v1.6).** The app opens on a **Nagarro email** screen — a valid
+`@nagarro.com` address (auto-lower-cased) is required before anything else renders, so
+every field, button and the step nav stay locked until it is entered. The email is
+**self-declared** (no SSO): it is a *"find my work"* key, **not access control**. It
+becomes the estimate's **Prepared By** and the **owner** of your drafts and saved
+versions.
+
+**Autosave + resume (v1.5).** Work in progress is silently saved per Customer/RFP on
+every page navigation (`__drafts__/<slug>.json`). Immediately after the email gate, if
+you have unsaved drafts, a **blocking, non-dismissible modal** offers **Resume** (lists
+*your* drafts with details) or **Start afresh** (your other drafts are kept). A browser
+**warn-on-close** guards unsaved in-page edits.
+
+**Orphan cleanup.** Abandoned drafts (declined, or untouched > 30 days) become
+**orphans** (`__orphans__/…`). The sidebar **🧹 Clean up drafts** indicator opens a
+review page that emails a recipient a **tokened link**; deletion is confirmed by the
+recipient on a scoped page (same pattern as the approval workflow) — never deleted
+directly on screen.
+
+> These features activate only when the **estimates** Blob store is configured (and, for
+> the cleanup emails, **Azure Communication Services + `APP_BASE_URL`**) — see
+> **[DEPLOY.md](DEPLOY.md)**. Until then they degrade gracefully (a copyable link is
+> shown instead of an email). The email gate itself always runs.
 
 ---
 
@@ -127,6 +155,8 @@ provide.
   rejects via a tokened link; preparer sees status only
 - **Saved Calculations** — versioned, timestamped saves keyed by Customer/RFP name
   (Azure Blob), reloadable across sessions
+- **Drafts & recovery** — per-user autosave on every navigation, a blocking resume
+  modal at sign-in, and token-gated orphan cleanup (see **Identity, Drafts & Recovery**)
 
 ## Architecture
 

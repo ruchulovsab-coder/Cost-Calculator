@@ -4,9 +4,18 @@ Constraint: keep the existing **mint/teal + navy** theme. Applies to the in-app
 screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/imports.
 
 ## What already works (keep)
-- Linear stepper (1→9) with status icons; pure calc pipeline behind it.
+- Linear stepper (1→11) with status icons; pure calc pipeline behind it.
 - Reusable callouts, metric cards, styled tables, validation pills.
 - Cloud saves, approval flow, scale-to-zero hosting.
+- **Email gate + per-user drafts** (v1.5–v1.6): autosave/resume, orphan cleanup, and a
+  Nagarro-email sign-in that owns a user's drafts/versions (see below).
+
+## Recently shipped (post design-system)
+- **v1.5** — per-Customer/RFP **draft autosave + resume**; **orphan cleanup** via a
+  token-gated email link; warn-on-close; "Prepared By" required.
+- **v1.6** — **Nagarro email gate** unlocks the app and becomes the owner key for
+  drafts/versions; the resume flow became a **blocking modal** (the sidebar list was
+  removed); Prepared-By is the gate email (read-only on Step 1).
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an

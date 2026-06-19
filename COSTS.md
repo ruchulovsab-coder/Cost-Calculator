@@ -13,9 +13,9 @@
 | **Container Apps** (Consumption, scale-to-zero) | Free within grant | 180,000 vCPU-sec, 360,000 GiB-sec, 2M requests | **~$0** | Idle = 0 replicas = no compute charge. Light interactive use stays inside the free grant. |
 | **Container Registry (ACR Basic)** | **Paid** | none (no free tier) | **~$5/mo** (~₹400) | Fixed daily charge (~$0.17/day). Stores the app image. **This is the main standing cost** — charged even when the app is shut down. |
 | **Log Analytics** (logs for Container Apps) | Free within grant | first 5 GB ingested + 31-day retention | **~$0** | A near-idle app ingests very little. |
-| **Blob Storage** (rate card + saved calculations) | Paid (tiny) | — (pay per GB + transactions) | **~$0.01** | Data is kilobytes. Effectively free. |
-| **Communication Services – Email** | Paid (per email) | — | **~$0** | ~ $0.00027 per email + tiny data. Negligible at low volume. |
-| **Microsoft Entra ID** (sign-in, if enabled) | **Free** | Free tier covers basic auth | **$0** | Not enabled yet; free tier is enough when it is. |
+| **Blob Storage** (rate card + saved calculations + drafts/orphans/approvals) | Paid (tiny) | — (pay per GB + transactions) | **~$0.01** | Data is kilobytes. Effectively free. |
+| **Communication Services – Email** | Paid (per email) | — | **~$0** | ~ $0.00027 per email + tiny data. Approval + draft-cleanup emails; negligible at low volume. |
+| **Microsoft Entra ID** (sign-in, if enabled) | **Free** | Free tier covers basic auth | **$0** | Not enabled yet; the app uses a self-declared **Nagarro-email gate** (no Azure cost). Free tier is enough if you later require real sign-in. |
 | **Bandwidth / egress** | Free within grant | first 100 GB/mo egress free | **~$0** | App responses are small. |
 
 ### Bottom line

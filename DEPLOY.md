@@ -88,6 +88,12 @@ The **test** job runs first, then **deploy** (~5–8 min). The deploy job's last
 → left menu **Authentication** → **Add identity provider** → **Microsoft** →
 **Create new app registration** → set **Require authentication** → **Add**.
 
+> **Note — this is the real access control.** The app *also* has a built-in
+> **Nagarro-email gate** (a `@nagarro.com` address entered on first load) that owns your
+> drafts/versions and fills *Prepared By*, but that email is **self-declared, not
+> verified** — a *"find my work"* key, **not** a security boundary. Enable Azure
+> Authentication above (Microsoft Entra ID) if you need verified sign-in.
+
 ---
 
 ## STEP 8 (optional) — Central rate card in Azure Blob Storage
@@ -170,8 +176,40 @@ new timestamped version under the Step-1 Customer/RFP name) and *Open saved calc
 (browse projects → versions → load). Until configured, that panel says cloud storage
 isn't set up and you use the JSON **Scenarios** instead.
 
+> The **same `estimates` container** also stores the **approval** records
+> (`__approvals__/…`), the **drafts** auto-saved per user (`__drafts__/…`) and their
+> **orphans** (`__orphans__/…`). One container, one role assignment, covers all of them.
+
 > Equivalent CLI (Cloud Shell): create the container, then
 > `az role assignment create --assignee <app-principalId> --role "Storage Blob Data Contributor" --scope <estimates-container-resource-id>`.
+
+---
+
+## STEP 10 (optional) — Approval & draft-cleanup emails (Azure Communication Services)
+
+Powers the **approval workflow** (Step 10) and the **🧹 draft clean-up** deletion links.
+Without these the app still works and simply **shows a copyable link** instead of sending
+an email.
+
+1. Create an **Azure Communication Services** resource + an **Email Communication
+   Service** with a verified sender (an Azure-managed subdomain is simplest). Note the
+   sender address, e.g. `DoNotReply@<your-domain>`.
+2. Add these **repository Variables** at
+   **https://github.com/ruchulovsab-coder/Cost-Calculator/settings/variables/actions**:
+
+   | Name | Value |
+   |------|-------|
+   | `ACS_ENDPOINT` | `https://<acs-resource>.communication.azure.com` (managed-identity auth) |
+   | `ACS_SENDER` | the verified sender address |
+   | `APP_BASE_URL` | `https://nagarro-ops-estimator.<...>.azurecontainerapps.io` (your live URL) |
+
+   *Either* grant the Container App's **managed identity** access to the ACS resource and
+   use `ACS_ENDPOINT`, *or* skip the identity step and set `ACS_CONNECTION_STRING` as a
+   **Secret** instead of `ACS_ENDPOINT`.
+3. **`APP_BASE_URL` is required for clickable links.** Without it the app refuses to send
+   a dead relative URL and shows the link to copy instead — so set it for both approval
+   and cleanup emails to work end to end.
+4. Re-run the deploy (Actions → Run workflow).
 
 ---
 
