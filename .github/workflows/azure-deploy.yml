@@ -59,9 +59,9 @@ jobs:
       ACS_SENDER: ${{ vars.ACS_SENDER }}
       ACS_CONNECTION_STRING: ${{ secrets.ACS_CONNECTION_STRING }}
       # Conversational "Chat to estimate" (Google Gemini, free tier) — optional.
-      # GEMINI_API_KEY is a Secret; GEMINI_MODEL is an optional Variable
-      # (defaults to gemini-2.0-flash in code when unset).
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Accept the key from Secrets (recommended — encrypted/masked) OR Variables.
+      # GEMINI_MODEL is an optional Variable (defaults to gemini-2.0-flash in code).
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || vars.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
     steps:
       - uses: actions/checkout@v4
