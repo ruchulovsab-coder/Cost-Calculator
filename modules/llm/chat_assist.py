@@ -1,5 +1,5 @@
 """
-Conversational estimation assistant (Google Gemini — free tier).
+Conversational estimation assistant (Groq — free tier, OpenAI-compatible).
 
 A guarded chat that takes a plain-language brief for a managed-services estimate, asks
 for anything missing, and — once it has enough — returns the structured inputs. The
@@ -11,25 +11,26 @@ The model is instructed to reply with a single JSON object every turn:
 so we don't depend on provider-specific function-calling. Scope is locked to managed-
 services estimation; the model refuses anything else and never requests/retains PII.
 
-No AI runs unless GEMINI_API_KEY is set (the Chat option degrades gracefully). Model
-defaults to gemini-2.0-flash (free tier); override with GEMINI_MODEL. The google-genai
-SDK is imported lazily so this module imports fine without the package/key (e.g. tests).
+No AI runs unless GROQ_API_KEY is set (the Chat option degrades gracefully). Model
+defaults to llama-3.3-70b-versatile (free, strong at extraction); override with
+GROQ_MODEL. The groq SDK is imported lazily so this module imports fine without the
+package/key (e.g. tests).
 """
 import json
 import os
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # Coverage options the engine understands (config.settings.COVERAGE_MODELS keys).
 COVERAGE_OPTIONS = ["8×5", "12×5", "16×5", "24×5", "24×7"]
 
 
 def llm_configured() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    return bool(os.environ.get("GROQ_API_KEY", "").strip())
 
 
 def model_id() -> str:
-    return os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
+    return os.environ.get("GROQ_MODEL", "").strip() or DEFAULT_MODEL
 
 
 def normalize_coverage(value: str) -> str:
@@ -126,38 +127,35 @@ def parse_response(raw: str) -> dict:
     return {"type": "question", "text": data.get("message") or _FALLBACK_Q}
 
 
-def _to_contents(messages: list) -> list:
-    """Map our [{role: user|assistant, content}] history to Gemini contents
-    ([{role: user|model, parts:[{text}]}])."""
-    out = []
+def _to_messages(messages: list) -> list:
+    """Build OpenAI/Groq-style messages: system prompt first, then the user/assistant
+    history (roles already match Groq's 'user'/'assistant')."""
+    out = [{"role": "system", "content": SYSTEM_PROMPT}]
     for m in messages:
-        role = "model" if m.get("role") == "assistant" else "user"
-        out.append({"role": role, "parts": [{"text": m.get("content", "")}]})
+        role = "assistant" if m.get("role") == "assistant" else "user"
+        out.append({"role": role, "content": m.get("content", "")})
     return out
 
 
 def run_chat_turn(messages: list) -> dict:
-    """Send the conversation to Gemini and return one of:
+    """Send the conversation to Groq and return one of:
        {"type": "question", "text": ...}
        {"type": "submit",  "preface": ..., "data": {...}}
        {"type": "error",   "text": ...}
     """
     if not llm_configured():
-        return {"type": "error", "text": "AI chat isn't configured (GEMINI_API_KEY not set)."}
+        return {"type": "error", "text": "AI chat isn't configured (GROQ_API_KEY not set)."}
     try:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
-        resp = client.models.generate_content(
+        from groq import Groq
+        client = Groq(api_key=os.environ["GROQ_API_KEY"].strip())
+        resp = client.chat.completions.create(
             model=model_id(),
-            contents=_to_contents(messages),
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
+            messages=_to_messages(messages),
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=1024,
         )
-        raw = resp.text
+        raw = resp.choices[0].message.content
     except Exception as e:  # network/auth/SDK errors — surface, don't crash the app
         return {"type": "error", "text": f"AI request failed: {e}"}
     return parse_response(raw)
