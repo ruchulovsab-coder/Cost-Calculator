@@ -94,6 +94,13 @@ def render_chat():
 
     msgs = st.session_state.setdefault("chat_messages", [])
 
+    c1, c2 = st.columns(2)
+    if c1.button("✍️ Switch to manual entry", key="chat_to_manual"):
+        st.session_state["app_mode"] = "manual"; st.rerun()
+    if c2.button("🔄 Restart chat", key="chat_restart"):
+        st.session_state["chat_messages"] = []; st.rerun()
+
+    # Greeting + full conversation history
     with st.chat_message("assistant"):
         st.write("Hi! Tell me about the service — e.g. *“~2000 alerts, 300 incidents, 150 service "
                  "requests and 40 changes a month, 500 servers, 24×7.”* I'll ask if anything's missing.")
@@ -101,22 +108,22 @@ def render_chat():
         with st.chat_message(m["role"]):
             st.write(m["content"])
 
-    c1, c2 = st.columns(2)
-    if c1.button("✍️ Switch to manual entry", key="chat_to_manual"):
-        st.session_state["app_mode"] = "manual"; st.rerun()
-    if c2.button("🔄 Restart chat", key="chat_restart"):
-        st.session_state["chat_messages"] = []; st.rerun()
-
     prompt = st.chat_input("Describe the requirement, or answer my question…")
     if prompt:
         msgs.append({"role": "user", "content": prompt})
-        with st.spinner("Thinking…"):
-            result = CA.run_chat_turn(msgs)
-        if result["type"] == "error":
-            st.error(result["text"])
-        elif result["type"] == "question":
-            msgs.append({"role": "assistant", "content": result["text"]})
-        elif result["type"] == "submit":
-            msgs.append({"role": "assistant", "content": result["preface"]})
-            _apply_and_cook(result["data"])
-        st.rerun()
+        with st.chat_message("user"):
+            st.write(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking…"):
+                result = CA.run_chat_turn(msgs)
+            if result["type"] == "error":
+                # Shown inline (no rerun) so the actual reason stays readable; just retry.
+                st.error(result["text"])
+            elif result["type"] == "question":
+                st.write(result["text"])
+                msgs.append({"role": "assistant", "content": result["text"]})
+            elif result["type"] == "submit":
+                st.write(result["preface"])
+                msgs.append({"role": "assistant", "content": result["preface"]})
+                _apply_and_cook(result["data"])
+                st.rerun()   # only rerun to leave chat and show the Results Dashboard

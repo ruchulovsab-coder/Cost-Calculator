@@ -4,7 +4,13 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.8`** — *current stable.* Builds on v1.7: **conversational "Chat to estimate" (Phase 2,
+- **`v1.9`** — *current stable.* Bug-fix on v1.8: the Chat reply loop is rebuilt to the
+  standard Streamlit pattern — the assistant's question/answer (and, crucially, any **error**
+  such as a Gemini rate-limit or auth failure) now renders **inline and stays visible** instead
+  of being wiped by an immediate rerun (which made it look like "nothing happened" after the
+  first message). Only a successful "cook it" reruns (to show the dashboard). No engine/provider
+  change. 80 passing tests.
+- **`v1.8`** — Builds on v1.7: **conversational "Chat to estimate" (Phase 2,
   Google Gemini — free tier)**. In Chat mode a guarded assistant (model `gemini-2.0-flash`, via
   `GEMINI_API_KEY`) takes a plain-language brief, refuses off-topic / PII input, asks for
   anything missing, then "cooks it" — applying the inputs with **India delivery rates**
@@ -242,6 +248,9 @@ git push origin v1.7
 
 git tag -a v1.8 -m "Stable Version 1.8 — conversational Chat to estimate (Google Gemini, India rates)"
 git push origin v1.8
+
+git tag -a v1.9 -m "Stable Version 1.9 — fix Chat reply/error rendering (inline, persistent)"
+git push origin v1.9
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
