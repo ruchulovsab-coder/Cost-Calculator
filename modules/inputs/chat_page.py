@@ -12,6 +12,26 @@ from modules.inputs.steps_1_2 import callout
 from modules.inputs.identity_gate import _GATE_CSS, render_gate_logo
 from modules.llm import chat_assist as CA
 
+# The transcript renders on the gate's dark backdrop, where the default dark widget
+# text was invisible. Give the bubbles a subtle on-theme surface and light text so
+# the assistant's questions/answers and the user's replies read clearly.
+_CHAT_CSS = """
+<style>
+[data-testid="stChatMessage"] {
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(168,221,216,0.28) !important;
+    border-radius: 12px !important;
+}
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"],
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] * {
+    color: #EAF6F4 !important;
+}
+/* The input field keeps a light background, so its typed text stays dark. */
+[data-testid="stChatInput"] textarea { color: #0D1B2A !important; }
+[data-testid="stChatInput"] textarea::placeholder { color: #5A6B6B !important; }
+</style>
+"""
+
 
 def _apply_and_cook(data: dict):
     """Apply the assistant's extracted inputs to session state (India delivery rates),
@@ -74,6 +94,7 @@ def _apply_and_cook(data: dict):
 
 def render_chat():
     st.markdown(_GATE_CSS, unsafe_allow_html=True)
+    st.markdown(_CHAT_CSS, unsafe_allow_html=True)
     render_gate_logo()
     # This page renders on the gate's dark background but (unlike the email/mode
     # gates) outside a light bordered card, so the shared dark .gate-title text would
