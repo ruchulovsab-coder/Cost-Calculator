@@ -40,7 +40,7 @@ The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
 | 7 | Grade Mapping | Map each role to a Genus grade from the loaded rate card |
 | 8 | Costing Inputs | Transition, expenses, SLA provision, target margin, reporting currency + FX, Raw/Rounded FTE toggle, plus a compact estimate headline |
 | 9 | Results Dashboard | Resource Cost, Executive Summary, Effort breakdown + charts, Resolution detail, FTE Summary, Cost Waterfall, Financial Summary |
-| 10 | Approve & Export | Approval workflow (request / approve / reject), What-If sliders, downloads (Excel report, Editable Excel, PDF) |
+| 10 | Approve & Export | Approval workflow (request / approve / reject); the reviewer sees an **estimate summary** up front; changing an **approved** estimate is blocked until it's saved as a new (draft) version; What-If sliders (incl. **save what-if as a new version**); downloads (Excel report, Editable Excel, PDF) |
 | 11 | Compare | Compare saved/uploaded scenarios side by side |
 
 > **History note:** through v1.1 this was a **9-step** flow with the rate card,
@@ -62,8 +62,9 @@ versions.
 **Autosave + resume (v1.5).** Work in progress is silently saved per Customer/RFP on
 every page navigation (`__drafts__/<slug>.json`). Immediately after the email gate, if
 you have unsaved drafts, a **blocking, non-dismissible modal** offers **Resume** (lists
-*your* drafts with details) or **Start afresh** (your other drafts are kept). A browser
-**warn-on-close** guards unsaved in-page edits.
+*your* drafts with details), **🗑️ Delete** a draft you no longer want (two-step confirm),
+or **Start afresh** (your other drafts are kept). A browser **warn-on-close** guards
+unsaved in-page edits.
 
 **Orphan cleanup.** Abandoned drafts (declined, or untouched > 30 days) become
 **orphans** (`__orphans__/…`). The sidebar **🧹 Clean up drafts** indicator opens a
@@ -150,9 +151,14 @@ provide.
 - **Scenario comparison** — save scenarios in-session and compare effort / FTE /
   cost / price side by side (or import/export as JSON)
 - **What-If analysis** — live sliders (Step 10) for volume, margin, contingency
-  and coverage; never mutate your saved inputs
-- **Approval workflow** (Step 10) — request approval by email; reviewer approves /
-  rejects via a tokened link; preparer sees status only
+  and coverage; never mutate your saved inputs. **Save a what-if as a new version**
+  bakes the moved drivers into a fresh draft (with the drivers recorded in the note)
+- **Approval workflow** (Step 10) — request approval by email; the **email and the
+  reviewer's landing page both show the headline figures** (selling price, gross
+  margin %, delivery cost, FTE); reviewer approves / rejects via a tokened link;
+  the **preparer never sees the link** (a **Resend approval email** button covers
+  "didn't receive it"). Changing an **approved** estimate blocks downloads/approval
+  until it's **saved as a new (draft) version**, which needs its own approval
 - **Saved Calculations** — versioned, timestamped saves keyed by Customer/RFP name
   (Azure Blob), reloadable across sessions
 - **Drafts & recovery** — per-user autosave on every navigation, a blocking resume

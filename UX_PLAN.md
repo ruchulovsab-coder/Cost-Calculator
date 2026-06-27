@@ -16,6 +16,15 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
 - **v1.6** — **Nagarro email gate** unlocks the app and becomes the owner key for
   drafts/versions; the resume flow became a **blocking modal** (the sidebar list was
   removed); Prepared-By is the gate email (read-only on Step 1).
+- **v1.7–v1.10** — Chat/Manual chooser, then conversational **Chat to estimate** (now on
+  **Groq**, India rates).
+- **v1.11–v1.24** — gate/contrast pass (branded, readable sign-in / mode / chat gates +
+  logo; fixed dark-on-dark labels by using real Streamlit-1.58 testids); **re-version +
+  re-approval when an approved estimate changes** (commits blocked until saved as a new
+  draft); **save-then-approve** guidance + inline save; chat estimates get a real
+  Customer/RFP name; **save a what-if as a new version**; approval **email figures** +
+  **reviewer landing summary**; review link hidden from the requester (**resend** instead);
+  Resume screen readable names + **per-draft delete**.
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an
@@ -25,8 +34,10 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
 - [ ] **Two competing save systems** — cloud "Saved Calculations" vs file "Scenarios".
 - [ ] **Jargon without guidance** — Genus, FTE, L1/L2/L3, Contingency, Buffer, Overhead, SLA.
 - [ ] **Output inconsistency** — app / Excel / Editable Excel / PDF / email look different.
-- [ ] **Weak validity feedback** — stepper shows position, not completeness; no pre-export review.
-- [ ] **Fragile theming/contrast** — blanket sidebar white-text rule caused white-on-white.
+- [~] **Weak validity feedback** — stepper shows position, not completeness. A pre-decision
+  **reviewer summary** now exists (v1.21); a full per-step completeness view is still open.
+- [x] **Fragile theming/contrast** — blanket sidebar white-text rule caused white-on-white.
+  Fixed in the v1.11–v1.24 gate/contrast pass (real Streamlit-1.58 testids; verified).
 - [ ] **No onboarding / empty states**.
 - [ ] **Inconsistent input ergonomics** — units, alignment, headers vary.
 

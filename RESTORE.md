@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.10`** — *current stable.* Chat AI provider switched from Google Gemini to **Groq**
+- **`v1.24`** — *current stable.* Approval/versioning hardening + gate & contrast fixes on
+  top of v1.10 (no new infrastructure or config — same Groq chat, Blob store, ACS email).
+  Highlights: branded, readable sign-in / mode / chat gates with the Nagarro logo;
+  **re-version + re-approval when an approved estimate changes** (downloads/approval blocked
+  until saved as a new draft); **save-then-approve** guidance + inline save; chat estimates
+  get a real **Customer/RFP name**; **save a what-if as a new version**; the approval **email
+  shows headline figures** and the **reviewer landing page** shows the same summary; the
+  review link is no longer exposed to the requester (**Resend approval email** instead);
+  Resume screen has readable draft names + **per-draft delete**. (covers v1.11–v1.24)
+- **`v1.10`** — Chat AI provider switched from Google Gemini to **Groq**
   (free tier, OpenAI-compatible) — Gemini's free tier returned `limit: 0` for the user's
   account. Model `llama-3.3-70b-versatile` (override with `GROQ_MODEL`), via `GROQ_API_KEY`;
   `groq` dependency; workflow injects `GROQ_API_KEY` (Secret/Var) + `GROQ_MODEL`. Same guarded
@@ -78,7 +87,43 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.8` contains (current stable)
+## What `v1.24` contains (current stable)
+Everything in v1.10, plus approval/versioning hardening and gate/contrast fixes — no new
+infrastructure or config (same Groq chat, Blob store and ACS email):
+
+**Gate & contrast (v1.11–v1.15, v1.23)**
+- Branded navy→teal sign-in / mode / chat gates with the **Nagarro logo** and readable
+  light text on the dark backdrop. Root cause of the earlier dark-on-dark labels: the
+  "white card" CSS targeted `stVerticalBlockBorderWrapper`, which does **not** exist in
+  Streamlit 1.58 — fixed by colouring the real elements (`stWidgetLabel` /
+  `stCaptionContainer`), all verified against the installed bundle.
+- Chat transcript made legible; the Approve page lost a duplicate "Approval" header;
+  Step 7 / approval stray leading dividers removed; Resume-screen draft names readable.
+
+**Approval & versioning (v1.16–v1.22)**
+- **Re-version + re-approval on change:** editing an **approved** estimate blocks downloads
+  and new approval requests until it is **saved as a new draft version** (change detected by
+  a fingerprint of the model inputs; navigation never counts). Reviewer (token) mode is never
+  blocked.
+- **Save-then-approve** guidance with an inline "Save this version" on the Approve page;
+  chat estimates are no longer auto-named "Chat estimate" — the user names them on the
+  Results page (kept out of the chat/LLM for PII).
+- **Save a what-if as a new version** — bakes the moved drivers (volume, margin, contingency,
+  coverage) into a fresh draft, with the drivers recorded in the version note.
+- **Approval email** carries the headline figures (selling price, gross margin %, delivery
+  cost, FTE) read from the saved version; the **reviewer landing page** shows the same summary
+  above Approve/Reject.
+- The tokened review link is **no longer shown to the requester** (they could self-approve);
+  a **Resend approval email** button (to the reviewer on record) covers "didn't receive it".
+  The link is only shown as a fallback when no email channel is configured.
+
+**Drafts (v1.24)**
+- The Resume-a-draft screen gains a **per-draft delete** (two-step confirm).
+
+> Intermediate versions v1.11–v1.23 were shipped as commits; **v1.24** is the rolled-up
+> stable tag. Tooling/contrast work is documented inline above.
+
+## What `v1.8` contains
 - Everything in v1.7 (below), plus the **conversational "Chat to estimate" flow (Phase 2)**:
   - **Provider:** **Google Gemini** free tier (`modules/llm/chat_assist.py`), model
     `gemini-2.0-flash` (override with `GEMINI_MODEL`); needs the `GEMINI_API_KEY` Secret (free
@@ -260,6 +305,9 @@ git push origin v1.9
 
 git tag -a v1.10 -m "Stable Version 1.10 — Chat AI provider switched to Groq (free tier)"
 git push origin v1.10
+
+git tag -a v1.24 -m "Stable Version 1.24 — approval/versioning hardening + gate & contrast fixes"
+git push origin v1.24
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
