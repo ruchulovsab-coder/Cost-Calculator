@@ -285,6 +285,18 @@ def render_step9() -> bool:
     page_header(9, "Results Dashboard",
                 "The complete computed estimate. Inputs live on the previous pages.")
 
+    # Chat-built estimates land here unnamed; let the user name it in place (kept out
+    # of the chat/LLM) so it can be saved or sent for approval. Manual estimates
+    # always have a name by Step 1, so this only shows for the chat route.
+    if not (st.session_state.get("project_name") or "").strip():
+        callout("📝 <strong>Name this estimate</strong> (Customer / RFP) to save it or send "
+                "it for approval.", "info")
+        _nm = st.text_input("Customer / RFP name", key="results_proj_name",
+                            placeholder="e.g. Acme Corp — Infra RFP 2026")
+        if _nm.strip():
+            st.session_state["project_name"] = _nm.strip()
+            st.rerun()
+
     model, conv, currency = _get_model_conv()
     if model is None:
         return False
