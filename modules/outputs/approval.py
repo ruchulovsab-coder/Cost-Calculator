@@ -41,6 +41,39 @@ def change_state(rec=None) -> dict:
             "rec": rec, "ref": ref}
 
 
+def inline_save_version(note_default: str = "", key: str = "inline_save",
+                        button_label: str = "💾 Save this version",
+                        success_suffix: str = "") -> bool:
+    """Save the current session as a (new, auto-incremented) version, make it the
+    current estimate and re-baseline. Shared by the first-save prompt and the
+    changed-after-approval gate. Returns True only after a successful save."""
+    from modules.state.session_manager import (
+        serialize_inputs, build_estimate_summary, run_model, mark_saved_baseline)
+    from modules.state.estimate_store import save_estimate, list_estimates
+    note = st.text_input("Version note", value=note_default, key=f"{key}_note",
+                         help="A short label for this version (e.g. 'after negotiation', "
+                              "or what changed).")
+    if st.button(button_label, type="primary", key=f"{key}_btn", use_container_width=True):
+        proj = (st.session_state.get("project_name") or "").strip()
+        if not proj:
+            st.error("Set a Customer / RFP name on Step 1 before saving.")
+            return False
+        try:
+            meta = save_estimate(
+                proj, note.strip(), (st.session_state.get("prepared_by") or "").strip(),
+                serialize_inputs(), build_estimate_summary(run_model()))
+            list_estimates.clear()
+            st.session_state["_current_estimate_ref"] = {
+                "slug": meta["project_slug"], "version": meta["version"],
+                "project": meta["project"], "blob": meta.get("_blob")}
+            mark_saved_baseline()
+            st.success(f"Saved {meta['project']} — v{meta['version']} (draft). {success_suffix}".strip())
+            st.rerun()
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+    return False
+
+
 def render_approval_panel(locked: bool = False, rec=None):
     from modules.state.estimate_store import store_configured
     if not store_configured():
@@ -87,7 +120,13 @@ def render_approval_panel(locked: bool = False, rec=None):
     section_hdr("✅ Approval")
     ref = st.session_state.get("_current_estimate_ref")
     if not ref:
-        callout("Save this calculation (sidebar → <strong>💾 Save version</strong>) to request approval.", "info")
+        callout("📝 <strong>Save this estimate as a version first.</strong> Approvals are "
+                "requested against a saved version — save it below (or via the sidebar → "
+                "📁 Saved Calculations), then the approval request appears here.", "info")
+        if not (st.session_state.get("project_name") or "").strip():
+            callout("Set a <strong>Customer / RFP name</strong> on Step 1 before saving.", "warning")
+            return
+        inline_save_version(key="firstsave", success_suffix="Now request approval below.")
         return
 
     if rec is None:

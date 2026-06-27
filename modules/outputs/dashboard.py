@@ -239,34 +239,13 @@ def _get_model_conv():
 def _render_divergence_gate():
     """Approved estimate changed: red banner + inline 'save as new version'. The new
     version starts as a draft and needs its own approval."""
-    from modules.state.session_manager import (
-        serialize_inputs, build_estimate_summary, run_model, mark_saved_baseline)
-    from modules.state.estimate_store import save_estimate, list_estimates
+    from modules.outputs.approval import inline_save_version
     callout("🔴 <strong>This approved estimate has changed.</strong> The approved version "
             "must stay unchanged — save your changes as a <strong>new version</strong> "
             "(it starts as a draft and needs its own approval).", "error")
-    note = st.text_input("Version note", value="manual edit", key="diverge_note",
-                         help="What changed. Stored with the new version.")
-    if st.button("💾 Save as new version", type="primary", key="btn_save_new_version"):
-        proj = (st.session_state.get("project_name") or "").strip()
-        if not proj:
-            st.error("Set a Customer / RFP name on Step 1 before saving.")
-            return
-        try:
-            meta = save_estimate(
-                proj, note.strip() or "manual edit",
-                (st.session_state.get("prepared_by") or "").strip(),
-                serialize_inputs(), build_estimate_summary(run_model()))
-            list_estimates.clear()
-            st.session_state["_current_estimate_ref"] = {
-                "slug": meta["project_slug"], "version": meta["version"],
-                "project": meta["project"], "blob": meta.get("_blob")}
-            mark_saved_baseline()
-            st.success(f"Saved {meta['project']} — v{meta['version']} (draft). "
-                       "Now request approval below.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Save failed: {e}")
+    inline_save_version(note_default="manual edit", key="diverge",
+                        button_label="💾 Save as new version",
+                        success_suffix="Now request approval below.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
