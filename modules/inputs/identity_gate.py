@@ -27,24 +27,43 @@ _NAGARRO_RE = re.compile(r"^[a-z0-9][a-z0-9._%+-]*@nagarro\.com$")
 _LOGO_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "nagarro_logo.png")
 
+#  IMPORTANT — selectors below use data-testids VERIFIED against Streamlit 1.58's
+#  bundle: stWidgetLabel (input labels), stCaptionContainer (st.caption),
+#  stTextInput (text inputs), stContainer (st.container(border=True)). A previous
+#  version targeted "stVerticalBlockBorderWrapper", which does NOT exist in 1.58,
+#  so the intended white card never rendered and the dark text stayed invisible.
+#  Approach: keep the branded dark backdrop (the logo plate blends with it) and
+#  force every text element light, rather than relying on a card surface.
 _GATE_CSS = """
 <style>
 section[data-testid="stSidebar"] { display:none !important; }
 
-/* Branded backdrop — same navy→teal family as the sidebar, so the gate screens
-   feel part of the product instead of a bare Streamlit page. */
+/* Branded navy→teal backdrop — same family as the sidebar. */
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(160deg,#07041F 0%,#0B2530 55%,#103A41 100%) !important;
 }
 
-/* The gate card: a solid white surface. Without this, every dark widget label,
-   caption and input value sat on the dark backdrop and was invisible. */
-[data-testid="stAppViewContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
-    background:#FFFFFF !important;
-    border:1px solid rgba(42,138,138,0.30) !important;
-    border-radius:14px !important;
-    box-shadow:0 14px 44px rgba(0,0,0,0.38) !important;
+/* Give the bordered container a subtle translucent panel so the form reads as a
+   card on the dark backdrop (text readability does NOT depend on this). */
+[data-testid="stAppViewContainer"] [data-testid="stContainer"] {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(168,221,216,0.30) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.35) !important;
 }
+
+/* The fix: make the text Streamlit renders here light + readable on the dark bg. */
+[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *,
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {
+    color: #EAF6F4 !important;
+}
+
+/* Inputs keep a white field so what the user types stays dark and readable. */
+[data-testid="stTextInput"] input {
+    background: #FFFFFF !important;
+    color: #0D1B2A !important;
+}
+[data-testid="stTextInput"] input::placeholder { color: #6B7B7B !important; }
 
 /* The logo carries a fullscreen button on hover — hide it on these screens. */
 [data-testid="StyledFullScreenButton"],
@@ -54,9 +73,10 @@ button[title="View fullscreen"] { display:none !important; }
 .gate-logo img { width:200px; max-width:60%; height:auto; }
 .gate-brand    { color:#A8DDD8; font-size:0.8rem; font-weight:600;
                  margin-top:10px; letter-spacing:0.3px; }
-.gate-title { font-size:1.4rem; font-weight:800; color:#0D1B2A; margin:2px 0 6px; }
-.gate-sub   { color:#0D4A4A; font-size:0.92rem; margin:0 0 14px; line-height:1.45; }
-.gate-row   { color:#3A6B73; font-size:0.82rem; }
+.gate-title { font-size:1.4rem; font-weight:800; color:#FFFFFF !important; margin:2px 0 6px; }
+.gate-sub   { color:#CFEAE6; font-size:0.92rem; margin:0 0 14px; line-height:1.45; }
+.gate-sub strong { color:#FFFFFF; }
+.gate-row   { color:#A8DDD8; font-size:0.82rem; }
 </style>
 """
 
