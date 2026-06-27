@@ -86,7 +86,10 @@ def _apply_and_cook(data: dict):
 
     st.session_state["_chat_assumptions"] = list(data.get("assumptions", []) or [])
     st.session_state["_chat_cooked"] = True
-    st.session_state["project_name"] = st.session_state.get("project_name") or "Chat estimate"
+    # Leave the Customer / RFP name blank (don't auto-name "Chat estimate", which made
+    # every chat estimate collide under one slug). The user names it on the Results
+    # page — kept out of the chat transcript/LLM for PII reasons.
+    st.session_state.setdefault("project_name", "")
     st.session_state["current_step"] = 9       # Results Dashboard
     st.session_state["app_mode"] = "manual"     # render via the normal app (sidebar, exports…)
     st.session_state["_resume_resolved"] = True
