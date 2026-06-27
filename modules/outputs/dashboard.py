@@ -219,6 +219,39 @@ def _render_what_if(base_model, conv, currency):
     w3.metric(f"Selling Price ({currency})", fmt_currency(new_sp, currency),
               delta=f"{new_sp - base_sp:+,.0f}")
 
+    # ── Save this what-if as a new version ────────────────────
+    # Bakes the moved drivers into the live inputs, then saves a draft version whose
+    # note records exactly which drivers were applied.
+    st.divider()
+    drivers = []
+    if vol_scale != 1.0:
+        drivers.append(f"volume {vol_scale:.1f}×")
+    drivers += [f"margin {margin:.0f}%", f"contingency {cont:.0f}%", f"coverage {cov}"]
+    note_txt = "what-if: " + ", ".join(drivers)
+    st.caption("Apply these what-if drivers as a new saved version (a draft that needs "
+               "its own approval). Your other saved versions are untouched.")
+    note = st.text_input("Version note", value=note_txt, key="wi_save_note",
+                         help="Records which what-if drivers were applied to this version.")
+    if st.button("💾 Save what-if as new version", type="primary", key="wi_save_btn"):
+        st.session_state["target_margin_pct"] = float(margin)
+        st.session_state["contingency_pct"] = float(cont)
+        st.session_state["coverage_model"] = cov
+        if vol_scale != 1.0:
+            totals = dict(st.session_state.get("workload_totals") or {})
+            for cat in ("alerts", "service_requests", "incidents", "changes"):
+                sec = st.session_state.get(cat) or {}
+                for row in sec.values():
+                    row["count"] = round(row.get("count", 0) * vol_scale)
+                st.session_state[cat] = sec
+                totals[cat] = sum(r.get("count", 0) for r in sec.values())
+            st.session_state["workload_totals"] = totals
+        from modules.outputs.approval import save_version
+        meta = save_version(note)
+        if meta:
+            st.success(f"Saved {meta['project']} — v{meta['version']} (draft) with the "
+                       "what-if applied. Request approval on the panel above.")
+            st.rerun()
+
 
 def _get_model_conv():
     """Compute the full model once and build a currency converter.

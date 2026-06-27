@@ -41,36 +41,45 @@ def change_state(rec=None) -> dict:
             "rec": rec, "ref": ref}
 
 
-def inline_save_version(note_default: str = "", key: str = "inline_save",
-                        button_label: str = "💾 Save this version",
-                        success_suffix: str = "") -> bool:
-    """Save the current session as a (new, auto-incremented) version, make it the
-    current estimate and re-baseline. Shared by the first-save prompt and the
-    changed-after-approval gate. Returns True only after a successful save."""
+def save_version(note: str):
+    """Save the current session as a new (auto-incremented) version, set it as the
+    current estimate and re-baseline. Returns the saved meta on success, else None
+    (errors surfaced via st). Shared by every 'save a version' entry point."""
     from modules.state.session_manager import (
         serialize_inputs, build_estimate_summary, run_model, mark_saved_baseline)
     from modules.state.estimate_store import save_estimate, list_estimates
+    proj = (st.session_state.get("project_name") or "").strip()
+    if not proj:
+        st.error("Set a Customer / RFP name on Step 1 before saving.")
+        return None
+    try:
+        meta = save_estimate(
+            proj, note.strip(), (st.session_state.get("prepared_by") or "").strip(),
+            serialize_inputs(), build_estimate_summary(run_model()))
+        list_estimates.clear()
+        st.session_state["_current_estimate_ref"] = {
+            "slug": meta["project_slug"], "version": meta["version"],
+            "project": meta["project"], "blob": meta.get("_blob")}
+        mark_saved_baseline()
+        return meta
+    except Exception as e:
+        st.error(f"Save failed: {e}")
+        return None
+
+
+def inline_save_version(note_default: str = "", key: str = "inline_save",
+                        button_label: str = "💾 Save this version",
+                        success_suffix: str = "") -> bool:
+    """Note field + save button (shared by the first-save prompt and the changed-
+    after-approval gate). Returns True only after a successful save."""
     note = st.text_input("Version note", value=note_default, key=f"{key}_note",
                          help="A short label for this version (e.g. 'after negotiation', "
                               "or what changed).")
     if st.button(button_label, type="primary", key=f"{key}_btn", use_container_width=True):
-        proj = (st.session_state.get("project_name") or "").strip()
-        if not proj:
-            st.error("Set a Customer / RFP name on Step 1 before saving.")
-            return False
-        try:
-            meta = save_estimate(
-                proj, note.strip(), (st.session_state.get("prepared_by") or "").strip(),
-                serialize_inputs(), build_estimate_summary(run_model()))
-            list_estimates.clear()
-            st.session_state["_current_estimate_ref"] = {
-                "slug": meta["project_slug"], "version": meta["version"],
-                "project": meta["project"], "blob": meta.get("_blob")}
-            mark_saved_baseline()
+        meta = save_version(note)
+        if meta:
             st.success(f"Saved {meta['project']} — v{meta['version']} (draft). {success_suffix}".strip())
             st.rerun()
-        except Exception as e:
-            st.error(f"Save failed: {e}")
     return False
 
 
