@@ -11,7 +11,7 @@ chosen. Styling reuses the identity-gate card CSS for consistency.
 """
 import streamlit as st
 
-from modules.inputs.identity_gate import _GATE_CSS
+from modules.inputs.identity_gate import _GATE_CSS, render_gate_logo
 
 
 def render_mode_gate():
@@ -19,6 +19,7 @@ def render_mode_gate():
     st.markdown(_GATE_CSS, unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 2.4, 1])
     with mid:
+        render_gate_logo()
         with st.container(border=True):
             st.markdown(
                 '<div class="gate-title">How would you like to build this estimate?</div>'

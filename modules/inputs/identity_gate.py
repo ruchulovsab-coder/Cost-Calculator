@@ -12,7 +12,9 @@ Both screens render as the sole content of the run (the caller follows them with
 st.stop()), which is what makes them truly blocking — Streamlit's native st.dialog can
 be dismissed by clicking the backdrop, so it isn't used here.
 """
+import os
 import re
+import base64
 import streamlit as st
 
 from modules.inputs.steps_1_2 import callout
@@ -21,15 +23,60 @@ from modules.state import draft_store as D
 # Local-part then exactly @nagarro.com. Matched against the lower-cased input.
 _NAGARRO_RE = re.compile(r"^[a-z0-9][a-z0-9._%+-]*@nagarro\.com$")
 
+# assets/ sits at the project root (this file is modules/inputs/identity_gate.py).
+_LOGO_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "nagarro_logo.png")
+
 _GATE_CSS = """
 <style>
 section[data-testid="stSidebar"] { display:none !important; }
-[data-testid="stAppViewContainer"] { background:#0E2A30 !important; }
-.gate-title { font-size:1.35rem; font-weight:800; color:#0E2A30; margin:2px 0 6px; }
-.gate-sub   { color:#3A6B73; font-size:0.92rem; margin:0 0 14px; line-height:1.4; }
+
+/* Branded backdrop — same navy→teal family as the sidebar, so the gate screens
+   feel part of the product instead of a bare Streamlit page. */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(160deg,#07041F 0%,#0B2530 55%,#103A41 100%) !important;
+}
+
+/* The gate card: a solid white surface. Without this, every dark widget label,
+   caption and input value sat on the dark backdrop and was invisible. */
+[data-testid="stAppViewContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
+    background:#FFFFFF !important;
+    border:1px solid rgba(42,138,138,0.30) !important;
+    border-radius:14px !important;
+    box-shadow:0 14px 44px rgba(0,0,0,0.38) !important;
+}
+
+/* The logo carries a fullscreen button on hover — hide it on these screens. */
+[data-testid="StyledFullScreenButton"],
+button[title="View fullscreen"] { display:none !important; }
+
+.gate-logo     { text-align:center; margin:6vh 0 18px; }
+.gate-logo img { width:200px; max-width:60%; height:auto; }
+.gate-brand    { color:#A8DDD8; font-size:0.8rem; font-weight:600;
+                 margin-top:10px; letter-spacing:0.3px; }
+.gate-title { font-size:1.4rem; font-weight:800; color:#0D1B2A; margin:2px 0 6px; }
+.gate-sub   { color:#0D4A4A; font-size:0.92rem; margin:0 0 14px; line-height:1.45; }
 .gate-row   { color:#3A6B73; font-size:0.82rem; }
 </style>
 """
+
+
+def render_gate_logo():
+    """Centered Nagarro logo + product line, shown above every gate card so the
+    sign-in / mode screens carry the same branding as the rest of the app."""
+    try:
+        with open(_LOGO_PATH, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        img = f'<img src="data:image/png;base64,{b64}" alt="Nagarro"/>'
+    except Exception:
+        img = ('<span style="font-family:Arial,Helvetica,sans-serif;font-weight:800;'
+               'font-size:2rem;color:#FFFFFF;letter-spacing:0.5px">nagarro</span>')
+    st.markdown(
+        f'<div class="gate-logo">{img}'
+        '<div class="gate-brand">Cloud &amp; Infrastructure Practices · '
+        'Ops Effort Estimation Tool</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _norm(s: str) -> str:
@@ -60,6 +107,7 @@ def render_email_gate():
     st.markdown(_GATE_CSS, unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
+        render_gate_logo()
         with st.container(border=True):
             st.markdown(
                 '<div class="gate-title">🔐 Identify yourself to continue</div>'
@@ -92,6 +140,7 @@ def render_resume_modal(email: str, on_resume):
     drafts = drafts_for_email(email)
     _, mid, _ = st.columns([1, 2.4, 1])
     with mid:
+        render_gate_logo()
         with st.container(border=True):
             st.markdown(
                 '<div class="gate-title">↩️ Resume a draft?</div>'

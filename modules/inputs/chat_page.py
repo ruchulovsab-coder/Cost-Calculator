@@ -9,7 +9,7 @@ configured.
 import streamlit as st
 
 from modules.inputs.steps_1_2 import callout
-from modules.inputs.identity_gate import _GATE_CSS
+from modules.inputs.identity_gate import _GATE_CSS, render_gate_logo
 from modules.llm import chat_assist as CA
 
 
@@ -74,6 +74,7 @@ def _apply_and_cook(data: dict):
 
 def render_chat():
     st.markdown(_GATE_CSS, unsafe_allow_html=True)
+    render_gate_logo()
     # This page renders on the gate's dark background but (unlike the email/mode
     # gates) outside a light bordered card, so the shared dark .gate-title text would
     # be invisible — force light header colours that read on the dark backdrop.
