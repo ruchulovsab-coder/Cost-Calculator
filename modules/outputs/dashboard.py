@@ -281,6 +281,31 @@ def _render_divergence_gate():
                         success_suffix="Now request approval below.")
 
 
+def _render_reviewer_summary(model, conv, currency):
+    """Compact estimate summary shown to a reviewer on the approval landing page, so
+    the decision is made with the key numbers (and margin) in view rather than buried
+    behind the Results Dashboard / downloads."""
+    section_hdr("📋 Estimate Summary (for review)")
+    cr = model["cost_result"]; pr = model["price_result"]
+    _raw = model["fte_basis"] == "raw"
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Effort", fmt_hours(model["total_effort"]))
+    m2.metric("Total FTE (Raw)" if _raw else "Total FTE (Rounded)",
+              f"{model['total_fte']:.2f}" if _raw else f"{model['total_fte']:.1f}")
+    m3.metric(f"Delivery Cost ({currency})", fmt_currency(conv(cr["total_delivery_cost"]), currency))
+    m4.metric(f"Selling Price ({currency})", fmt_currency(conv(pr["selling_price"]), currency))
+    m5, m6, m7, m8 = st.columns(4)
+    m5.metric("Gross Margin", fmt_pct(pr["margin_pct"]))
+    m6.metric("Contingency", fmt_hours(model["contingency"]["contingency_hours"]))
+    m7.metric("Coverage Model", st.session_state.get("coverage_model") or "—")
+    if model.get("transition_cost", 0) > 0:
+        m8.metric(f"One-time Transition ({currency})",
+                  fmt_currency(conv(model["transition_cost"]), currency))
+    st.caption("Full breakdown is on the **Results Dashboard** (sidebar) and in the "
+               "downloadable reports below.")
+    st.divider()
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 8 — Costing Inputs
 # ════════════════════════════════════════════════════════════════════════════
@@ -584,6 +609,10 @@ def render_step10() -> bool:
         callout("🔒 Downloads are disabled until you save the changed estimate as a new "
                 "version above.", "warning")
         return True
+
+    # Reviewer (opened via tokened link): show what they're approving up front.
+    if review:
+        _render_reviewer_summary(model, conv, currency)
 
     # ── Approval (reviewer approve/reject via tokened link; preparer sees status).
     # The panel renders its own header ("Approval" for the preparer, "Approval
