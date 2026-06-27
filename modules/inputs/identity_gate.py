@@ -173,7 +173,7 @@ def render_resume_modal(email: str, on_resume):
                 proj = d.get("project") or d.get("slug")
                 age = d.get("age_days", 0)
                 agestr = "today" if age < 1 else f"{int(age)}d ago"
-                c1, c2 = st.columns([3, 1])
+                c1, c2, c3 = st.columns([3, 1.2, 1.2])
                 # Light project name (matches .gate-sub) — plain markdown bold would
                 # fall back to the dark theme text colour and be unreadable on the
                 # dark gate backdrop.
@@ -183,9 +183,23 @@ def render_resume_modal(email: str, on_resume):
                     f"{d.get('saved_at','')} · {agestr}</span>",
                     unsafe_allow_html=True,
                 )
-                if c2.button("Resume", key=f"resume_{d['slug']}", use_container_width=True,
-                             type="primary"):
-                    on_resume(d["slug"])
+                if st.session_state.get("_confirm_del_draft") == d["slug"]:
+                    # Two-step delete so a stray click can't discard WIP.
+                    if c2.button("✓ Delete", key=f"delyes_{d['slug']}", type="primary",
+                                 use_container_width=True):
+                        D.clear_draft(d["slug"])
+                        st.session_state.pop("_confirm_del_draft", None)
+                        st.rerun()
+                    if c3.button("✕ Keep", key=f"delno_{d['slug']}", use_container_width=True):
+                        st.session_state.pop("_confirm_del_draft", None)
+                        st.rerun()
+                else:
+                    if c2.button("Resume", key=f"resume_{d['slug']}", use_container_width=True,
+                                 type="primary"):
+                        on_resume(d["slug"])
+                    if c3.button("🗑️ Delete", key=f"del_{d['slug']}", use_container_width=True):
+                        st.session_state["_confirm_del_draft"] = d["slug"]
+                        st.rerun()
             st.divider()
             if st.button("🆕 Start afresh", key="resume_fresh", use_container_width=True):
                 st.session_state["_resume_resolved"] = True
