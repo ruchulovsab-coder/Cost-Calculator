@@ -74,10 +74,14 @@ def _apply_and_cook(data: dict):
 
 def render_chat():
     st.markdown(_GATE_CSS, unsafe_allow_html=True)
+    # This page renders on the gate's dark background but (unlike the email/mode
+    # gates) outside a light bordered card, so the shared dark .gate-title text would
+    # be invisible — force light header colours that read on the dark backdrop.
     st.markdown(
-        '<div class="gate-title">💬 Chat to estimate</div>'
-        '<div class="gate-sub">Describe your managed-services requirement; I\'ll ask for anything '
-        'missing, then build the estimate using <strong>India delivery rates</strong>.</div>',
+        '<div class="gate-title" style="color:#FFFFFF">💬 Chat to estimate</div>'
+        '<div class="gate-sub" style="color:#A8DDD8">Describe your managed-services '
+        'requirement; I\'ll ask for anything missing, then build the estimate using '
+        '<strong style="color:#FFFFFF">India delivery rates</strong>.</div>',
         unsafe_allow_html=True,
     )
     callout("⚠️ <strong>Do not enter personal or client-identifying information</strong> "

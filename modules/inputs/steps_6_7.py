@@ -143,7 +143,6 @@ def render_step7() -> bool:
         return False
 
     # ── Delivery Location (selected on Step 1) ────────────────
-    st.divider()
     section_hdr("📍 Delivery Location")
     from modules.calculations.engine import filter_rate_card
 
