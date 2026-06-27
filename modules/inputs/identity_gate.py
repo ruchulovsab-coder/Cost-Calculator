@@ -174,8 +174,12 @@ def render_resume_modal(email: str, on_resume):
                 age = d.get("age_days", 0)
                 agestr = "today" if age < 1 else f"{int(age)}d ago"
                 c1, c2 = st.columns([3, 1])
+                # Light project name (matches .gate-sub) — plain markdown bold would
+                # fall back to the dark theme text colour and be unreadable on the
+                # dark gate backdrop.
                 c1.markdown(
-                    f"**{proj}**  \n<span class='gate-row'>last edited "
+                    f"<div style='color:#CFEAE6;font-weight:700;font-size:1rem'>{proj}</div>"
+                    f"<span class='gate-row'>last edited "
                     f"{d.get('saved_at','')} · {agestr}</span>",
                     unsafe_allow_html=True,
                 )
