@@ -38,10 +38,12 @@ def _send(recipient_email: str, subject: str, text: str, html: str):
     return _email_client().begin_send(message).result()
 
 
-def send_review_email(reviewer_email: str, project: str, version, link: str, requested_by: str = ""):
-    """Send the approval-review email. Raises on failure; returns the send result."""
+def send_review_email(reviewer_email: str, project: str, version, link: str,
+                      requested_by: str = "", summary=None):
+    """Send the approval-review email. Raises on failure; returns the send result.
+    `summary` (the saved estimate's summary) adds the headline figures to the email."""
     from modules.notify.email_templates import review_request
-    subject, text, html = review_request(project, version, link, requested_by)
+    subject, text, html = review_request(project, version, link, requested_by, summary)
     return _send(reviewer_email, subject, text, html)
 
 

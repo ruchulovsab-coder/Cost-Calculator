@@ -164,6 +164,15 @@ def render_approval_panel(locked: bool = False, rec=None):
                     ref["slug"], ref["version"], ref["project"], ref["blob"],
                     email.strip(), st.session_state.get("prepared_by", ""))
                 link = review_link(ref["slug"], ref["version"], newrec["token"])
+                # Headline figures for the email come from the SAVED version being
+                # reviewed (not the live session), so the email always matches it.
+                summary = {}
+                try:
+                    from modules.state.estimate_store import load_estimate
+                    if ref.get("blob"):
+                        summary = (load_estimate(ref["blob"]) or {}).get("summary", {}) or {}
+                except Exception:
+                    summary = {}
                 from modules.notify.email_sender import email_configured, send_review_email
                 sent = False
                 if email_configured() and not link.lower().startswith("http"):
@@ -174,7 +183,7 @@ def render_approval_panel(locked: bool = False, rec=None):
                 elif email_configured():
                     try:
                         send_review_email(email.strip(), ref["project"], ref["version"],
-                                          link, st.session_state.get("prepared_by", ""))
+                                          link, st.session_state.get("prepared_by", ""), summary)
                         sent = True
                         st.success(f"Approval requested and emailed to {email.strip()}.")
                     except Exception as e:
