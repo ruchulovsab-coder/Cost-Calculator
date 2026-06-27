@@ -12,6 +12,8 @@ This replaces the old split between session state volumes and a separate resolut
 """
 import copy
 import math
+import json
+import hashlib
 from datetime import date
 import streamlit as st
 from config.settings import (
@@ -375,6 +377,29 @@ def run_model() -> dict:
     """Compute the full model from the current session. Result is read-only —
     do not mutate the returned dict (it may be a shared cached object)."""
     return _compute_cached(build_model_state())
+
+
+# ── Change detection (divergence from the last saved version) ────────────────────
+def inputs_fingerprint() -> str:
+    """Stable hash of the inputs that affect the computed estimate (_MODEL_KEYS only,
+    so navigation/UI-only state never registers as a change). Used to tell when the
+    live estimate has changed since it was last saved or loaded."""
+    snap = {k: st.session_state.get(k) for k in _MODEL_KEYS}
+    return hashlib.sha256(
+        json.dumps(snap, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def mark_saved_baseline():
+    """Record the current inputs as the 'last saved' baseline — call right after a
+    version is saved or loaded, so subsequent edits register as divergence."""
+    st.session_state["_saved_fingerprint"] = inputs_fingerprint()
+
+
+def inputs_changed_since_save() -> bool:
+    """True when the live inputs differ from the recorded saved baseline. False when
+    there is no baseline yet (unknown → never block)."""
+    base = st.session_state.get("_saved_fingerprint")
+    return base is not None and base != inputs_fingerprint()
 
 
 def serialize_inputs() -> dict:

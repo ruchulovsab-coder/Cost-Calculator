@@ -24,7 +24,24 @@ def _status_badge(rec):
         callout(f"<strong>Reviewer comment:</strong> {rec['comment']}", "warning")
 
 
-def render_approval_panel():
+def change_state(rec=None) -> dict:
+    """Preparer-side state for the currently loaded estimate: is it approved, and has
+    it changed since it was saved? Returns {approved, diverged, rec, ref}. `diverged`
+    is only ever True once the version is approved (the post-approval rule)."""
+    from modules.state.estimate_store import store_configured
+    from modules.state.session_manager import inputs_changed_since_save
+    ref = st.session_state.get("_current_estimate_ref")
+    if not ref or not store_configured():
+        return {"approved": False, "diverged": False, "rec": None, "ref": ref}
+    if rec is None:
+        rec = A.get_approval(ref["slug"], ref["version"])
+    approved = bool(rec and rec.get("status") == A.STATUS_APPROVED)
+    return {"approved": approved,
+            "diverged": approved and inputs_changed_since_save(),
+            "rec": rec, "ref": ref}
+
+
+def render_approval_panel(locked: bool = False, rec=None):
     from modules.state.estimate_store import store_configured
     if not store_configured():
         return
@@ -73,12 +90,20 @@ def render_approval_panel():
         callout("Save this calculation (sidebar → <strong>💾 Save version</strong>) to request approval.", "info")
         return
 
-    rec = A.get_approval(ref["slug"], ref["version"])
+    if rec is None:
+        rec = A.get_approval(ref["slug"], ref["version"])
     st.caption(f"Estimate: **{ref['project']} — v{ref['version']}**")
     if rec:
         _status_badge(rec)
     else:
         callout("Status: 📝 <strong>Draft</strong> — not yet submitted for approval.", "info")
+
+    # Blocked: this approved estimate has unsaved changes — a new version must be
+    # saved (and separately approved) before any further approval action.
+    if locked:
+        callout("🔒 This approved estimate has changed. Save it as a <strong>new version</strong> "
+                "above before requesting approval.", "warning")
+        return
 
     # Allow (re)requesting when there's no pending request
     if not rec or rec.get("status") != A.STATUS_PENDING:
