@@ -82,6 +82,7 @@ def render_saved_calc_sidebar():
     from modules.state.estimate_store import save_estimate, list_estimates, load_estimate
     from modules.state.session_manager import (
         serialize_inputs, build_estimate_summary, run_model, load_scenario,
+        mark_saved_baseline,
     )
     sb = st.sidebar  # render inline (no expanders — they had unreadable white-on-white headers)
 
@@ -103,6 +104,7 @@ def render_saved_calc_sidebar():
             st.session_state["_current_estimate_ref"] = {
                 "slug": meta["project_slug"], "version": meta["version"],
                 "project": meta["project"], "blob": meta.get("_blob")}
+            mark_saved_baseline()
             sb.success(f"Saved {meta['project']} — v{meta['version']}")
         except Exception as e:
             sb.error(f"Save failed: {e}")
@@ -142,6 +144,7 @@ def render_saved_calc_sidebar():
                     "slug": sel["slug"], "version": sel["version"],
                     "project": (data.get("meta", {}) or {}).get("project", sel["project"]),
                     "blob": sel["blob"]}
+                mark_saved_baseline()
                 sb.success(f"Loaded {sel_proj} v{sel['version']}")
                 st.rerun()
             except Exception as e:

@@ -236,6 +236,39 @@ def _get_model_conv():
     return model, conv, currency
 
 
+def _render_divergence_gate():
+    """Approved estimate changed: red banner + inline 'save as new version'. The new
+    version starts as a draft and needs its own approval."""
+    from modules.state.session_manager import (
+        serialize_inputs, build_estimate_summary, run_model, mark_saved_baseline)
+    from modules.state.estimate_store import save_estimate, list_estimates
+    callout("🔴 <strong>This approved estimate has changed.</strong> The approved version "
+            "must stay unchanged — save your changes as a <strong>new version</strong> "
+            "(it starts as a draft and needs its own approval).", "error")
+    note = st.text_input("Version note", value="manual edit", key="diverge_note",
+                         help="What changed. Stored with the new version.")
+    if st.button("💾 Save as new version", type="primary", key="btn_save_new_version"):
+        proj = (st.session_state.get("project_name") or "").strip()
+        if not proj:
+            st.error("Set a Customer / RFP name on Step 1 before saving.")
+            return
+        try:
+            meta = save_estimate(
+                proj, note.strip() or "manual edit",
+                (st.session_state.get("prepared_by") or "").strip(),
+                serialize_inputs(), build_estimate_summary(run_model()))
+            list_estimates.clear()
+            st.session_state["_current_estimate_ref"] = {
+                "slug": meta["project_slug"], "version": meta["version"],
+                "project": meta["project"], "blob": meta.get("_blob")}
+            mark_saved_baseline()
+            st.success(f"Saved {meta['project']} — v{meta['version']} (draft). "
+                       "Now request approval below.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 8 — Costing Inputs
 # ════════════════════════════════════════════════════════════════════════════
@@ -276,6 +309,12 @@ def render_step9() -> bool:
     model, conv, currency = _get_model_conv()
     if model is None:
         return False
+
+    if not st.session_state.get("_review"):
+        from modules.outputs.approval import change_state
+        if change_state()["diverged"]:
+            callout("🔴 This approved estimate has changed. Open <strong>Approve &amp; Export</strong> "
+                    "to save it as a new version before exporting or re-requesting approval.", "error")
 
     cost_result   = model["cost_result"]
     price_result  = model["price_result"]
@@ -504,12 +543,29 @@ def render_step10() -> bool:
     if model is None:
         return False
 
+    review = st.session_state.get("_review")
+    from modules.outputs.approval import render_approval_panel, change_state
+    cs = None if review else change_state()
+
+    # Approved estimate with unsaved edits: block the commit actions (downloads + a
+    # new approval request) until it's saved as a new version.
+    if cs and cs["diverged"]:
+        _render_divergence_gate()
+        try:
+            render_approval_panel(locked=True, rec=cs["rec"])
+        except Exception as _e:
+            st.caption(f"Approval panel unavailable: {_e}")
+        st.divider()
+        section_hdr("⬇️ Download Reports")
+        callout("🔒 Downloads are disabled until you save the changed estimate as a new "
+                "version above.", "warning")
+        return True
+
     # ── Approval (reviewer approve/reject via tokened link; preparer sees status).
     # The panel renders its own header ("Approval" for the preparer, "Approval
     # Review" for a reviewer), so we don't add another one here.
     try:
-        from modules.outputs.approval import render_approval_panel
-        render_approval_panel()
+        render_approval_panel(rec=cs["rec"] if cs else None)
     except Exception as _e:
         st.caption(f"Approval panel unavailable: {_e}")
 
