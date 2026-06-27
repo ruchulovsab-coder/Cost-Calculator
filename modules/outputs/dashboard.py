@@ -504,8 +504,9 @@ def render_step10() -> bool:
     if model is None:
         return False
 
-    # ── Approval (reviewer approve/reject via tokened link; preparer sees status)
-    section_hdr("✅ Approval")
+    # ── Approval (reviewer approve/reject via tokened link; preparer sees status).
+    # The panel renders its own header ("Approval" for the preparer, "Approval
+    # Review" for a reviewer), so we don't add another one here.
     try:
         from modules.outputs.approval import render_approval_panel
         render_approval_panel()

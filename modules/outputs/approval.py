@@ -33,7 +33,6 @@ def render_approval_panel():
 
     # ── Reviewer mode (opened via tokened link) ───────────────
     if review:
-        st.divider()
         section_hdr("✅ Approval Review")
         slug, version, token = review["slug"], review["version"], review["token"]
         rec = A.get_approval(slug, version)
@@ -68,7 +67,6 @@ def render_approval_panel():
         return
 
     # ── Preparer mode ─────────────────────────────────────────
-    st.divider()
     section_hdr("✅ Approval")
     ref = st.session_state.get("_current_estimate_ref")
     if not ref:
