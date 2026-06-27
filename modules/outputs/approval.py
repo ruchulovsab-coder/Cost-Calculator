@@ -12,6 +12,18 @@ def review_link(slug, version, token) -> str:
     return f"{base}/{qs}" if base else qs
 
 
+def _load_estimate_summary(ref) -> dict:
+    """Saved-version summary (selling_price/delivery_cost/total_fte) for the review
+    email, read from the version's blob so it matches what the reviewer opens."""
+    try:
+        from modules.state.estimate_store import load_estimate
+        if ref and ref.get("blob"):
+            return (load_estimate(ref["blob"]) or {}).get("summary", {}) or {}
+    except Exception:
+        pass
+    return {}
+
+
 def _status_badge(rec):
     status = rec.get("status", "draft")
     label = A.STATUS_LABEL.get(status, status)
@@ -164,36 +176,46 @@ def render_approval_panel(locked: bool = False, rec=None):
                     ref["slug"], ref["version"], ref["project"], ref["blob"],
                     email.strip(), st.session_state.get("prepared_by", ""))
                 link = review_link(ref["slug"], ref["version"], newrec["token"])
-                # Headline figures for the email come from the SAVED version being
-                # reviewed (not the live session), so the email always matches it.
-                summary = {}
-                try:
-                    from modules.state.estimate_store import load_estimate
-                    if ref.get("blob"):
-                        summary = (load_estimate(ref["blob"]) or {}).get("summary", {}) or {}
-                except Exception:
-                    summary = {}
+                is_abs = link.lower().startswith("http")
+                # Figures come from the SAVED version, so the email matches it.
+                summary = _load_estimate_summary(ref)
                 from modules.notify.email_sender import email_configured, send_review_email
-                sent = False
-                if email_configured() and not link.lower().startswith("http"):
-                    # Don't dispatch an email whose only action is a dead relative URL.
+                if email_configured() and not is_abs:
+                    # Can't email a dead relative URL — and we don't expose the link
+                    # to the requester (they could self-approve). Tell the admin.
                     st.error("Request saved, but no email was sent: set the APP_BASE_URL "
-                             "variable so the review link is absolute and clickable. "
-                             "Share the link below manually for now.")
+                             "variable so the review link is absolute and emailable.")
                 elif email_configured():
                     try:
                         send_review_email(email.strip(), ref["project"], ref["version"],
                                           link, st.session_state.get("prepared_by", ""), summary)
-                        sent = True
-                        st.success(f"Approval requested and emailed to {email.strip()}.")
+                        st.success(f"Approval requested and emailed to {email.strip()}. "
+                                   "If they don't receive it, use “Resend approval email” below.")
                     except Exception as e:
                         st.warning(f"Request saved, but the email failed to send: {e}")
                 else:
+                    # No email channel at all — the link is the only delivery path.
                     st.success("Approval requested.")
-                if not sent:
-                    st.caption("Share this review link with the reviewer:")
+                    st.caption("Email isn't configured — share this review link with the reviewer:")
                     st.code(link)
     elif rec.get("status") == A.STATUS_PENDING:
-        st.caption(f"Awaiting review by {rec.get('reviewer_email') or 'the reviewer'}. "
-                   "Re-share the link below if needed:")
-        st.code(review_link(ref["slug"], ref["version"], rec["token"]))
+        # Don't show the tokened link to the requester (they could self-approve).
+        # Offer a resend to the reviewer on record instead.
+        from modules.notify.email_sender import email_configured, send_review_email
+        st.caption(f"Awaiting review by **{rec.get('reviewer_email') or 'the reviewer'}**.")
+        link = review_link(ref["slug"], ref["version"], rec["token"])
+        is_abs = link.lower().startswith("http")
+        if email_configured() and is_abs:
+            if st.button("📧 Resend approval email", key="btn_resend_approval"):
+                try:
+                    send_review_email(rec.get("reviewer_email", ""), ref["project"],
+                                      ref["version"], link, rec.get("requested_by", ""),
+                                      _load_estimate_summary(ref))
+                    st.success(f"Approval email resent to {rec.get('reviewer_email') or 'the reviewer'}.")
+                except Exception as e:
+                    st.warning(f"Could not resend the email: {e}")
+        elif not is_abs:
+            st.caption("⚠️ Set the APP_BASE_URL variable so the review link can be emailed.")
+        else:
+            st.caption("Email isn't configured — share this review link with the reviewer:")
+            st.code(link)
