@@ -12,16 +12,28 @@ def review_link(slug, version, token) -> str:
     return f"{base}/{qs}" if base else qs
 
 
-def _load_estimate_summary(ref) -> dict:
-    """Saved-version summary (selling_price/delivery_cost/total_fte) for the review
-    email, read from the version's blob so it matches what the reviewer opens."""
+def _email_artifacts(ref):
+    """Build the approval email's (summary, dashboard_html, attachments) from the
+    current estimate session: plain-text headline figures, the inline dashboard
+    summary for the body, and the editable Excel formula workbook as an attachment.
+    Best-effort — a failed workbook is simply omitted (the email still sends)."""
+    from modules.state.session_manager import run_model, build_estimate_summary
+    from modules.notify.email_templates import dashboard_summary_html
+    model = run_model()
+    summary = build_estimate_summary(model)
+    body_html = dashboard_summary_html(model)
+    attachments = []
     try:
-        from modules.state.estimate_store import load_estimate
-        if ref and ref.get("blob"):
-            return (load_estimate(ref["blob"]) or {}).get("summary", {}) or {}
+        from modules.outputs.excel_model import generate_excel_model
+        proj = (ref.get("project") or "estimate").replace(" ", "_")
+        attachments.append({
+            "name": f"{proj}_v{ref.get('version')}_model.xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "bytes": generate_excel_model(),
+        })
     except Exception:
         pass
-    return {}
+    return summary, body_html, attachments
 
 
 def _status_badge(rec):
@@ -177,8 +189,6 @@ def render_approval_panel(locked: bool = False, rec=None):
                     email.strip(), st.session_state.get("prepared_by", ""))
                 link = review_link(ref["slug"], ref["version"], newrec["token"])
                 is_abs = link.lower().startswith("http")
-                # Figures come from the SAVED version, so the email matches it.
-                summary = _load_estimate_summary(ref)
                 from modules.notify.email_sender import email_configured, send_review_email
                 if email_configured() and not is_abs:
                     # Can't email a dead relative URL — and we don't expose the link
@@ -187,9 +197,12 @@ def render_approval_panel(locked: bool = False, rec=None):
                              "variable so the review link is absolute and emailable.")
                 elif email_configured():
                     try:
+                        summary, body_html, attachments = _email_artifacts(ref)
                         send_review_email(email.strip(), ref["project"], ref["version"],
-                                          link, st.session_state.get("prepared_by", ""), summary)
-                        st.success(f"Approval requested and emailed to {email.strip()}. "
+                                          link, st.session_state.get("prepared_by", ""),
+                                          summary, body_html, attachments)
+                        st.success(f"Approval requested and emailed to {email.strip()} "
+                                   "(estimate summary in the body + Excel model attached). "
                                    "If they don't receive it, use “Resend approval email” below.")
                     except Exception as e:
                         st.warning(f"Request saved, but the email failed to send: {e}")
@@ -208,9 +221,10 @@ def render_approval_panel(locked: bool = False, rec=None):
         if email_configured() and is_abs:
             if st.button("📧 Resend approval email", key="btn_resend_approval"):
                 try:
+                    summary, body_html, attachments = _email_artifacts(ref)
                     send_review_email(rec.get("reviewer_email", ""), ref["project"],
                                       ref["version"], link, rec.get("requested_by", ""),
-                                      _load_estimate_summary(ref))
+                                      summary, body_html, attachments)
                     st.success(f"Approval email resent to {rec.get('reviewer_email') or 'the reviewer'}.")
                 except Exception as e:
                     st.warning(f"Could not resend the email: {e}")

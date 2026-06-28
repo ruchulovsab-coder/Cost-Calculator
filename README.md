@@ -153,12 +153,13 @@ provide.
 - **What-If analysis** — live sliders (Step 10) for volume, margin, contingency
   and coverage; never mutate your saved inputs. **Save a what-if as a new version**
   bakes the moved drivers into a fresh draft (with the drivers recorded in the note)
-- **Approval workflow** (Step 10) — request approval by email; the **email and the
-  reviewer's landing page both show the headline figures** (selling price, gross
-  margin %, delivery cost, FTE); reviewer approves / rejects via a tokened link;
-  the **preparer never sees the link** (a **Resend approval email** button covers
-  "didn't receive it"). Changing an **approved** estimate blocks downloads/approval
-  until it's **saved as a new (draft) version**, which needs its own approval
+- **Approval workflow** (Step 10) — request approval by email; the **email carries an
+  estimate summary (Executive + Financial) in the body and the editable Excel formula
+  workbook as an attachment**, and the reviewer's landing page shows the same summary;
+  reviewer approves / rejects via a tokened link; the **preparer never sees the link**
+  (a **Resend approval email** button covers "didn't receive it"). Changing an
+  **approved** estimate blocks downloads/approval until it's **saved as a new (draft)
+  version**, which needs its own approval
 - **Saved Calculations** — versioned, timestamped saves keyed by Customer/RFP name
   (Azure Blob), reloadable across sessions
 - **Drafts & recovery** — per-user autosave on every navigation, a blocking resume
