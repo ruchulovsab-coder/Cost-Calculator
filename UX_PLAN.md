@@ -25,6 +25,13 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   Customer/RFP name; **save a what-if as a new version**; approval **email figures** +
   **reviewer landing summary**; review link hidden from the requester (**resend** instead);
   Resume screen readable names + **per-draft delete**.
+- **v1.25** — the approval **email carries the estimate**: Executive + Financial summary in the
+  body, editable Excel workbook attached.
+- **v1.26** — **Editable Excel (formulas)** rebuilt as a **page-by-page, fully formula-driven
+  workbook** that mirrors the app (Inputs / Rate Cards / Workload / Patching / Activities /
+  Effort / FTE / Rates / Costing / live Dashboard); yellow inputs + white engine-mirroring
+  formulas recalculate without the app, with grey "App value" cross-check cells — a step toward
+  closing the **output-inconsistency** gap below.
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an

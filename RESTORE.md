@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.25`** — *current stable.* The approval **email now carries the estimate in it**: an
+- **`v1.26`** — *current stable.* The **Editable Excel (formulas)** download is rebuilt as a
+  **fully formula-driven workbook that mirrors the app page by page** (`generate_excel_model`):
+  sheets for Inputs, Rate Cards, 1-2 Workload, 3 Patching, 4 Activities, 5 Effort, 6 FTE,
+  7 Rates, 8 Costing and a live Dashboard. Yellow cells are editable inputs; white cells are
+  live formulas mirroring `engine.compute_full_model`, so an Excel-first user can change any
+  driver and watch every page + the Dashboard recalculate **without the app**. Grey "App value"
+  cells echo the tool's computed result for cross-checking. No new dependency (openpyxl only);
+  calculation engine untouched; same `generate_excel_model()` signature (download button +
+  approval-email attachment unchanged).
+- **`v1.25`** — The approval **email now carries the estimate in it**: an
   **Executive + Financial summary rendered in the body** (inline HTML, reliable across
   clients) and the **editable Excel formula workbook attached** (`generate_excel_model`).
   Applies to both the initial request and **Resend**. Built from the current estimate
@@ -93,7 +102,26 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.25` contains (current stable)
+## What `v1.26` contains (current stable)
+Everything in v1.25, plus the **Editable Excel (formulas)** export rebuilt from a single
+"Editable Model" sheet into a **page-by-page, fully formula-driven workbook**
+(`modules/outputs/excel_model.py` → `generate_excel_model`):
+- **Sheets:** `Inputs` (all scalar inputs + FX table + additional cost items),
+  `Rate Cards` (scoped lookup table the rates sheet VLOOKUPs against, plus the full uploaded
+  card for reference), `1-2 Workload`, `3 Patching`, `4 Activities`, `5 Effort`, `6 FTE`,
+  `7 Rates`, `8 Costing`, and a live `Dashboard`.
+- **Live recalculation:** yellow cells are editable inputs; white cells are Excel formulas that
+  mirror `engine.compute_full_model` (buffered role hours, patching manual/tool, auto-activity
+  formulas, contingency + overhead assembly, FTE with coverage + ⌈0.5⌉ rounding, genus→rate
+  VLOOKUP × FX → INR, delivery → selling price). Change any input and every page + the
+  Dashboard recomputes **without the app**.
+- **Cross-check:** grey "App value" cells echo the tool's computed result next to the Excel
+  formula so users can confirm the recalculation matches.
+- No new dependency (openpyxl only); engine untouched; the public `generate_excel_model()`
+  signature is unchanged, so the dashboard download button and the approval-email attachment
+  keep working as-is.
+
+## What `v1.25` contains
 Everything in v1.24, plus **the estimate travels with the approval email**:
 - **Body:** an inline-styled **Executive Summary + Financial Summary** (total effort, FTE,
   delivery cost, gross margin %, selling price; resource cost / expenses / SLA / gross
@@ -331,6 +359,9 @@ git push origin v1.24
 
 git tag -a v1.25 -m "Stable Version 1.25 — approval email carries estimate summary (body) + editable Excel attachment"
 git push origin v1.25
+
+git tag -a v1.26 -m "Stable Version 1.26 — Editable Excel rebuilt as page-by-page formula-driven workbook"
+git push origin v1.26
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

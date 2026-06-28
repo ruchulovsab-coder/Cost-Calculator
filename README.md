@@ -147,6 +147,12 @@ provide.
 ## Outputs
 
 - **Excel report** — multi-sheet workbook (exec summary, effort, FTE, costs, audit)
+- **Editable Excel (formulas)** — a page-by-page, **fully formula-driven** workbook
+  mirroring the app (Inputs, Rate Cards, Workload, Patching, Activities, Effort, FTE,
+  Rates, Costing, live Dashboard). Yellow cells are inputs; white cells are live formulas
+  mirroring the engine, so an Excel-first user can change any driver and watch every page +
+  the Dashboard recalculate **without the app**. Grey "App value" cells echo the tool's
+  result for cross-checking
 - **PDF proposal** — client-facing branded quote
 - **Scenario comparison** — save scenarios in-session and compare effort / FTE /
   cost / price side by side (or import/export as JSON)
