@@ -159,6 +159,12 @@ provide.
 - **What-If analysis** — live sliders (Step 10) for volume, margin, contingency
   and coverage; never mutate your saved inputs. **Save a what-if as a new version**
   bakes the moved drivers into a fresh draft (with the drivers recorded in the note)
+- **Transition & Onboarding Planner** (Step 8) — a dynamic phase/week resource grid: pick the
+  total transition duration (auto-generates week columns), configure phases (rename/add/delete/
+  reorder; weeks must sum to the duration), staff a role × count roster, and set per-week
+  utilisation. Cost = `count × utilisation × 40 hrs × Genus rate`, then choose the commercial
+  treatment — **recurring** (÷ configurable months, added to the monthly price post-margin),
+  **one-time fee** (separate line), or **absorb** (discount → net charged ₹0)
 - **Approval workflow** (Step 10) — request approval by email; the **email carries an
   estimate summary (Executive + Financial) in the body and the editable Excel formula
   workbook as an attachment**, and the reviewer's landing page shows the same summary;

@@ -381,6 +381,119 @@ def calc_selling_price(total_delivery_cost_inr: float, margin_pct: float) -> Dic
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Transition & Onboarding planner cost
+#   Weekly cost per resource = count × utilisation × weekly_hours × hourly_rate.
+#   Reuses the same Genus INR rates as the monthly model — no separate costing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def transition_week_phase_map(phases: List[Dict], total_weeks: int) -> Dict[int, str]:
+    """Map each 1-based week number to its phase name, allocating weeks to phases
+    sequentially in configured order. Weeks past the configured phases map to None."""
+    mapping: Dict[int, str] = {}
+    week = 1
+    for ph in phases or []:
+        n = int(ph.get("weeks", 0) or 0)
+        for _ in range(n):
+            if total_weeks and week > total_weeks:
+                break
+            mapping[week] = ph.get("name", "")
+            week += 1
+    return mapping
+
+
+def calc_transition_cost(
+    planner: Optional[Dict[str, Any]],
+    role_rates_inr: Dict[str, float],
+    weekly_hours: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Compute the Transition & Onboarding cost from the planner config.
+
+    planner = {
+      enabled: bool, total_weeks: int,
+      phases: [{name, weeks}], resources: [{id, role, count}],
+      allocation: {resource_id: {week: utilisation}},   # week keys int or str
+      treatment: "recurring"|"one_time"|"absorb", amortisation_months: int,
+    }
+    Per (resource, week):  count × utilisation × weekly_hours × hourly_rate_inr[role].
+    Returns the total, per-resource / per-phase breakdowns, and the commercial
+    figures (monthly recurring, one-time fee, absorbed, net charged).
+    """
+    if weekly_hours is None:
+        from config.settings import TRANSITION_WEEKLY_HOURS
+        weekly_hours = TRANSITION_WEEKLY_HOURS
+
+    out: Dict[str, Any] = {
+        "enabled": False, "total": 0.0, "weekly_hours": weekly_hours,
+        "treatment": "one_time", "amortisation_months": 12,
+        "monthly_recurring": 0.0, "one_time_fee": 0.0, "absorbed": 0.0,
+        "net_charged": 0.0, "per_resource": [], "per_phase": {}, "total_weeks": 0,
+    }
+    if not planner or not planner.get("enabled"):
+        return out
+
+    total_weeks = int(planner.get("total_weeks", 0) or 0)
+    phases = planner.get("phases", []) or []
+    resources = planner.get("resources", []) or []
+    allocation = planner.get("allocation", {}) or {}
+    rates = role_rates_inr or {}
+    week_phase = transition_week_phase_map(phases, total_weeks)
+
+    per_phase: Dict[str, float] = {}
+    per_resource: List[Dict[str, Any]] = []
+    total = 0.0
+    for res in resources:
+        rid = str(res.get("id", ""))
+        role = res.get("role")
+        count = float(res.get("count", 0) or 0)
+        rate = float(rates.get(role, 0.0) or 0.0)
+        # allocation may be keyed by the str(id) (JSON round-trip) or the raw id
+        alloc = allocation.get(rid) or allocation.get(res.get("id")) or {}
+        r_hours = 0.0
+        r_cost = 0.0
+        for wk, util in alloc.items():
+            try:
+                w = int(wk)
+            except (TypeError, ValueError):
+                continue
+            if w < 1 or (total_weeks and w > total_weeks):
+                continue
+            u = float(util or 0)
+            if u <= 0 or count <= 0:
+                continue
+            hours = count * u * weekly_hours
+            cost = hours * rate
+            r_hours += hours
+            r_cost += cost
+            ph = week_phase.get(w)
+            if ph:
+                per_phase[ph] = per_phase.get(ph, 0.0) + cost
+        total += r_cost
+        per_resource.append({
+            "id": rid, "role": role, "count": count,
+            "hours": r_hours, "rate_inr": rate, "cost": r_cost,
+        })
+
+    treatment = planner.get("treatment", "one_time") or "one_time"
+    months = max(int(planner.get("amortisation_months", 12) or 12), 1)
+    out.update({
+        "enabled": True, "total": total, "treatment": treatment,
+        "amortisation_months": months, "per_resource": per_resource,
+        "per_phase": per_phase, "total_weeks": total_weeks,
+    })
+    if treatment == "recurring":
+        out["monthly_recurring"] = total / months
+        out["net_charged"] = total
+    elif treatment == "absorb":
+        out["absorbed"] = total
+        out["net_charged"] = 0.0
+    else:  # one_time
+        out["one_time_fee"] = total
+        out["net_charged"] = total
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # STEP 16  Currency conversion
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -588,6 +701,16 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
     margin = float(g("target_margin_pct", 0.0) or 0.0)
     price_result = calc_selling_price(cost_result["total_delivery_cost"], margin)
 
+    # 8b. Transition & Onboarding — calculated from the planner, applied to the
+    # PRICE post-margin (never marked up). Recurring adds total/months to the
+    # monthly price; one-time is a separate line; absorb nets it to zero.
+    transition = calc_transition_cost(g("transition_planner"), role_rates_inr)
+    if transition["enabled"]:
+        transition_cost_legacy = transition["one_time_fee"]   # >0 only for one-time
+    else:
+        transition_cost_legacy = float(g("transition_total_cost", 0.0) or 0.0)
+    monthly_price_with_transition = price_result["selling_price"] + transition["monthly_recurring"]
+
     # 9. Currency conversion of headline figures
     reporting_currency = g("reporting_currency", "INR") or "INR"
     exchange_rates = g("exchange_rates", {}) or {}
@@ -622,6 +745,9 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         "reporting_currency": reporting_currency,
         "selling_price_converted": _conv(price_result["selling_price"]),
         "delivery_cost_converted": _conv(cost_result["total_delivery_cost"]),
-        "transition_cost": float(g("transition_total_cost", 0.0) or 0.0),
-        "transition_cost_converted": _conv(float(g("transition_total_cost", 0.0) or 0.0)),
+        "transition": transition,
+        "monthly_price_with_transition": monthly_price_with_transition,
+        "monthly_price_with_transition_converted": _conv(monthly_price_with_transition),
+        "transition_cost": transition_cost_legacy,
+        "transition_cost_converted": _conv(transition_cost_legacy),
     }

@@ -9,7 +9,7 @@ from modules.calculations.engine import (
     calc_coverage_multiplier, calc_fte, ceil_half, calc_patching_effort,
     calc_total_delivery_cost, calc_selling_price, assemble_role_hours,
     calc_resource_cost, filter_rate_card, resolve_role_rates, derive_activity_hours,
-    calc_category_role_hours,
+    calc_category_role_hours, calc_transition_cost, transition_week_phase_map,
 )
 
 
@@ -222,3 +222,85 @@ def test_resolve_role_rates_converts_foreign_currency(rate_card):
 def test_resolve_role_rates_skips_unmapped(rate_card):
     rates = resolve_role_rates(rate_card, {"L1": None, "L2": "nonexistent"}, "India")
     assert rates == {}
+
+
+# ── Transition & Onboarding planner cost ───────────────────────────────────────
+
+def _planner(**over):
+    p = {
+        "enabled": True, "total_weeks": 4,
+        "phases": [{"id": "p1", "name": "Assess", "weeks": 2},
+                   {"id": "p2", "name": "KT", "weeks": 2}],
+        "resources": [{"id": "a", "role": "L2", "count": 1}],
+        "allocation": {"a": {1: 1.0, 2: 1.0, 3: 0.0, 4: 0.0}},
+        "treatment": "one_time", "amortisation_months": 12,
+    }
+    p.update(over)
+    return p
+
+
+def test_transition_disabled_is_zero():
+    out = calc_transition_cost(None, {"L2": 800})
+    assert out["enabled"] is False and out["total"] == 0.0
+    out = calc_transition_cost({"enabled": False}, {"L2": 800})
+    assert out["total"] == 0.0
+
+
+def test_transition_basic_total():
+    # 1 × L2 × 40h × ₹800 for 2 weeks at 100% = 64,000
+    out = calc_transition_cost(_planner(), {"L2": 800}, weekly_hours=40.0)
+    assert out["total"] == pytest.approx(64000.0)
+    assert out["one_time_fee"] == pytest.approx(64000.0)
+    assert out["net_charged"] == pytest.approx(64000.0)
+
+
+def test_transition_count_and_utilisation_multiply():
+    p = _planner(resources=[{"id": "a", "role": "L2", "count": 3}],
+                 allocation={"a": {1: 0.5}})
+    out = calc_transition_cost(p, {"L2": 800}, weekly_hours=40.0)
+    assert out["total"] == pytest.approx(3 * 0.5 * 40 * 800)  # 48,000
+
+
+def test_transition_recurring_amortises():
+    out = calc_transition_cost(_planner(treatment="recurring", amortisation_months=12),
+                               {"L2": 800})
+    assert out["monthly_recurring"] == pytest.approx(64000.0 / 12)
+    assert out["net_charged"] == pytest.approx(64000.0)
+    assert out["one_time_fee"] == 0.0
+
+
+def test_transition_absorb_nets_to_zero():
+    out = calc_transition_cost(_planner(treatment="absorb"), {"L2": 800})
+    assert out["absorbed"] == pytest.approx(64000.0)
+    assert out["net_charged"] == 0.0
+
+
+def test_transition_per_phase_breakdown():
+    out = calc_transition_cost(_planner(), {"L2": 800})
+    # both worked weeks (1,2) fall in phase "Assess"
+    assert out["per_phase"]["Assess"] == pytest.approx(64000.0)
+    assert "KT" not in out["per_phase"]
+
+
+def test_transition_ignores_weeks_past_total():
+    p = _planner(total_weeks=2, allocation={"a": {1: 1.0, 2: 1.0, 3: 1.0}})
+    out = calc_transition_cost(p, {"L2": 800})
+    assert out["total"] == pytest.approx(2 * 40 * 800)  # week 3 dropped
+
+
+def test_transition_handles_string_week_keys():
+    # JSON round-trip stringifies the week keys
+    p = _planner(allocation={"a": {"1": 1.0, "2": 1.0}})
+    out = calc_transition_cost(p, {"L2": 800})
+    assert out["total"] == pytest.approx(64000.0)
+
+
+def test_transition_missing_rate_is_zero_cost():
+    out = calc_transition_cost(_planner(), {})  # no rate for L2
+    assert out["total"] == 0.0
+    assert out["per_resource"][0]["rate_inr"] == 0.0
+
+
+def test_transition_week_phase_map_sequential():
+    m = transition_week_phase_map([{"name": "A", "weeks": 2}, {"name": "B", "weeks": 3}], 5)
+    assert m == {1: "A", 2: "A", 3: "B", 4: "B", 5: "B"}

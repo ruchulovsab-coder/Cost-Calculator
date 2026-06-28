@@ -122,6 +122,18 @@ def _build_initial_state():
         "transition_total_cost":          0.0,
         "transition_amortisation_months": 12,
 
+        # Transition & Onboarding Planner (phase/week resource grid). Empty until
+        # enabled; the planner UI seeds default phases/roster on first enable.
+        "transition_planner": {
+            "enabled":             False,
+            "total_weeks":         8,
+            "phases":              [],   # [{id, name, weeks}]
+            "resources":           [],   # [{id, role, count}]
+            "allocation":          {},   # {resource_id: {week: utilisation}}
+            "treatment":           "recurring",   # recurring | one_time | absorb
+            "amortisation_months": 12,
+        },
+
         "additional_costs": [
             {"name": "Shift Allowance",              "cost": 0.0, "custom": False},
             {"name": "On-Call Allowance",            "cost": 0.0, "custom": False},
@@ -238,12 +250,12 @@ _STEP_RESET = {
     6: (["monthly_working_hours", "productive_utilisation"],
         ["monthly_working_hours_w", "productive_utilisation_w"], []),
     7: (["role_genus"], [], ["genus_"]),
-    8: (["transition_included", "transition_total_cost", "additional_costs",
+    8: (["transition_included", "transition_total_cost", "transition_planner", "additional_costs",
          "sla_provision_included", "sla_provision_pct", "target_margin_pct",
          "reporting_currency", "exchange_rates", "fte_basis"],
         ["transition_included", "transition_total_cost_input", "sla_provision_included",
          "sla_provision_pct", "target_margin_pct", "reporting_currency", "fte_basis_w"],
-        ["addcost_", "ac_p_", "ac_h_", "ac_r_", "fx_"]),
+        ["addcost_", "ac_p_", "ac_h_", "ac_r_", "fx_", "tp_"]),
 }
 
 
@@ -315,7 +327,7 @@ _MODEL_KEYS = [
     "coverage_model", "custom_hours_per_day", "custom_days_per_week",
     "monthly_working_hours", "productive_utilisation", "role_genus",
     "additional_costs", "sla_provision_included", "sla_provision_pct",
-    "target_margin_pct", "transition_total_cost",
+    "target_margin_pct", "transition_total_cost", "transition_planner",
     "reporting_currency", "exchange_rates",
     "delivery_country", "delivery_location", "fte_basis",
 ]

@@ -162,6 +162,24 @@ DRAFT_ORPHAN_DAYS = 30
 DEFAULT_NUM_SERVERS       = 20
 PATCHING_EFFORT_DEFAULTS  = {"Manual": 45.0, "Tool-Based": 30.0}  # minutes/server
 
+# ── Transition & Onboarding Planner ───────────────────────────────────────────
+# A full-capacity resource works this many hours per transition week (1.0 = 100%
+# utilisation). Weekly cost = count × utilisation × TRANSITION_WEEKLY_HOURS × rate.
+TRANSITION_WEEKLY_HOURS = 40.0
+# Suggested total-duration presets (weeks). The planner is fully dynamic — any
+# whole-week duration is allowed; these are just quick-pick values.
+TRANSITION_DURATION_PRESETS = [4, 8, 12, 16, 24]
+# Default phases — editable at runtime (rename/add/delete/reorder/redurate). Names
+# are not hardcoded into any logic; weeks map to phases sequentially by order.
+DEFAULT_TRANSITION_PHASES = [
+    "Assessment & Discovery", "Initiation & Planning", "Knowledge Transition",
+    "Process Understanding", "Stabilization",
+]
+# Default roster roles (keys must match ALL_ROLES so rate-card rates resolve).
+TRANSITION_DEFAULT_ROLES = ["L1", "L2", "L3", "Architect", "SDM"]
+# Per-cell weekly utilisation choices (constrained picker).
+TRANSITION_UTIL_OPTIONS = [0.0, 0.25, 0.5, 1.0]
+
 # ── Auto-derived additional-activity effort formulas ──────────────────────────
 # For each activity the monthly effort (hours) = (Σ driver_quantity × per_unit_min) ÷ 60.
 # Drivers: "servers" (from patching server count) and the four ticket volumes

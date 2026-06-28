@@ -32,6 +32,10 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   Effort / FTE / Rates / Costing / live Dashboard); yellow inputs + white engine-mirroring
   formulas recalculate without the app, with grey "App value" cross-check cells — a step toward
   closing the **output-inconsistency** gap below.
+- **v1.27** — **Transition & Onboarding Planner** (section in Step 8): dynamic duration →
+  editable phases (sum-validated) → role × count roster → per-phase weekly utilisation grids →
+  live cost → commercial treatment (recurring ÷ months / one-time / absorb), applied to the
+  price post-margin. Reuses the rate-card rates + existing components; nothing hardcoded.
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an
