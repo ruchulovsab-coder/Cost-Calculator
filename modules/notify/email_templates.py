@@ -61,10 +61,70 @@ def _figures_blocks(summary):
     return text, html
 
 
-def review_request(project: str, version, link: str, requested_by: str = "", summary=None):
+def _inr(v) -> str:
+    try:
+        return f"INR {float(v or 0):,.0f}"
+    except (TypeError, ValueError):
+        return "INR 0"
+
+
+def _sum_row(label, val, bold=False) -> str:
+    w = "bold" if bold else "normal"
+    bg = "#F4FAFA" if bold else "#FFFFFF"
+    return (f'<tr style="background:{bg}">'
+            f'<td style="padding:6px 10px;border-bottom:1px solid #E0ECEC;font-weight:{w}">{label}</td>'
+            f'<td style="padding:6px 10px;border-bottom:1px solid #E0ECEC;text-align:right;'
+            f'font-weight:{w}">{val}</td></tr>')
+
+
+def dashboard_summary_html(model) -> str:
+    """An inline-styled 'dashboard in the body': Executive + Financial summary tables
+    built from a computed model. Inline styles only (email clients strip <style>);
+    figures are INR base values (gross margin is currency-independent). '' if no model."""
+    if not model:
+        return ""
+    try:
+        cr = model["cost_result"]; pr = model["price_result"]
+        total_effort = float(model.get("total_effort", 0) or 0)
+        raw = model.get("fte_basis") == "raw"
+        fte_str = f"{float(model.get('total_fte', 0) or 0):.2f}" if raw else f"{float(model.get('total_fte', 0) or 0):.1f}"
+    except Exception:
+        return ""
+
+    def _table(title, rows):
+        return (f'<div style="font-weight:bold;color:{THEME["navy"]};margin:16px 0 6px">{title}</div>'
+                f'<table role="presentation" cellpadding="0" cellspacing="0" '
+                f'style="width:100%;border-collapse:collapse;font-size:14px">{rows}</table>')
+
+    exec_rows = (
+        _sum_row("Total Effort", f"{total_effort:,.1f} hrs")
+        + _sum_row(f"Total FTE ({'raw' if raw else 'rounded'})", fte_str)
+        + _sum_row("Gross Margin", f"{float(pr.get('margin_pct', 0) or 0):.1f}%")
+        + _sum_row("Monthly Delivery Cost", _inr(cr.get("total_delivery_cost")), bold=True)
+        + _sum_row("Monthly Selling Price", _inr(pr.get("selling_price")), bold=True)
+    )
+    fin_rows = (
+        _sum_row("Total Resource Cost", _inr(cr.get("resource_cost")))
+        + _sum_row("Additional Expenses", _inr(cr.get("additional_expenses")))
+        + _sum_row("SLA Provision", _inr(cr.get("sla_provision")))
+        + _sum_row("TOTAL DELIVERY COST", _inr(cr.get("total_delivery_cost")), bold=True)
+        + _sum_row("Gross Profit", _inr(pr.get("gross_profit")))
+        + _sum_row("MONTHLY SELLING PRICE", _inr(pr.get("selling_price")), bold=True)
+    )
+    if float(model.get("transition_cost", 0) or 0) > 0:
+        fin_rows += _sum_row("One-time Transition (billed separately)",
+                             _inr(model.get("transition_cost")), bold=True)
+    return ('<div style="margin:6px 0 0;color:#0D4A4A;font-size:13px">Estimate summary (INR) — '
+            'full working model is attached as an Excel workbook:</div>'
+            + _table("Executive Summary", exec_rows)
+            + _table("Financial Summary", fin_rows))
+
+
+def review_request(project: str, version, link: str, requested_by: str = "",
+                   summary=None, body_html: str = ""):
     """Build (subject, plain_text, html) for an approval-review request email.
-    `summary` is the saved estimate's summary dict (selling_price/delivery_cost/
-    total_fte) so the reviewer sees the headline figures before opening the link."""
+    `summary` gives the plain-text headline figures; `body_html` (when provided) is
+    the rich dashboard summary rendered in the HTML body — else a small figures table."""
     by = f" by {requested_by}" if requested_by else ""
     subject = f"Approval requested: {project} (v{version})"
     fig_text, fig_html = _figures_blocks(summary)
@@ -73,7 +133,8 @@ def review_request(project: str, version, link: str, requested_by: str = "", sum
     html = _REVIEW_HTML.format(
         text=THEME["text"], navy=THEME["navy"], primary=THEME["primary"],
         muted=THEME["text_muted"], org=ORG_NAME, app=APP_NAME_SHORT,
-        project=project, version=version, by=by, link=link, figures=fig_html,
+        project=project, version=version, by=by, link=link,
+        figures=(body_html or fig_html),
     )
     return subject, text, html
 

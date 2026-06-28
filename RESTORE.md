@@ -4,7 +4,13 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.24`** — *current stable.* Approval/versioning hardening + gate & contrast fixes on
+- **`v1.25`** — *current stable.* The approval **email now carries the estimate in it**: an
+  **Executive + Financial summary rendered in the body** (inline HTML, reliable across
+  clients) and the **editable Excel formula workbook attached** (`generate_excel_model`).
+  Applies to both the initial request and **Resend**. Built from the current estimate
+  session at send time. No new dependency (ACS attachments + Pillow already present;
+  no server-side screenshot/kaleido).
+- **`v1.24`** — Approval/versioning hardening + gate & contrast fixes on
   top of v1.10 (no new infrastructure or config — same Groq chat, Blob store, ACS email).
   Highlights: branded, readable sign-in / mode / chat gates with the Nagarro logo;
   **re-version + re-approval when an approved estimate changes** (downloads/approval blocked
@@ -87,7 +93,21 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.24` contains (current stable)
+## What `v1.25` contains (current stable)
+Everything in v1.24, plus **the estimate travels with the approval email**:
+- **Body:** an inline-styled **Executive Summary + Financial Summary** (total effort, FTE,
+  delivery cost, gross margin %, selling price; resource cost / expenses / SLA / gross
+  profit / transition). Inline HTML so it renders in Outlook/Gmail — not a screenshot
+  (server-side screenshots aren't possible on this scale-to-zero container, and image
+  embeds are unreliable in email).
+- **Attachment:** the **editable Excel formula workbook** (`generate_excel_model`) with the
+  full working model.
+- Applies to the initial **request** and the **Resend approval email** button; figures,
+  body summary and the workbook are all generated from the same current-session model at
+  send time (= the just-saved version in the normal flow). Best-effort: if the workbook
+  can't be built the email still sends with the summary. No new dependency.
+
+## What `v1.24` contains
 Everything in v1.10, plus approval/versioning hardening and gate/contrast fixes — no new
 infrastructure or config (same Groq chat, Blob store and ACS email):
 
@@ -308,6 +328,9 @@ git push origin v1.10
 
 git tag -a v1.24 -m "Stable Version 1.24 — approval/versioning hardening + gate & contrast fixes"
 git push origin v1.24
+
+git tag -a v1.25 -m "Stable Version 1.25 — approval email carries estimate summary (body) + editable Excel attachment"
+git push origin v1.25
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

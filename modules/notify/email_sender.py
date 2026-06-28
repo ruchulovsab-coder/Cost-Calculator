@@ -28,23 +28,33 @@ def _email_client():
     return EmailClient(endpoint, DefaultAzureCredential(exclude_interactive_browser_credential=True))
 
 
-def _send(recipient_email: str, subject: str, text: str, html: str):
-    """Dispatch one email. Raises on failure; returns the send result."""
+def _send(recipient_email: str, subject: str, text: str, html: str, attachments=None):
+    """Dispatch one email. `attachments` is a list of {name, content_type, bytes}.
+    Raises on failure; returns the send result."""
     message = {
         "senderAddress": os.environ["ACS_SENDER"].strip(),
         "recipients": {"to": [{"address": recipient_email}]},
         "content": {"subject": subject, "plainText": text, "html": html},
     }
+    if attachments:
+        import base64
+        message["attachments"] = [
+            {"name": a["name"], "contentType": a["content_type"],
+             "contentInBase64": base64.b64encode(a["bytes"]).decode("ascii")}
+            for a in attachments if a.get("bytes")
+        ]
     return _email_client().begin_send(message).result()
 
 
 def send_review_email(reviewer_email: str, project: str, version, link: str,
-                      requested_by: str = "", summary=None):
+                      requested_by: str = "", summary=None, body_html: str = "",
+                      attachments=None):
     """Send the approval-review email. Raises on failure; returns the send result.
-    `summary` (the saved estimate's summary) adds the headline figures to the email."""
+    `summary` → plain-text headline figures; `body_html` → the rich dashboard summary
+    in the HTML body; `attachments` → e.g. the editable Excel model workbook."""
     from modules.notify.email_templates import review_request
-    subject, text, html = review_request(project, version, link, requested_by, summary)
-    return _send(reviewer_email, subject, text, html)
+    subject, text, html = review_request(project, version, link, requested_by, summary, body_html)
+    return _send(reviewer_email, subject, text, html, attachments)
 
 
 def send_orphan_review_email(recipient_email: str, requested_by: str, count, link: str):
