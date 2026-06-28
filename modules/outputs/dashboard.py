@@ -29,22 +29,9 @@ from utils.formatters import fmt_currency, fmt_pct, fmt_hours
 
 def _render_cost_inputs():
     """Render all cost-side input widgets (they write to session_state)."""
-    # ── Transition ────────────────────────────────────────────
-    section_hdr("🚀 Transition & Onboarding Cost")
-    trans_inc = st.radio("Include Transition / Onboarding Cost?", ["Yes", "No"],
-                         index=0 if st.session_state.get("transition_included") == "Yes" else 1,
-                         key="transition_included", horizontal=True)
-    transition_total_cost = 0.0
-    if trans_inc == "Yes":
-        val = float(st.session_state.get("transition_total_cost", 0.0))
-        total_tc = st.number_input(
-            "Total Transition Cost (One-time, charged independently)", min_value=0.0, step=10000.0, format="%.0f",
-            value=val if val else None, placeholder="0",
-            key="transition_total_cost_input",
-        )
-        transition_total_cost = total_tc or 0.0
-        st.info(f"One-Time Transition Cost: **₹{transition_total_cost:,.0f}** (not included in the monthly delivery cost)")
-    st.session_state["transition_total_cost"] = transition_total_cost
+    # ── Transition & Onboarding Planner ───────────────────────
+    from modules.inputs.transition_planner import render_transition_planner
+    render_transition_planner()
 
     # ── Additional cost components ────────────────────────────
     st.divider()
@@ -533,6 +520,11 @@ def render_step9() -> bool:
     wf_labels.append("Total Delivery Cost"); wf_values.append(cost_result["total_delivery_cost"]); wf_measure.append("total")
     wf_labels.append("Gross Profit"); wf_values.append(price_result["gross_profit"]); wf_measure.append("relative")
     wf_labels.append("Selling Price"); wf_values.append(price_result["selling_price"]); wf_measure.append("total")
+    _trans = model.get("transition", {})
+    if _trans.get("enabled") and _trans.get("treatment") == "recurring" and _trans.get("monthly_recurring", 0) > 0:
+        wf_labels.append("Transition (monthly)"); wf_values.append(_trans["monthly_recurring"]); wf_measure.append("relative")
+        wf_labels.append("Monthly Price (incl. transition)")
+        wf_values.append(model["monthly_price_with_transition"]); wf_measure.append("total")
     wf_conv = [conv(v) for v in wf_values]
     if PLOTLY_OK:
         fig_wf = go.Figure(go.Waterfall(
@@ -563,7 +555,21 @@ def render_step9() -> bool:
         ("Gross Profit",              price_result["gross_profit"],       False),
         ("MONTHLY SELLING PRICE",     price_result["selling_price"],      True),
     ]
-    if model["transition_cost"] > 0:
+    trans = model.get("transition", {})
+    if trans.get("enabled") and trans.get("total", 0) > 0:
+        t = trans.get("treatment")
+        if t == "recurring":
+            fin_items.append((f"+ Transition (recurring ÷ {trans['amortisation_months']} mo)",
+                              trans["monthly_recurring"], False))
+            fin_items.append(("MONTHLY PRICE (incl. transition)",
+                              model["monthly_price_with_transition"], True))
+        elif t == "one_time":
+            fin_items.append(("ONE-TIME TRANSITION FEE", trans["total"], True))
+        else:  # absorb
+            fin_items.append(("Transition Cost (absorbed)", trans["total"], False))
+            fin_items.append(("Absorbed / Discount", -trans["total"], False))
+            fin_items.append(("Net Transition Charged", 0.0, True))
+    elif model["transition_cost"] > 0:   # legacy flat-input fallback
         fin_items.append(("ONE-TIME TRANSITION COST", model["transition_cost"], True))
     fin_rows = ""
     for label, inr_val, total in fin_items:

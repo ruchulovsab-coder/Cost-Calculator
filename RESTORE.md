@@ -4,7 +4,19 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.26`** — *current stable.* The **Editable Excel (formulas)** download is rebuilt as a
+- **`v1.27`** — *current stable.* New **Transition & Onboarding Planner** (a section inside
+  Step 8 Costing): a fully dynamic phase/week resource grid that auto-calculates the transition
+  cost from the existing Genus hourly rates, then lets the user choose the commercial treatment.
+  Pick a **total duration** (auto-generates week columns), configure **dynamic phases**
+  (rename/add/delete/reorder, weeks must sum to the duration), staff a **resource roster**
+  (role × count), and set **per-week utilisation** (0/.25/.5/1.0) in per-phase grids.
+  `weekly cost = count × utilisation × 40 hrs × hourly rate`. Commercial treatment:
+  **Recurring** (÷ configurable months, added to the monthly price **post-margin**),
+  **One-time fee** (separate line), or **Absorb** (discount → net charged ₹0). New pure
+  `engine.calc_transition_cost`; nothing hardcoded (weeks/phases/roles). Backward compatible —
+  old estimates load with the planner off and the legacy one-time transition figure intact.
+  90 tests pass. *(Export theming for the new treatment is a follow-up.)*
+- **`v1.26`** — The **Editable Excel (formulas)** download is rebuilt as a
   **fully formula-driven workbook that mirrors the app page by page** (`generate_excel_model`):
   sheets for Inputs, Rate Cards, 1-2 Workload, 3 Patching, 4 Activities, 5 Effort, 6 FTE,
   7 Rates, 8 Costing and a live Dashboard. Yellow cells are editable inputs; white cells are
@@ -102,7 +114,29 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.26` contains (current stable)
+## What `v1.27` contains (current stable)
+Everything in v1.26, plus the **Transition & Onboarding Planner**
+(`modules/inputs/transition_planner.py`, surfaced as a section at the top of Step 8 Costing):
+- **Dynamic duration** — pick the total transition weeks (presets 4/8/12/16/24, or any value);
+  week columns generate automatically. Reducing the duration warns before dropping weeks that
+  hold utilisation data.
+- **Dynamic phases** — default set (Assessment & Discovery / Initiation & Planning / Knowledge
+  Transition / Process Understanding / Stabilization) is fully editable (rename/add/delete/
+  reorder/redurate). Validation blocks until **Σ phase weeks = total duration** (shows
+  Allocated / Remaining / Exceeded).
+- **Resource roster + weekly grids** — roster is role × count (roles from `ALL_ROLES`,
+  extensible); each phase gets a mini-grid whose week columns group under a phase band, with a
+  per-cell utilisation picker (0 / 25% / 50% / 100%).
+- **Cost** — `weekly cost = count × utilisation × 40 hrs × Genus hourly rate`; reuses the
+  existing rate-card resolution. Live per-resource cost table + total.
+- **Commercial treatment** — Recurring (÷ configurable months → added to the monthly selling
+  price, post-margin), One-time fee (separate line), or Absorb (Transition ₹X / Absorbed −₹X /
+  Net charged ₹0).
+- **Engine/state** — pure `calc_transition_cost` + `transition_week_phase_map`; wired into
+  `compute_full_model` after margin; `transition_planner` persists in drafts/versions/scenarios.
+  Legacy `transition_cost` key retained so existing exports keep working. Nothing hardcoded.
+
+## What `v1.26` contains
 Everything in v1.25, plus the **Editable Excel (formulas)** export rebuilt from a single
 "Editable Model" sheet into a **page-by-page, fully formula-driven workbook**
 (`modules/outputs/excel_model.py` → `generate_excel_model`):
@@ -362,6 +396,9 @@ git push origin v1.25
 
 git tag -a v1.26 -m "Stable Version 1.26 — Editable Excel rebuilt as page-by-page formula-driven workbook"
 git push origin v1.26
+
+git tag -a v1.27 -m "Stable Version 1.27 — Transition & Onboarding Planner (dynamic phase/week resource grid + commercial treatment)"
+git push origin v1.27
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
