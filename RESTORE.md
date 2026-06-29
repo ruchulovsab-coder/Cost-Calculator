@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.30`** — *current stable.* Input/UX fixes on the app form: **single-entry number fields**
+- **`v1.31`** — *current stable.* **Uniform single-entry input behaviour** across the app:
+  every editable field now follows the Step-1 *Monitoring Alerts* pattern — a distinct widget
+  key (`…_w`) + concrete `value=` + explicit write-back — so a typed value registers in one go.
+  Fixes the Step 8 fields that still used the canonical key directly (SLA include/%, target
+  margin, reporting currency) and **converts the Step 2 resolution grid and Step 4 activities
+  grid from `st.data_editor` to individual `number_input`s** (Step 4 keeps add/remove via
+  buttons). Also: **Step 10 Version Notes auto-populates** from a diff of what changed since the
+  last saved version (e.g. "Margin 20%→25%; Alerts 300→400; activities 5→6") — editable. 92
+  tests pass; engine/Excel untouched.
+- **`v1.30`** — Input/UX fixes on the app form: **single-entry number fields**
   on Step 8 (the nullable `value=… else None` widgets that needed two entries are now concrete —
   people, days, cost/shift, additional cost, SLA %, margin %, FX). **Shift Allowance** and
   **On-Call Allowance** each get their own **on/off switch** (like patching); the middle field is
@@ -473,6 +482,9 @@ git push origin v1.29
 
 git tag -a v1.30 -m "Stable Version 1.30 — single-entry Step 8 fields, shift/on-call on-off switches, default tweaks (SSDM 0, transition 4wk, activity hours)"
 git push origin v1.30
+
+git tag -a v1.31 -m "Stable Version 1.31 — uniform single-entry inputs (grids to number_inputs), Step 10 auto version notes"
+git push origin v1.31
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

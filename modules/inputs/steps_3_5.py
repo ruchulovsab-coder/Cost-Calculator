@@ -144,72 +144,42 @@ def render_step4() -> bool:
         except (TypeError, ValueError):
             return 0.0
 
-    # Clickable formula reference
-    with st.expander("ℹ️ How are the recommended default efforts calculated?"):
-        st.markdown(
-            "For activities marked **Auto**, the monthly effort is derived from your "
-            "server count and ticket volumes as a recommendation. Untick **Auto** on any row "
-            "to enter your own value. Formula: *(sum of the terms below) ÷ 60 = hours/month.*"
-        )
-        for nm, cfg in ACTIVITY_FORMULAS.items():
-            h = derive_activity_hours(nm, servers, volumes)
-            st.markdown(f"- **{nm}** = ({cfg['text']}) ÷ 60 → current default **{h:.1f} hrs/month**")
-        st.caption(f"Using servers = {servers}, alerts = {volumes['alerts']}, "
-                   f"incidents = {volumes['incidents']}, service requests = {volumes['service_requests']}, "
-                   f"changes = {volumes['changes']}.")
-
-    # ── Editable grid ─────────────────────────────────────────
-    in_rows = []
-    for act in activities:
-        name = act.get("name", "")
-        is_derived = name in ACTIVITY_FORMULAS
-        auto = bool(act.get("auto", False)) and is_derived
-        hrs = (round(derive_activity_hours(name, servers, volumes), 1)
-               if auto else _num(act.get("hours", 0)))
-        d = act.get("dist", {})
-        row = {"Activity": name, "Auto": auto, "Monthly Hrs": hrs}
-        for rk, col in ROLE_COLS:
-            row[col] = _num(d.get(rk, 0))
-        in_rows.append(row)
-
-    pct_cfg = dict(min_value=0.0, max_value=100.0, step=5.0, format="%d%%")
-    edited = st.data_editor(
-        pd.DataFrame(in_rows), key="act_editor", hide_index=True,
-        use_container_width=True, num_rows="dynamic",
-        column_config={
-            "Activity": st.column_config.TextColumn(
-                "Activity", width="medium",
-                help="The four standard names (Scheduled Maintenance, RCA, Problem "
-                     "Management, Documentation & Knowledge Base) drive the Auto formulas."),
-            "Auto": st.column_config.CheckboxColumn(
-                "Auto", default=False,
-                help="On: hours auto-derived from servers/volumes (standard activities "
-                     "only). Off: type your own Monthly Hrs."),
-            "Monthly Hrs": st.column_config.NumberColumn(
-                "Monthly Hrs", min_value=0.0, step=0.5, format="%.1f",
-                help="Auto rows are formula-driven (edits revert); untick Auto to set your own."),
-            "L1 %":   st.column_config.NumberColumn("L1 %", **pct_cfg),
-            "L2 %":   st.column_config.NumberColumn("L2 %", **pct_cfg),
-            "L3 %":   st.column_config.NumberColumn("L3 %", **pct_cfg),
-            "Arch %": st.column_config.NumberColumn("Arch %", **pct_cfg),
-            "SDM %":  st.column_config.NumberColumn("SDM %", **pct_cfg),
-            "SSDM %": st.column_config.NumberColumn("SSDM %", **pct_cfg),
-        },
-    )
-
-    # ── Persist back to the session contract (name/auto/custom/hours/dist) ──
-    new_acts = []
-    for _, r in edited.iterrows():
-        nm = r["Activity"]
-        name = ("" if pd.isna(nm) else str(nm).strip()) or "Custom Activity"
-        is_derived = name in ACTIVITY_FORMULAS
-        auto = (bool(r["Auto"]) if not pd.isna(r["Auto"]) else False) and is_derived
-        hours = (round(derive_activity_hours(name, servers, volumes), 1)
-                 if auto else _num(r["Monthly Hrs"]))
-        dist = {rk: _num(r[col]) for rk, col in ROLE_COLS}
-        new_acts.append({"name": name, "hours": hours, "custom": name not in STD_NAMES,
-                         "auto": auto, "dist": dist})
-    st.session_state["additional_activities"] = new_acts
+    # ── Editable activities — individual number_inputs (single-entry, like Step 1) ──
+    _w = [2.4, 1.1, 0.85, 0.85, 0.85, 0.9, 0.85, 0.95, 0.5]
+    _heads = ["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %", ""]
+    _hc = st.columns(_w)
+    for _c, _t in zip(_hc, _heads):
+        _c.markdown(f"<div style='font-size:0.74rem;color:#1A5F6A;font-weight:600'>{_t}</div>",
+                    unsafe_allow_html=True)
+    to_remove = []
+    for i, act in enumerate(activities):
+        rc = st.columns(_w)
+        nm = rc[0].text_input(f"act name {i}", value=str(act.get("name", "")),
+                              key=f"act_name_{i}", label_visibility="collapsed")
+        hrs = rc[1].number_input(f"act hrs {i}", min_value=0.0, step=1.0,
+                                 value=_num(act.get("hours", 0)),
+                                 key=f"act_hrs_{i}", label_visibility="collapsed")
+        d = act.get("dist", {}) or {}
+        new_dist = {}
+        for j, (rk, _lbl) in enumerate(ROLE_COLS):
+            new_dist[rk] = rc[2 + j].number_input(
+                f"act {rk} {i}", min_value=0.0, max_value=100.0, step=5.0,
+                value=_num(d.get(rk, 0)), key=f"act_{rk}_{i}", label_visibility="collapsed")
+        if rc[8].button("🗑️", key=f"act_del_{i}", help="Remove this activity"):
+            to_remove.append(i)
+        name = nm.strip() or "Custom Activity"
+        act.update({"name": name, "hours": float(hrs or 0), "auto": False,
+                    "custom": name not in STD_NAMES, "dist": new_dist})
+    for idx in reversed(to_remove):
+        activities.pop(idx)
+    if to_remove:
+        st.rerun()
+    if st.button("➕ Add Activity", type="secondary"):
+        activities.append({"name": "Custom Activity", "hours": 0.0, "custom": True,
+                           "auto": False, "dist": {r: 0.0 for r in ALL_ROLES}})
+        st.rerun()
+    st.session_state["additional_activities"] = activities
+    new_acts = activities
 
     # ── Read-only validation / results table ──────────────────
     all_valid = True

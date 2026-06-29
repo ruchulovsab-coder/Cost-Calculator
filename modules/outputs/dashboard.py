@@ -88,34 +88,37 @@ def _render_cost_inputs():
     section_hdr("⚖️ SLA Penalty Provision")
     sla_inc = st.radio("Include SLA Penalty Provision?", ["Yes", "No"],
                        index=0 if st.session_state.get("sla_provision_included") == "Yes" else 1,
-                       key="sla_provision_included", horizontal=True)
+                       key="sla_provision_included_w", horizontal=True)
+    st.session_state["sla_provision_included"] = sla_inc
     if sla_inc == "Yes":
-        val = float(st.session_state.get("sla_provision_pct", 2.0))
-        st.number_input("SLA Provision (% of Delivery Cost before provision)",
-                        min_value=0.0, max_value=15.0, step=0.5, format="%.1f",
-                        value=val, key="sla_provision_pct")
+        sla_pct = st.number_input("SLA Provision (% of Delivery Cost before provision)",
+                                  min_value=0.0, max_value=15.0, step=0.5, format="%.1f",
+                                  value=float(st.session_state.get("sla_provision_pct", 2.0)),
+                                  key="sla_provision_pct_w")
+        st.session_state["sla_provision_pct"] = sla_pct
 
     # ── Target margin ─────────────────────────────────────────
     st.divider()
     section_hdr("📈 Target Gross Margin")
-    val_margin = float(st.session_state.get("target_margin_pct", 20.0))
-    st.number_input(
+    margin = st.number_input(
         "**Target Gross Margin (%)** *(required)*",
         min_value=0.0, max_value=80.0, step=0.5, format="%.1f",
-        value=val_margin, key="target_margin_pct",
+        value=float(st.session_state.get("target_margin_pct", 20.0)), key="target_margin_pct_w",
         help="Selling Price = Delivery Cost ÷ (1 − Margin%). E.g., 20% margin on ₹100 cost → ₹125 selling price.",
     )
+    st.session_state["target_margin_pct"] = margin
 
     # ── Reporting currency + FX ───────────────────────────────
     st.divider()
     section_hdr("💱 Reporting Currency")
+    _cur_now = st.session_state.get("reporting_currency", "INR")
     cur = st.selectbox(
         "Display the final estimate in", REPORTING_CURRENCIES,
-        index=REPORTING_CURRENCIES.index(st.session_state.get("reporting_currency", "INR"))
-        if st.session_state.get("reporting_currency", "INR") in REPORTING_CURRENCIES else 0,
-        key="reporting_currency",
+        index=REPORTING_CURRENCIES.index(_cur_now) if _cur_now in REPORTING_CURRENCIES else 0,
+        key="reporting_currency_w",
         help="All internal calculations stay in INR; only the output view is converted.",
     )
+    st.session_state["reporting_currency"] = cur
     # Currencies that need an INR exchange rate: the reporting currency plus any
     # non-INR currencies quoted in the uploaded rate card.
     needed = set()
@@ -271,7 +274,7 @@ def _render_divergence_gate():
     callout("🔴 <strong>This approved estimate has changed.</strong> The approved version "
             "must stay unchanged — save your changes as a <strong>new version</strong> "
             "(it starts as a draft and needs its own approval).", "error")
-    inline_save_version(note_default="manual edit", key="diverge",
+    inline_save_version(note_default="", key="diverge",
                         button_label="💾 Save as new version",
                         success_suffix="Now request approval below.")
 

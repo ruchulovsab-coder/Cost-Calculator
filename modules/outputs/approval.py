@@ -96,12 +96,17 @@ def inline_save_version(note_default: str = "", key: str = "inline_save",
                         success_suffix: str = "") -> bool:
     """Note field + save button (shared by the first-save prompt and the changed-
     after-approval gate). Returns True only after a successful save."""
-    note = st.text_input("Version note", value=note_default, key=f"{key}_note",
-                         help="A short label for this version (e.g. 'after negotiation', "
-                              "or what changed).")
+    # Auto-populate the note from the diff vs the last saved version (the user can edit it).
+    nk = f"{key}_note"
+    if not st.session_state.get(nk):
+        from modules.state.session_manager import summarize_input_changes
+        st.session_state[nk] = note_default or summarize_input_changes()
+    note = st.text_input("Version note", key=nk,
+                         help="Auto-filled from what changed since the last version — edit if you like.")
     if st.button(button_label, type="primary", key=f"{key}_btn", use_container_width=True):
         meta = save_version(note)
         if meta:
+            st.session_state.pop(nk, None)   # let the next save re-derive from new changes
             st.success(f"Saved {meta['project']} — v{meta['version']} (draft). {success_suffix}".strip())
             st.rerun()
     return False

@@ -247,35 +247,39 @@ def _render_category_block(cat_key: str, cat_label: str) -> bool:
             key=f"{cat_key}_buf_{role}",
             help=f"Buffer % added to all {role} effort in {cat_label}. Default 20%.")
 
-    # ── Editable inputs grid (st.data_editor) ──
-    in_rows = [{
-        "Severity / Type": label,
-        "Dist %":     float(cat_data.get(label, {}).get("dist_pct", DEFAULT_VOLUME_DIST_PCT[cat_key][label])),
-        "Min/Ticket": float(cat_data.get(label, {}).get("minutes",  DEFAULT_EFFORT_MINUTES[cat_key][label])),
-        "L1 %":       float(cat_data.get(label, {}).get("L1_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L1"])),
-        "L2 %":       float(cat_data.get(label, {}).get("L2_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L2"])),
-        "L3 %":       float(cat_data.get(label, {}).get("L3_pct",   DEFAULT_RESOLUTION_PCT[cat_key][label]["L3"])),
-    } for label in sublabels]
-
-    edited = st.data_editor(
-        pd.DataFrame(in_rows), key=f"{cat_key}_editor",
-        hide_index=True, use_container_width=True,
-        column_config={
-            "Severity / Type": st.column_config.TextColumn(disabled=True),
-            "Dist %": st.column_config.NumberColumn(
-                "Dist %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
-                help="% of this category's total volume that are this severity. Rows must sum to 100%."),
-            "Min/Ticket": st.column_config.NumberColumn(
-                "Min/Ticket", min_value=0.0, step=1.0, format="%d",
-                help="Average minutes to fully resolve one ticket of this severity."),
-            "L1 %": st.column_config.NumberColumn("L1 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
-                                                  help="% of these tickets resolved by L1."),
-            "L2 %": st.column_config.NumberColumn("L2 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
-                                                  help="% of these tickets resolved by L2."),
-            "L3 %": st.column_config.NumberColumn("L3 %", min_value=0.0, max_value=100.0, step=1.0, format="%d%%",
-                                                  help="% of these tickets resolved by L3."),
-        },
-    )
+    # ── Editable inputs — individual number_inputs (single-entry, like Step 1) ──
+    _w = [1.6, 1, 1, 1, 1, 1]
+    _hdr = st.columns(_w)
+    for _c, _t in zip(_hdr, ["Severity / Type", "Dist %", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
+        _c.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{_t}</div>",
+                    unsafe_allow_html=True)
+    row_vals = {}
+    for label in sublabels:
+        cur = cat_data.get(label, {})
+        rc = st.columns(_w)
+        rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{label}</div>",
+                       unsafe_allow_html=True)
+        dist_pct = rc[1].number_input(
+            f"{label} Dist %", min_value=0.0, max_value=100.0, step=1.0,
+            value=float(cur.get("dist_pct", DEFAULT_VOLUME_DIST_PCT[cat_key][label])),
+            key=f"{cat_key}_{label}_dist", label_visibility="collapsed")
+        minutes = rc[2].number_input(
+            f"{label} Min", min_value=0.0, step=1.0,
+            value=float(cur.get("minutes", DEFAULT_EFFORT_MINUTES[cat_key][label])),
+            key=f"{cat_key}_{label}_min", label_visibility="collapsed")
+        l1p = rc[3].number_input(
+            f"{label} L1", min_value=0.0, max_value=100.0, step=1.0,
+            value=float(cur.get("L1_pct", DEFAULT_RESOLUTION_PCT[cat_key][label]["L1"])),
+            key=f"{cat_key}_{label}_l1", label_visibility="collapsed")
+        l2p = rc[4].number_input(
+            f"{label} L2", min_value=0.0, max_value=100.0, step=1.0,
+            value=float(cur.get("L2_pct", DEFAULT_RESOLUTION_PCT[cat_key][label]["L2"])),
+            key=f"{cat_key}_{label}_l2", label_visibility="collapsed")
+        l3p = rc[5].number_input(
+            f"{label} L3", min_value=0.0, max_value=100.0, step=1.0,
+            value=float(cur.get("L3_pct", DEFAULT_RESOLUTION_PCT[cat_key][label]["L3"])),
+            key=f"{cat_key}_{label}_l3", label_visibility="collapsed")
+        row_vals[label] = (dist_pct, minutes, l1p, l2p, l3p)
 
     # ── Recompute, persist to the session contract, and validate ──
     all_valid = True
@@ -284,10 +288,9 @@ def _render_category_block(cat_key: str, cat_label: str) -> bool:
     role_buffered = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
     detail = ""
     for i, label in enumerate(sublabels):
-        r = edited.iloc[i]
-        dist_pct = float(r["Dist %"] or 0)
-        minutes  = float(r["Min/Ticket"] or 0)
-        l1p = float(r["L1 %"] or 0); l2p = float(r["L2 %"] or 0); l3p = float(r["L3 %"] or 0)
+        dist_pct, minutes, l1p, l2p, l3p = row_vals[label]
+        dist_pct = float(dist_pct or 0); minutes = float(minutes or 0)
+        l1p = float(l1p or 0); l2p = float(l2p or 0); l3p = float(l3p or 0)
         dist_pct_sum += dist_pct
 
         count = round(total_vol * dist_pct / 100)
