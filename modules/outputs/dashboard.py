@@ -634,30 +634,22 @@ def render_step10() -> bool:
     # ── Downloads ─────────────────────────────────────────────
     st.divider()
     section_hdr("⬇️ Download Reports")
-    ec1, ec2, ec3 = st.columns(3)
+    st.caption("The **Excel Workbook** is a live, formula-driven replica of the whole app "
+               "(Summary cover + every page + Transition + a dynamic Dashboard) — the same file "
+               "attached to the approval email. Edit any yellow cell and it recalculates.")
+    ec1, ec2 = st.columns(2)
     with ec1:
-        try:
-            from modules.outputs.excel_export import generate_excel_report
-            xl = generate_excel_report()
-            st.download_button(
-                "⬇️ Excel Report", data=xl,
-                file_name="IT_MS_Calculator_Report.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary", key="dl_excel", use_container_width=True)
-        except Exception as e:
-            st.error(f"Excel error: {e}")
-    with ec2:
         try:
             from modules.outputs.excel_model import generate_excel_model
             xlm = generate_excel_model()
             st.download_button(
-                "⬇️ Editable Excel (formulas)", data=xlm,
-                file_name="IT_MS_Editable_Model.xlsx",
+                "⬇️ Excel Workbook (formulas)", data=xlm,
+                file_name="IT_MS_Cost_Model.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary", key="dl_excel_model", use_container_width=True)
         except Exception as e:
-            st.error(f"Editable Excel error: {e}")
-    with ec3:
+            st.error(f"Excel error: {e}")
+    with ec2:
         try:
             from modules.outputs.pdf_export import generate_pdf_report
             pdf = generate_pdf_report()

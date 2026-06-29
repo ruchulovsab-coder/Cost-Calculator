@@ -36,6 +36,10 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   editable phases (sum-validated) → role × count roster → per-phase weekly utilisation grids →
   live cost → commercial treatment (recurring ÷ months / one-time / absorb), applied to the
   price post-margin. Reuses the rate-card rates + existing components; nothing hardcoded.
+- **v1.28** — **Excel Workbook** reworked into one formula-driven replica of the app (client
+  **Summary** cover + every page + **Transition** + dynamic Dashboard), now the single Excel
+  export and the email attachment; recalc-verified 100% against the engine (fixing a real v1.26
+  activity-split formula bug). A direct step toward closing the **output-inconsistency** gap.
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an

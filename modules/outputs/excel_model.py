@@ -12,7 +12,8 @@ Sheets:
   5 Effort      base effort + contingency + overhead → assembled role hours
   6 FTE         productive hrs + coverage → FTE per role
   7 Rates       role → genus → rate (looked up from Rate Cards) × FX → INR
-  8 Costing     resource cost + expenses + SLA → delivery → selling price
+  Transition    phases + weekly resource utilisation → cost → commercial treatment
+  8 Costing     resource cost + expenses + SLA → delivery → selling price (+ transition)
   Dashboard     resource cost / executive / effort / FTE / financial summaries (live)
 
 Yellow cells are editable inputs; white cells are live formulas mirroring
@@ -20,11 +21,13 @@ engine.compute_full_model. Currency is INR (the app's base). Grey "App value" ce
 echo the tool's computed result for cross-checking the Excel recalculation.
 """
 import io
+import os
 from datetime import date
 
 import openpyxl
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side, Protection
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 import streamlit as st
 
 from config.settings import (
@@ -41,7 +44,7 @@ BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 # Sheet titles (ASCII, ≤31 chars; always quoted in cross-sheet formula refs)
 S_IN = "Inputs"; S_RC = "Rate Cards"; S_WL = "1-2 Workload"; S_PA = "3 Patching"
 S_AC = "4 Activities"; S_EF = "5 Effort"; S_FT = "6 FTE"; S_RT = "7 Rates"
-S_CO = "8 Costing"; S_DB = "Dashboard"
+S_TR = "Transition"; S_CO = "8 Costing"; S_DB = "Dashboard"
 
 CAT_DISPLAY = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
                ("incidents", "Incidents"), ("changes", "Change Requests")]
@@ -73,11 +76,13 @@ def _lbl(ws, row, col, text, bold=False):
 def _edit(ws, row, col, value, fmt="#,##0.0"):
     c = ws.cell(row, col); c.value = value; c.fill = _fill(YEL)
     c.number_format = fmt; c.border = BORDER
+    c.protection = Protection(locked=False)        # editable input — unlocked
     return _aref(ws, row, col)
 
 
 def _etext(ws, row, col, text):
     c = ws.cell(row, col); c.value = text; c.fill = _fill(YEL); c.border = BORDER
+    c.protection = Protection(locked=False)        # editable input — unlocked
     return _aref(ws, row, col)
 
 
@@ -148,7 +153,10 @@ def generate_excel_model() -> bytes:
     scalar("Target gross margin %", float(model["price_result"].get("margin_pct", 0) or 0), "margin", "#,##0")
     scalar("SLA provision included (1 = yes)", 1 if ss.get("sla_provision_included") == "Yes" else 0, "slaInc", "0")
     scalar("SLA provision %", float(ss.get("sla_provision_pct", 0) or 0), "slaPct", "#,##0.0")
-    scalar("One-time transition cost (INR, separate)", float(ss.get("transition_total_cost", 0) or 0), "transition", "#,##0")
+    _tp_in = ss.get("transition_planner", {}) or {}
+    scalar_text("Transition treatment (planned on 'Transition' sheet)",
+                (str(_tp_in.get("treatment", "—")) if _tp_in.get("enabled") else "Not included"),
+                "transTreatment")
     scalar_text("Delivery country", str(ss.get("delivery_country") or ""), "country")
     scalar_text("Delivery location", str(ss.get("delivery_location") or ""), "location")
     scalar_text("Reporting currency (display only)", str(ss.get("reporting_currency") or "INR"), "repcur")
@@ -342,10 +350,13 @@ def generate_excel_model() -> bytes:
     _lbl(ws_ac, r, 1, "Total hours / role hours", bold=True)
     AC_total = _calc(ws_ac, r, 2, f"=SUM(B{ac_first}:B{ac_last})")
     AC_add = {}
-    # role hours from activities = SUMPRODUCT(hours, role%) / 100
+    # role hours from activities = SUMPRODUCT(hours, role%) / 100.
+    # Ranges MUST be qualified with the Activities sheet — this string is embedded in
+    # formulas on the Effort sheet, where unqualified refs would self-reference Effort.
     for role, col in role_pct_col.items():
         L = get_column_letter(col)
-        AC_add[role] = f"(SUMPRODUCT($B${ac_first}:$B${ac_last},{L}${ac_first}:{L}${ac_last})/100)"
+        AC_add[role] = (f"(SUMPRODUCT('{S_AC}'!$B${ac_first}:$B${ac_last},"
+                        f"'{S_AC}'!{L}${ac_first}:{L}${ac_last})/100)")
     for c in range(1, 9):
         ws_ac.cell(r, c).fill = _fill(LB)
 
@@ -464,6 +475,139 @@ def generate_excel_model() -> bytes:
         r += 1
 
     # ════════════════════════════════════════════════════════════════════════
+    # TRANSITION & ONBOARDING  (phases + weekly utilisation → cost → treatment)
+    # ════════════════════════════════════════════════════════════════════════
+    tp = ss.get("transition_planner", {}) or {}
+    mtrans = model.get("transition", {}) or {}
+    ws_tr = wb.create_sheet(S_TR)
+    for col, w in (("A", 18), ("B", 12), ("C", 10), ("D", 12)):
+        ws_tr.column_dimensions[col].width = w
+    _title(ws_tr, 1, 1, "Transition & Onboarding Planner")
+    ws_tr.cell(2, 1, "Weekly cost = count × utilisation × weekly hours × role rate (from 7 Rates). "
+                     "Yellow = editable; grey = app cross-check.").font = Font(italic=True, size=9, color=GREY)
+
+    tr_enabled = bool(tp.get("enabled"))
+    total_weeks = int(tp.get("total_weeks", 0) or 0) if tr_enabled else 0
+    phases = tp.get("phases", []) or []
+    resources = tp.get("resources", []) or []
+    allocation = tp.get("allocation", {}) or {}
+    TR_phase_refs = {}
+
+    if not (tr_enabled and total_weeks > 0 and resources):
+        _lbl(ws_tr, 4, 1, "Transition & Onboarding is not included in this estimate.", bold=True)
+        ws_tr.cell(5, 2, 0).number_format = "#,##0"
+        _zero = _aref(ws_tr, 5, 2)
+        TR_total = TR_monthly = TR_onetime = TR_absorb = TR_net = _zero
+    else:
+        # ── config block ──────────────────────────────────────
+        r = 4
+        _lbl(ws_tr, r, 1, "Weekly hours / full-capacity")
+        TR_wh = _edit(ws_tr, r, 2, float(mtrans.get("weekly_hours", 40) or 40), "#,##0"); r += 1
+        _lbl(ws_tr, r, 1, "Treatment (recurring/one_time/absorb)")
+        TR_treat = _etext(ws_tr, r, 2, str(tp.get("treatment", "recurring"))); r += 1
+        _lbl(ws_tr, r, 1, "Amortisation months")
+        TR_months = _edit(ws_tr, r, 2, int(tp.get("amortisation_months", 12) or 12), "#,##0"); r += 2
+
+        # ── phases table (weeks map sequentially) ─────────────
+        _title(ws_tr, r, 1, "Phases"); r += 1
+        _hdr(ws_tr, r, 1, "Phase"); _hdr(ws_tr, r, 2, "Weeks"); _hdr(ws_tr, r, 3, "Week range"); r += 1
+        phase_first = r
+        phase_span = {}   # name -> (start_week, end_week)
+        wk_cursor = 1
+        for ph in phases:
+            nm = str(ph.get("name", "")); wks = int(ph.get("weeks", 0) or 0)
+            start = wk_cursor; end = wk_cursor + wks - 1
+            _etext(ws_tr, r, 1, nm); _edit(ws_tr, r, 2, wks, "#,##0")
+            ws_tr.cell(r, 3, f"W{start}–W{end}" if wks > 0 else "—")
+            phase_span[nm] = (start, end); wk_cursor = end + 1; r += 1
+        phase_last = r - 1
+        _lbl(ws_tr, r, 1, "Allocated / Total", bold=True)
+        _calc(ws_tr, r, 2, f"=SUM(B{phase_first}:B{phase_last})", "#,##0")
+        ws_tr.cell(r, 3, f"of {total_weeks}").font = Font(size=9, color=GREY); r += 2
+
+        # ── weekly utilisation & cost grid ────────────────────
+        _title(ws_tr, r, 1, "Weekly utilisation & cost"); r += 1
+        wk_col0 = 5                                  # first week column (E)
+        _hdr(ws_tr, r, 1, "Resource"); _hdr(ws_tr, r, 2, "Role")
+        _hdr(ws_tr, r, 3, "Count"); _hdr(ws_tr, r, 4, "Rate")
+        for w in range(1, total_weeks + 1):
+            c = wk_col0 + (w - 1)
+            _hdr(ws_tr, r, c, f"W{w}"); ws_tr.column_dimensions[get_column_letter(c)].width = 6
+        hrs_col = wk_col0 + total_weeks
+        cost_col = hrs_col + 1
+        _hdr(ws_tr, r, hrs_col, "Total Hrs"); _hdr(ws_tr, r, cost_col, "Cost INR")
+        ws_tr.column_dimensions[get_column_letter(hrs_col)].width = 11
+        ws_tr.column_dimensions[get_column_letter(cost_col)].width = 14
+        r += 1
+        res_first = r
+        wk_first_L = get_column_letter(wk_col0)
+        wk_last_L = get_column_letter(wk_col0 + total_weeks - 1)
+        hrs_L = get_column_letter(hrs_col)
+        seen = {}
+        for res in resources:
+            rid = str(res.get("id", "")); role = res.get("role")
+            cnt = float(res.get("count", 0) or 0)
+            alloc = allocation.get(rid) or allocation.get(res.get("id")) or {}
+            seen[role] = seen.get(role, 0) + 1
+            _etext(ws_tr, r, 1, f"{role} #{seen[role]}"); _etext(ws_tr, r, 2, str(role))
+            _edit(ws_tr, r, 3, cnt, "#,##0")
+            rate_ref = RT_rate.get(role)
+            if rate_ref:
+                _calc(ws_tr, r, 4, f"={rate_ref}", "#,##0")
+            else:
+                _edit(ws_tr, r, 4, 0, "#,##0")
+            for w in range(1, total_weeks + 1):
+                util = float(alloc.get(str(w), alloc.get(w, 0)) or 0)
+                _edit(ws_tr, r, wk_col0 + (w - 1), util, "0.00")
+            _calc(ws_tr, r, hrs_col, f"=C{r}*{TR_wh}*SUM({wk_first_L}{r}:{wk_last_L}{r})", "#,##0.0")
+            _calc(ws_tr, r, cost_col, f"={hrs_L}{r}*D{r}", "#,##0")
+            r += 1
+        res_last = r - 1
+        # constrained utilisation picker (0 / 0.25 / 0.5 / 1) on every week cell
+        dv = DataValidation(type="list", formula1='"0,0.25,0.5,1"', allow_blank=True)
+        dv.error = "Use 0, 0.25, 0.5 or 1 (=0%/25%/50%/100%)"; dv.errorTitle = "Utilisation"
+        ws_tr.add_data_validation(dv)
+        dv.add(f"{wk_first_L}{res_first}:{wk_last_L}{res_last}")
+        cost_L = get_column_letter(cost_col)
+        _lbl(ws_tr, r, 1, "TOTAL", bold=True)
+        TR_total = _calc(ws_tr, r, cost_col, f"=SUM({cost_L}{res_first}:{cost_L}{res_last})", "#,##0")
+        _app(ws_tr, r, cost_col + 1, mtrans.get("total", 0)); r += 2
+
+        # ── cost by phase (contiguous week columns) ───────────
+        _title(ws_tr, r, 1, "Cost by phase"); r += 1
+        _hdr(ws_tr, r, 1, "Phase"); _hdr(ws_tr, r, 2, "Cost INR"); _hdr(ws_tr, r, 3, "App value"); r += 1
+        cnt_rng = f"$C${res_first}:$C${res_last}"; rate_rng = f"$D${res_first}:$D${res_last}"
+        for nm, (start, end) in phase_span.items():
+            _etext(ws_tr, r, 1, nm)
+            if end >= start:
+                cols = [get_column_letter(wk_col0 + (w - 1)) for w in range(start, end + 1)]
+                util_sum = "+".join(f"{c}{res_first}:{c}{res_last}" for c in cols)
+                ref = _calc(ws_tr, r, 2, f"={TR_wh}*SUMPRODUCT({cnt_rng},{rate_rng},({util_sum}))", "#,##0")
+            else:
+                ref = _calc(ws_tr, r, 2, "=0", "#,##0")
+            TR_phase_refs[nm] = ref
+            _app(ws_tr, r, 3, mtrans.get("per_phase", {}).get(nm, 0)); r += 1
+        r += 1
+
+        # ── commercial treatment ──────────────────────────────
+        _title(ws_tr, r, 1, "Commercial treatment"); r += 1
+        _hdr(ws_tr, r, 1, "Item"); _hdr(ws_tr, r, 2, "INR"); _hdr(ws_tr, r, 3, "App value"); r += 1
+        _lbl(ws_tr, r, 1, "Total transition cost")
+        _calc(ws_tr, r, 2, f"={TR_total}", "#,##0"); _app(ws_tr, r, 3, mtrans.get("total", 0)); r += 1
+        _lbl(ws_tr, r, 1, "Monthly recurring (÷ months)")
+        TR_monthly = _calc(ws_tr, r, 2, f'=IF({TR_treat}="recurring",{TR_total}/MAX({TR_months},1),0)', "#,##0")
+        _app(ws_tr, r, 3, mtrans.get("monthly_recurring", 0)); r += 1
+        _lbl(ws_tr, r, 1, "One-time fee")
+        TR_onetime = _calc(ws_tr, r, 2, f'=IF({TR_treat}="one_time",{TR_total},0)', "#,##0")
+        _app(ws_tr, r, 3, mtrans.get("one_time_fee", 0)); r += 1
+        _lbl(ws_tr, r, 1, "Absorbed (discount)")
+        TR_absorb = _calc(ws_tr, r, 2, f'=IF({TR_treat}="absorb",{TR_total},0)', "#,##0")
+        _app(ws_tr, r, 3, mtrans.get("absorbed", 0)); r += 1
+        _lbl(ws_tr, r, 1, "Net charged", bold=True)
+        TR_net = _calc(ws_tr, r, 2, f"={TR_total}-{TR_absorb}", "#,##0")
+        _app(ws_tr, r, 3, mtrans.get("net_charged", 0)); r += 1
+
+    # ════════════════════════════════════════════════════════════════════════
     # 8 COSTING
     # ════════════════════════════════════════════════════════════════════════
     ws_co = wb.create_sheet(S_CO)
@@ -511,7 +655,13 @@ def generate_excel_model() -> bytes:
                           model["price_result"]["selling_price"])
     CO["profit"] = cost_row("Gross profit", f"={CO['sell']}-{CO['deliver']}",
                             model["price_result"]["gross_profit"])
-    cost_row("One-time transition (separate)", f"={IN['transition']}", model.get("transition_cost", 0))
+    # Transition & Onboarding — applied to the PRICE post-margin (from the Transition sheet)
+    cost_row("Transition — total cost", f"={TR_total}", mtrans.get("total", 0))
+    cost_row("Transition — monthly recurring", f"={TR_monthly}", mtrans.get("monthly_recurring", 0))
+    cost_row("Transition — one-time fee", f"={TR_onetime}", mtrans.get("one_time_fee", 0))
+    cost_row("Transition — absorbed (discount)", f"=-{TR_absorb}", -float(mtrans.get("absorbed", 0) or 0))
+    CO["monthly_final"] = cost_row("MONTHLY PRICE incl. transition", f"={CO['sell']}+{TR_monthly}",
+                                   model.get("monthly_price_with_transition", 0))
 
     # ════════════════════════════════════════════════════════════════════════
     # DASHBOARD
@@ -533,7 +683,9 @@ def generate_excel_model() -> bytes:
         ("Gross Margin %", f"={IN['margin']}", model["price_result"]["margin_pct"], "#,##0.0"),
         ("Base Effort (hrs)", f"={EF['base']}", model["base_effort"], "#,##0.0"),
         ("Contingency (hrs)", f"={EF['contHrs']}", model["effort_sources"].get("Contingency", 0), "#,##0.0"),
-        ("One-time Transition (INR)", f"={IN['transition']}", model.get("transition_cost", 0), "#,##0"),
+        ("Transition Total (INR)", f"={TR_total}", mtrans.get("total", 0), "#,##0"),
+        ("Monthly Price incl. Transition", f"={CO['monthly_final']}",
+         model.get("monthly_price_with_transition", 0), "#,##0"),
     ]:
         _lbl(ws_db, r, 1, label); _calc(ws_db, r, 2, formula, fmt); _app(ws_db, r, 3, app_val, fmt); r += 1
 
@@ -569,12 +721,117 @@ def generate_excel_model() -> bytes:
         ("Total Resource Cost", CO["res"]), ("Additional Expenses", CO["exp"]),
         ("SLA Provision", CO["sla"]), ("TOTAL DELIVERY COST", CO["deliver"]),
         ("Gross Profit", CO["profit"]), ("MONTHLY SELLING PRICE", CO["sell"]),
+        ("MONTHLY PRICE incl. Transition", CO["monthly_final"]),
     ]:
         _lbl(ws_db, r, 1, label); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
+    r += 1
+
+    # ── Transition summary (live) ─────────────────────────────
+    _title(ws_db, r, 1, "Transition & Onboarding Summary"); r += 1
+    _hdr(ws_db, r, 1, "Item"); _hdr(ws_db, r, 2, "INR"); r += 1
+    for label, ref in [
+        ("Total Transition Cost", TR_total), ("Monthly Recurring", TR_monthly),
+        ("One-time Fee", TR_onetime), ("Absorbed (discount)", TR_absorb),
+        ("Net Charged", TR_net),
+    ]:
+        _lbl(ws_db, r, 1, label); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
+    for nm, ref in TR_phase_refs.items():
+        _lbl(ws_db, r, 1, f"  · {nm}"); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
 
     ws_db.cell(r + 1, 1, "Grey 'App value' cells echo the tool's result for cross-checking. "
                          "Edit any yellow input and Excel recalculates everything.").font = \
         Font(italic=True, size=9, color=GREY)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SUMMARY / COVER  (client-facing, formula-linked) — built last, placed first
+    # ════════════════════════════════════════════════════════════════════════
+    ws_sum = wb.create_sheet("Summary", 0)
+    for col, w in (("A", 38), ("B", 20), ("C", 20)):
+        ws_sum.column_dimensions[col].width = w
+    try:
+        _logo = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                             "assets", "nagarro_logo.png")
+        if os.path.exists(_logo):
+            from openpyxl.drawing.image import Image as XLImage
+            _img = XLImage(_logo); _img.width = 140; _img.height = 44
+            ws_sum.add_image(_img, "C1")
+    except Exception:
+        pass
+    ws_sum["A1"] = APP_NAME; ws_sum["A1"].font = Font(bold=True, size=14, color=NAVY)
+    ws_sum["A2"] = "Managed Services — Cost & Price Summary"
+    ws_sum["A2"].font = Font(italic=True, size=10, color=GREY)
+    ws_sum["A3"] = f"Generated {date.today()}"; ws_sum["A3"].font = Font(size=9, color=GREY)
+
+    repcur = str(ss.get("reporting_currency") or "INR")
+    _treat_label = {"recurring": "Recover via monthly recurring charges",
+                    "one_time": "Recover as a one-time fee",
+                    "absorb": "Absorbed (discount — net ₹0)"}
+    _tp = ss.get("transition_planner", {}) or {}
+    treat_txt = _treat_label.get(_tp.get("treatment"), "—") if _tp.get("enabled") else "Not included"
+
+    r = 5
+    _title(ws_sum, r, 1, "Engagement"); r += 1
+    for label, val in [
+        ("Customer / RFP", str(ss.get("project_name") or "—")),
+        ("Delivery", (f"{ss.get('delivery_country') or ''}"
+                      + (f" / {ss.get('delivery_location')}" if ss.get('delivery_location') else "")).strip() or "—"),
+        ("Coverage model", str(ss.get("coverage_model") or "—")),
+        ("Reporting currency", repcur),
+        ("Transition treatment", treat_txt),
+    ]:
+        _lbl(ws_sum, r, 1, label); ws_sum.cell(r, 2, val); r += 1
+    r += 1
+
+    _title(ws_sum, r, 1, "Commercial Headline"); r += 1
+    _hdr(ws_sum, r, 1, "Metric"); _hdr(ws_sum, r, 2, "INR"); _hdr(ws_sum, r, 3, repcur); r += 1
+
+    def head(label, ref, fmt="#,##0", pct=False):
+        nonlocal r
+        _lbl(ws_sum, r, 1, label)
+        _calc(ws_sum, r, 2, f"={ref}", '0.0"%"' if pct else fmt)
+        if not pct:
+            _calc(ws_sum, r, 3,
+                  f"=B{r}/IFERROR(VLOOKUP({IN['repcur']},{FX_RANGE},2,FALSE),1)", fmt)
+        r += 1
+
+    head("Total Delivery Cost", CO["deliver"])
+    head("Monthly Selling Price", CO["sell"])
+    head("MONTHLY PRICE incl. Transition", CO["monthly_final"])
+    head("Transition — total cost", TR_total)
+    head("Transition — monthly recurring", TR_monthly)
+    head("Transition — net charged", TR_net)
+    head("Gross Margin % (on delivery)", IN["margin"], pct=True)
+    _lbl(ws_sum, r, 1, "Blended margin % (profit ÷ monthly incl. transition)")
+    _calc(ws_sum, r, 2,
+          f"=IF({CO['monthly_final']}>0,{CO['profit']}/{CO['monthly_final']}*100,0)", '0.0"%"'); r += 2
+
+    _title(ws_sum, r, 1, "Key Assumptions"); r += 1
+    _hdr(ws_sum, r, 1, "Assumption"); _hdr(ws_sum, r, 2, "Value"); r += 1
+    for label, ref, fmt in [
+        ("Monthly working hrs / FTE", IN["monthly"], "#,##0"),
+        ("Productive utilisation %", IN["util"], '0"%"'),
+        ("Contingency %", IN["cont"], '0"%"'),
+        ("Transition week = hours", None, None),
+        ("Transition amortisation (months)", None, None),
+    ]:
+        _lbl(ws_sum, r, 1, label)
+        if ref:
+            _calc(ws_sum, r, 2, f"={ref}", fmt)
+        elif "week" in label:
+            ws_sum.cell(r, 2, float(mtrans.get("weekly_hours", 40) or 40)).number_format = "#,##0"
+        else:
+            ws_sum.cell(r, 2, int(_tp.get("amortisation_months", 12) or 12)).number_format = "#,##0"
+        r += 1
+    ws_sum.cell(r, 1, "Utilisation legend: 1 = 100%, 0.5 = 50%, 0.25 = 25%, 0 = not used. "
+                      "Transition is applied to the price after margin (pass-through). "
+                      "Yellow cells are editable; the workbook recalculates live.").font = \
+        Font(italic=True, size=9, color=GREY)
+
+    # ── Lock formulas, leave yellow inputs editable (no password) ─────────────
+    for ws in wb.worksheets:
+        ws.protection.sheet = True
+        ws.protection.selectLockedCells = False
+        ws.protection.formatCells = False
 
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.getvalue()
