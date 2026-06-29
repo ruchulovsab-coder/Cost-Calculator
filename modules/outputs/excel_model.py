@@ -1,24 +1,29 @@
 """
-Editable Excel model — a fully formula-driven workbook that mirrors the app page by
-page, so an Excel-first user can change any input and watch every page and the
-dashboard recalculate **without the app**.
+Editable Excel model — a fully formula-driven replica of the app.
+
+ALL user inputs live on ONE sheet ("Inputs") as the only editable (yellow) cells —
+every box, radio and checkbox from the application: workload volumetrics, patching,
+activities, overheads, coverage, grade→genus mapping, rate card, costing, FX and the
+full transition plan. Every other sheet is locked and made entirely of live formulas
+that reference the Inputs sheet, so you can change any input there and watch every
+page + the Dashboard recalculate **without the app**.
 
 Sheets:
-  Inputs        all scalar inputs (engagement, patching, costing) + FX + extra costs
-  Rate Cards    the uploaded rate card (scoped lookup table + full reference)
-  1-2 Workload  per-severity counts/min/%/buffers → category hours + buffered role hrs
-  3 Patching    manual / tool-based effort → hours
-  4 Activities  each activity (auto-formula or manual) + role-% split → role hours
-  5 Effort      base effort + contingency + overhead → assembled role hours
+  Summary       client-facing cover: headline price (INR + reporting cur), assumptions
+  Inputs        the ONLY editable sheet — every application input
+  Rate Cards    the full uploaded rate card (locked reference)
+  1-2 Workload  per-severity hours + buffered role hours (formulas → Inputs)
+  3 Patching    manual / tool effort → hours
+  4 Activities  per-activity role-hour split
+  5 Effort      base + contingency + overhead → assembled role hours
   6 FTE         productive hrs + coverage → FTE per role
-  7 Rates       role → genus → rate (looked up from Rate Cards) × FX → INR
-  Transition    phases + weekly resource utilisation → cost → commercial treatment
-  8 Costing     resource cost + expenses + SLA → delivery → selling price (+ transition)
-  Dashboard     resource cost / executive / effort / FTE / financial summaries (live)
+  7 Rates       role → genus → rate (VLOOKUP on Inputs) × FX → INR
+  Transition    phases + weekly utilisation → cost → commercial treatment
+  8 Costing     resource cost + expenses + SLA → delivery → price (+ transition)
+  Dashboard     executive / resource / effort / financial / transition summaries
 
-Yellow cells are editable inputs; white cells are live formulas mirroring
-engine.compute_full_model. Currency is INR (the app's base). Grey "App value" cells
-echo the tool's computed result for cross-checking the Excel recalculation.
+Grey "App value" cells echo the tool's computed result for cross-checking. Currency
+is INR (the app's base); the Summary also shows the reporting currency.
 """
 import io
 import os
@@ -32,7 +37,7 @@ import streamlit as st
 
 from config.settings import (
     ALL_ROLES, OVERHEAD_ROLES, COVERAGE_APPLICABLE_ROLES, CATEGORY_SUBLABELS,
-    DEFAULT_ROLE_BUFFER_PCT, ACTIVITY_FORMULAS, APP_NAME, hx,
+    DEFAULT_ROLE_BUFFER_PCT, COVERAGE_MODELS, APP_NAME, hx,
 )
 from modules.calculations.engine import filter_rate_card
 from modules.state.session_manager import run_model
@@ -41,20 +46,19 @@ NAVY = hx("navy"); YEL = "FFF2CC"; LB = hx("tint"); GREY = hx("text_muted"); TEA
 _thin = Side(style="thin", color="CCCCCC")
 BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 
-# Sheet titles (ASCII, ≤31 chars; always quoted in cross-sheet formula refs)
-S_IN = "Inputs"; S_RC = "Rate Cards"; S_WL = "1-2 Workload"; S_PA = "3 Patching"
-S_AC = "4 Activities"; S_EF = "5 Effort"; S_FT = "6 FTE"; S_RT = "7 Rates"
-S_TR = "Transition"; S_CO = "8 Costing"; S_DB = "Dashboard"
+S_SUM = "Summary"; S_IN = "Inputs"; S_RC = "Rate Cards"; S_WL = "1-2 Workload"
+S_PA = "3 Patching"; S_AC = "4 Activities"; S_EF = "5 Effort"; S_FT = "6 FTE"
+S_RT = "7 Rates"; S_TR = "Transition"; S_CO = "8 Costing"; S_DB = "Dashboard"
 
 CAT_DISPLAY = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
                ("incidents", "Incidents"), ("changes", "Change Requests")]
+ROLE_PCT_COL = {"L1": 3, "L2": 4, "L3": 5, "Architect": 6, "SDM": 7, "SSDM": 8}
 
 
 def _fill(c): return PatternFill("solid", fgColor=c)
 
 
 def _aref(ws, row, col):
-    """Absolute cross-sheet reference, e.g. 'Inputs'!$B$5."""
     return f"'{ws.title}'!${get_column_letter(col)}${row}"
 
 
@@ -74,19 +78,21 @@ def _lbl(ws, row, col, text, bold=False):
 
 
 def _edit(ws, row, col, value, fmt="#,##0.0"):
+    """Editable INPUT cell (yellow, unlocked). The only kind of editable cell."""
     c = ws.cell(row, col); c.value = value; c.fill = _fill(YEL)
     c.number_format = fmt; c.border = BORDER
-    c.protection = Protection(locked=False)        # editable input — unlocked
+    c.protection = Protection(locked=False)
     return _aref(ws, row, col)
 
 
 def _etext(ws, row, col, text):
     c = ws.cell(row, col); c.value = text; c.fill = _fill(YEL); c.border = BORDER
-    c.protection = Protection(locked=False)        # editable input — unlocked
+    c.protection = Protection(locked=False)
     return _aref(ws, row, col)
 
 
 def _calc(ws, row, col, formula, fmt="#,##0.0"):
+    """Locked formula cell (white)."""
     c = ws.cell(row, col); c.value = formula; c.number_format = fmt; c.border = BORDER
     return _aref(ws, row, col)
 
@@ -99,25 +105,26 @@ def _app(ws, row, col, value, fmt="#,##0.0"):
 def generate_excel_model() -> bytes:
     model = st.session_state.get("_model") or run_model()
     ss = st.session_state
-
     wb = openpyxl.Workbook()
     ws_in = wb.active; ws_in.title = S_IN
 
-    # ════════════════════════════════════════════════════════════════════════
-    # INPUTS
-    # ════════════════════════════════════════════════════════════════════════
-    ws_in.column_dimensions["A"].width = 34
-    ws_in.column_dimensions["B"].width = 16
-    ws_in.column_dimensions["C"].width = 16
+    ws_in.column_dimensions["A"].width = 30
+    for col in "BCD":
+        ws_in.column_dimensions[col].width = 12
+    for col in "EFGHIJKLMNOPQRSTUVWXYZ":
+        ws_in.column_dimensions[col].width = 7
     ws_in["A1"] = APP_NAME; ws_in["A1"].font = Font(bold=True, size=13, color=NAVY)
-    ws_in["A2"] = ("All editable inputs live here and on the page sheets (yellow). Change any "
-                   "yellow cell and every page + the Dashboard recalculates. Currency: INR.")
+    ws_in["A2"] = ("THE ONLY EDITABLE SHEET. Every application input lives here (yellow). "
+                   "Change any value and every page + the Dashboard recalculates. Currency: INR.")
     ws_in["A2"].font = Font(italic=True, size=9, color=GREY)
     ws_in["A3"] = f"Generated {date.today()}"; ws_in["A3"].font = Font(size=9, color=GREY)
 
     IN = {}
     r = 5
-    _title(ws_in, r, 1, "ENGAGEMENT & ASSUMPTIONS"); r += 1
+
+    def section(text):
+        nonlocal r
+        _title(ws_in, r, 1, text); r += 1
 
     def scalar(label, value, key, fmt="#,##0.0"):
         nonlocal r
@@ -127,43 +134,138 @@ def generate_excel_model() -> bytes:
         nonlocal r
         _lbl(ws_in, r, 1, label); IN[key] = _etext(ws_in, r, 2, value); r += 1
 
+    # ── Engagement & assumptions ──────────────────────────────
+    section("ENGAGEMENT")
+    scalar_text("Customer / RFP name", str(ss.get("project_name") or ""), "project")
+    scalar_text("Prepared by", str(ss.get("prepared_by") or ""), "prep")
+    scalar_text("Delivery country", str(ss.get("delivery_country") or ""), "country")
+    scalar_text("Delivery location", str(ss.get("delivery_location") or ""), "location")
+    scalar_text("Reporting currency", str(ss.get("reporting_currency") or "INR"), "repcur")
+    r += 1
+
+    section("COVERAGE & FTE")
+    scalar_text("Coverage model (8×5 / 24×7 / Custom …)", str(ss.get("coverage_model") or "8×5"), "covModel")
+    scalar("Custom hours / day", float(ss.get("custom_hours_per_day", 8) or 8), "covHpd", "#,##0")
+    scalar("Custom days / week", float(ss.get("custom_days_per_week", 5) or 5), "covDpw", "#,##0")
     scalar("Monthly working hours / FTE", float(ss.get("monthly_working_hours", 160) or 160), "monthly", "#,##0")
     scalar("Productive utilisation %", float(ss.get("productive_utilisation", 75) or 75), "util", "#,##0")
-    scalar("Coverage multiplier (L1/L2 only)", float(model.get("coverage_multiplier", 1.0) or 1.0), "cov", "#,##0.00")
-    ws_in.cell(r - 1, 3, f"model: {ss.get('coverage_model') or '8×5'}").font = Font(size=8, color=GREY)
+    scalar("FTE basis (1 = raw, 0 = rounded ⌈0.5⌉)", 1 if model.get("fte_basis") == "raw" else 0, "basisRaw", "0")
     scalar("Contingency %", float(ss.get("contingency_pct", 0) or 0), "cont", "#,##0")
     ovh = ss.get("overhead_pcts", {}) or {}
     scalar("Overhead % — Architect", float(ovh.get("Architect", 0) or 0), "ovhArchitect", "#,##0")
     scalar("Overhead % — SDM", float(ovh.get("SDM", 0) or 0), "ovhSDM", "#,##0")
     scalar("Overhead % — SSDM", float(ovh.get("SSDM", 0) or 0), "ovhSSDM", "#,##0")
-    scalar("FTE basis (1 = raw, 0 = rounded ⌈0.5⌉)", 1 if model.get("fte_basis") == "raw" else 0, "basisRaw", "0")
+    # coverage multiplier reference table (locked) + derived multiplier
+    cov_first = r
+    _lbl(ws_in, r, 4, "Coverage model"); _lbl(ws_in, r, 5, "Mult"); r += 1
+    cov_tbl_first = r
+    for m, cfg in COVERAGE_MODELS.items():
+        if m == "Custom":
+            continue
+        ws_in.cell(r, 4, m); c = ws_in.cell(r, 5, round(cfg["multiplier"], 4)); c.number_format = "#,##0.0000"
+        r += 1
+    cov_tbl_last = r - 1
+    COV_RANGE = f"'{S_IN}'!$D${cov_tbl_first}:$E${cov_tbl_last}"
+    _lbl(ws_in, r, 1, "Coverage multiplier (derived)")
+    IN["cov"] = _calc(ws_in, r, 2,
+                      f'=IF({IN["covModel"]}="Custom",{IN["covHpd"]}*{IN["covDpw"]}/40,'
+                      f'IFERROR(VLOOKUP({IN["covModel"]},{COV_RANGE},2,FALSE),1))', "#,##0.00")
+    _app(ws_in, r, 3, model.get("coverage_multiplier", 1.0), "#,##0.00"); r += 2
 
+    # ── Workload volumetrics (Steps 1-2) ──────────────────────
+    section("MONTHLY WORKLOAD VOLUMETRICS (Steps 1–2)")
+    wl_heads = ["Category", "Severity/Type", "Count", "Min", "L1 %", "L1 Buf%",
+                "L2 %", "L2 Buf%", "L3 %", "L3 Buf%"]
+    for i, h in enumerate(wl_heads, 1):
+        _hdr(ws_in, r, i, h)
     r += 1
-    _title(ws_in, r, 1, "PATCHING"); r += 1
-    scalar("Patching included (1 = yes, 0 = no)", 1 if ss.get("patching_included") == "Yes" else 0, "patchInc", "0")
+    WLI = {}
+    for cat_key, cat_label in CAT_DISPLAY:
+        cat = ss.get(cat_key, {}) or {}
+        WLI[cat_key] = {}
+        for label in CATEGORY_SUBLABELS[cat_key]:
+            row = cat.get(label, {})
+            _lbl(ws_in, r, 1, cat_label); _lbl(ws_in, r, 2, label)
+            WLI[cat_key][label] = {
+                "count": _edit(ws_in, r, 3, int(row.get("count", 0) or 0), "#,##0"),
+                "min":   _edit(ws_in, r, 4, float(row.get("minutes", 0) or 0), "#,##0"),
+                "l1":    _edit(ws_in, r, 5, float(row.get("L1_pct", 0) or 0), "#,##0"),
+                "l1b":   _edit(ws_in, r, 6, float(row.get("L1_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0"),
+                "l2":    _edit(ws_in, r, 7, float(row.get("L2_pct", 0) or 0), "#,##0"),
+                "l2b":   _edit(ws_in, r, 8, float(row.get("L2_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0"),
+                "l3":    _edit(ws_in, r, 9, float(row.get("L3_pct", 0) or 0), "#,##0"),
+                "l3b":   _edit(ws_in, r, 10, float(row.get("L3_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0"),
+            }
+            r += 1
+    r += 1
+
+    # ── Patching (Step 3) ─────────────────────────────────────
+    section("PATCHING (Step 3)")
+    scalar("Patching included (1 = yes)", 1 if ss.get("patching_included") == "Yes" else 0, "patchInc", "0")
     scalar("Number of servers", int(ss.get("num_servers", 0) or 0), "servers", "#,##0")
     scalar("Tool-based (1 = tool, 0 = manual)", 1 if ss.get("patching_method") == "Tool-Based" else 0, "patchTool", "0")
     scalar("Manual effort (min/server)", float(ss.get("manual_effort_per_server", 45) or 45), "manMin", "#,##0")
     scalar("Tool effort (min/failed server)", float(ss.get("auto_effort_per_server", 30) or 30), "autoMin", "#,##0")
     scalar("Tool error/failure rate %", float(ss.get("patch_error_rate", 0) or 0), "errRate", "#,##0")
     scalar_text("Patching assigned to role", ss.get("patching_role", "L2") or "L2", "patchRole")
-
     r += 1
-    _title(ws_in, r, 1, "COSTING"); r += 1
+
+    # ── Additional activities (Step 4) ────────────────────────
+    section("ADDITIONAL ACTIVITIES (Step 4)")
+    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %"], 1):
+        _hdr(ws_in, r, i, h)
+    r += 1
+    ACI = []
+    acts = ss.get("additional_activities", []) or []
+    if not acts:
+        acts = [{"name": "—", "hours": 0.0, "dist": {}}]
+    for act in acts:
+        dist = act.get("dist", {}) or {}
+        rec = {"name": _etext(ws_in, r, 1, str(act.get("name", "Activity"))),
+               "hours": _edit(ws_in, r, 2, float(act.get("hours", 0) or 0), "#,##0.0")}
+        for role, col in ROLE_PCT_COL.items():
+            rec[role] = _edit(ws_in, r, col, float(dist.get(role, 0) or 0), "#,##0")
+        ACI.append(rec); r += 1
+    r += 1
+
+    # ── Grade mapping (Step 7) ────────────────────────────────
+    section("GRADE MAPPING — role → genus (Step 7)")
+    GENUS = {}
+    rc = model["resource_costs"]
+    for role in ALL_ROLES:
+        _lbl(ws_in, r, 1, role)
+        GENUS[role] = _etext(ws_in, r, 2, str(rc.get(role, {}).get("genus") or ""))
+        r += 1
+    r += 1
+
+    # ── Scoped rate card (Step 7 source) ──────────────────────
+    section("SCOPED RATE CARD (genus → hourly rate)")
+    df = ss.get("rate_card_df")
+    country = ss.get("delivery_country"); location = ss.get("delivery_location")
+    for i, h in enumerate(["Genus", "Hourly Rate", "Currency"], 1):
+        _hdr(ws_in, r, i, h)
+    r += 1
+    scoped_first = r
+    if df is not None and len(df) > 0:
+        scoped = filter_rate_card(df, country, location).drop_duplicates(subset=["genus"], keep="first")
+        for _, row in scoped.iterrows():
+            _etext(ws_in, r, 1, str(row.get("genus", "")))
+            _edit(ws_in, r, 2, float(row.get("hourly rate", 0) or 0), "#,##0.00")
+            _etext(ws_in, r, 3, str(row.get("rate currency", "INR") or "INR").upper().strip())
+            r += 1
+    if r == scoped_first:
+        _etext(ws_in, r, 1, "—"); _edit(ws_in, r, 2, 0, "#,##0.00"); _etext(ws_in, r, 3, "INR"); r += 1
+    scoped_last = r - 1
+    SCOPED_RANGE = f"'{S_IN}'!$A${scoped_first}:$C${scoped_last}"
+    r += 1
+
+    # ── Costing (Step 8) ──────────────────────────────────────
+    section("COSTING (Step 8)")
     scalar("Target gross margin %", float(model["price_result"].get("margin_pct", 0) or 0), "margin", "#,##0")
     scalar("SLA provision included (1 = yes)", 1 if ss.get("sla_provision_included") == "Yes" else 0, "slaInc", "0")
     scalar("SLA provision %", float(ss.get("sla_provision_pct", 0) or 0), "slaPct", "#,##0.0")
-    _tp_in = ss.get("transition_planner", {}) or {}
-    scalar_text("Transition treatment (planned on 'Transition' sheet)",
-                (str(_tp_in.get("treatment", "—")) if _tp_in.get("enabled") else "Not included"),
-                "transTreatment")
-    scalar_text("Delivery country", str(ss.get("delivery_country") or ""), "country")
-    scalar_text("Delivery location", str(ss.get("delivery_location") or ""), "location")
-    scalar_text("Reporting currency (display only)", str(ss.get("reporting_currency") or "INR"), "repcur")
-
-    # ── FX table ──────────────────────────────────────────────
     r += 1
-    _title(ws_in, r, 1, "FX RATES — 1 unit = X INR"); r += 1
+    _lbl(ws_in, r, 1, "FX rates — 1 unit = X INR", bold=True); r += 1
     _hdr(ws_in, r, 1, "Currency"); _hdr(ws_in, r, 2, "INR per unit"); r += 1
     fx = {"INR": 1.0}
     for k, v in (ss.get("exchange_rates", {}) or {}).items():
@@ -174,10 +276,8 @@ def generate_excel_model() -> bytes:
         _etext(ws_in, r, 1, cur); _edit(ws_in, r, 2, rate, "#,##0.0000"); r += 1
     fx_last = r - 1
     FX_RANGE = f"'{S_IN}'!$A${fx_first}:$B${fx_last}"
-
-    # ── Additional cost line items ────────────────────────────
     r += 1
-    _title(ws_in, r, 1, "ADDITIONAL COST ITEMS (INR)"); r += 1
+    _lbl(ws_in, r, 1, "Additional cost items (INR)", bold=True); r += 1
     _hdr(ws_in, r, 1, "Item"); _hdr(ws_in, r, 2, "Monthly cost"); r += 1
     add_first = r
     add_costs = ss.get("additional_costs", []) or []
@@ -188,39 +288,70 @@ def generate_excel_model() -> bytes:
         _edit(ws_in, r, 2, float(row.get("cost", 0) or 0), "#,##0"); r += 1
     add_last = r - 1
     _lbl(ws_in, r, 1, "Total additional expenses", bold=True)
-    IN["expenses"] = _calc(ws_in, r, 2, f"=SUM(B{add_first}:B{add_last})", "#,##0"); r += 1
+    IN["expenses"] = _calc(ws_in, r, 2, f"=SUM(B{add_first}:B{add_last})", "#,##0"); r += 2
+
+    # ── Transition plan (Step 8) ──────────────────────────────
+    section("TRANSITION & ONBOARDING (Step 8)")
+    tp = ss.get("transition_planner", {}) or {}
+    mtrans = model.get("transition", {}) or {}
+    tr_enabled = bool(tp.get("enabled"))
+    total_weeks = int(tp.get("total_weeks", 0) or 0) if tr_enabled else 0
+    phases = tp.get("phases", []) or []
+    resources = tp.get("resources", []) or []
+    allocation = tp.get("allocation", {}) or {}
+    scalar("Transition included (1 = yes)", 1 if tr_enabled else 0, "trInc", "0")
+    scalar("Total transition weeks", total_weeks, "trWeeks", "#,##0")
+    scalar("Weekly hours / full-capacity", float(mtrans.get("weekly_hours", 40) or 40), "trWH", "#,##0")
+    scalar_text("Treatment (recurring/one_time/absorb)", str(tp.get("treatment", "recurring")), "trTreat")
+    scalar("Amortisation months", int(tp.get("amortisation_months", 12) or 12), "trMonths", "#,##0")
+    TRI = {"phases": [], "resources": [], "alloc": {}}
+    if tr_enabled and total_weeks > 0 and resources:
+        # phases
+        _lbl(ws_in, r, 1, "Phase", bold=True); _lbl(ws_in, r, 2, "Weeks", bold=True); r += 1
+        for ph in phases:
+            nm = _etext(ws_in, r, 1, str(ph.get("name", "")))
+            wk = _edit(ws_in, r, 2, int(ph.get("weeks", 0) or 0), "#,##0")
+            TRI["phases"].append({"name": nm, "weeks": wk, "name_val": str(ph.get("name", "")),
+                                  "weeks_val": int(ph.get("weeks", 0) or 0)})
+            r += 1
+        # weekly utilisation grid: Resource | Role | Count | W1..WN
+        _hdr(ws_in, r, 1, "Resource"); _hdr(ws_in, r, 2, "Role"); _hdr(ws_in, r, 3, "Count")
+        for w in range(1, total_weeks + 1):
+            _hdr(ws_in, r, 3 + w, f"W{w}")
+        r += 1
+        seen = {}
+        util_first = r
+        for res in resources:
+            rid = str(res.get("id", "")); role = res.get("role")
+            seen[role] = seen.get(role, 0) + 1
+            _etext(ws_in, r, 1, f"{role} #{seen[role]}")
+            role_ref = _etext(ws_in, r, 2, str(role))
+            cnt_ref = _edit(ws_in, r, 3, float(res.get("count", 0) or 0), "#,##0")
+            alloc = allocation.get(rid) or allocation.get(res.get("id")) or {}
+            wk_refs = {}
+            for w in range(1, total_weeks + 1):
+                util = float(alloc.get(str(w), alloc.get(w, 0)) or 0)
+                wk_refs[w] = _edit(ws_in, r, 3 + w, util, "0.00")
+            TRI["resources"].append({"id": rid, "role": role, "role_ref": role_ref,
+                                     "count": cnt_ref, "weeks": wk_refs})
+            r += 1
+        util_last = r - 1
+        dv = DataValidation(type="list", formula1='"0,0.25,0.5,1"', allow_blank=True)
+        ws_in.add_data_validation(dv)
+        dv.add(f"{get_column_letter(4)}{util_first}:{get_column_letter(3 + total_weeks)}{util_last}")
+    r += 1
 
     # ════════════════════════════════════════════════════════════════════════
-    # RATE CARDS
+    # RATE CARDS  (full uploaded card — locked reference)
     # ════════════════════════════════════════════════════════════════════════
     ws_rc = wb.create_sheet(S_RC)
     for col, w in (("A", 16), ("B", 16), ("C", 20), ("D", 14), ("E", 10)):
         ws_rc.column_dimensions[col].width = w
-    df = ss.get("rate_card_df")
-    country = ss.get("delivery_country"); location = ss.get("delivery_location")
-    _title(ws_rc, 1, 1, f"Scoped rate card — lookup source  ({country or 'All'}"
+    _title(ws_rc, 1, 1, f"Full uploaded rate card — reference ({country or 'All'}"
                         + (f" / {location}" if location else "") + ")")
-    ws_rc.cell(2, 1, "7 · Rates looks up each role's genus here. Edit a rate to see costs change.").font = \
-        Font(italic=True, size=9, color=GREY)
-    hr = 4
-    for i, h in enumerate(["Genus", "Hourly Rate", "Currency"], 1):
-        _hdr(ws_rc, hr, i, h)
-    scoped_first = hr + 1
-    rr = scoped_first
-    if df is not None and len(df) > 0:
-        scoped = filter_rate_card(df, country, location).drop_duplicates(subset=["genus"], keep="first")
-        for _, row in scoped.iterrows():
-            _etext(ws_rc, rr, 1, str(row.get("genus", "")))
-            _edit(ws_rc, rr, 2, float(row.get("hourly rate", 0) or 0), "#,##0.00")
-            _etext(ws_rc, rr, 3, str(row.get("rate currency", "INR") or "INR").upper().strip())
-            rr += 1
-    if rr == scoped_first:                         # nothing loaded — keep a usable empty row
-        _etext(ws_rc, rr, 1, "—"); _edit(ws_rc, rr, 2, 0, "#,##0.00"); _etext(ws_rc, rr, 3, "INR"); rr += 1
-    scoped_last = rr - 1
-    SCOPED_RANGE = f"'{S_RC}'!$A${scoped_first}:$C${scoped_last}"
-
-    rr += 2
-    _title(ws_rc, rr, 1, "Full uploaded rate card (reference)"); rr += 1
+    ws_rc.cell(2, 1, "The scoped genus→rate lookup used by 7 Rates is on the Inputs sheet "
+                     "(editable). This is the full source card.").font = Font(italic=True, size=9, color=GREY)
+    rr = 4
     for i, h in enumerate(["Country", "Location", "Genus", "Hourly Rate", "Currency"], 1):
         _hdr(ws_rc, rr, i, h)
     rr += 1
@@ -234,7 +365,7 @@ def generate_excel_model() -> bytes:
             rr += 1
 
     # ════════════════════════════════════════════════════════════════════════
-    # 1-2 WORKLOAD  (counts/min/%/buffers → category hours + buffered role hours)
+    # 1-2 WORKLOAD  (formulas referencing Inputs)
     # ════════════════════════════════════════════════════════════════════════
     ws_wl = wb.create_sheet(S_WL)
     headers = ["Category", "Severity/Type", "Count", "Min", "L1 %", "L1 Buf%",
@@ -242,7 +373,7 @@ def generate_excel_model() -> bytes:
     ws_wl.column_dimensions["A"].width = 18; ws_wl.column_dimensions["B"].width = 14
     for col in "CDEFGHIJKLMN":
         ws_wl.column_dimensions[col].width = 9
-    _title(ws_wl, 1, 1, "Workload → effort (Steps 1–2)")
+    _title(ws_wl, 1, 1, "Workload → effort (Steps 1–2) — inputs mirrored from the Inputs sheet")
     hr = 3
     for i, h in enumerate(headers, 1):
         _hdr(ws_wl, hr, i, h)
@@ -250,19 +381,18 @@ def generate_excel_model() -> bytes:
     WL_cat_hrs = {}; WL_vol = {}
     all_first = r
     for cat_key, cat_label in CAT_DISPLAY:
-        cat = ss.get(cat_key, {}) or {}
         c_first = r
         for label in CATEGORY_SUBLABELS[cat_key]:
-            row = cat.get(label, {})
+            ref = WLI[cat_key][label]
             _lbl(ws_wl, r, 1, cat_label); _lbl(ws_wl, r, 2, label)
-            _edit(ws_wl, r, 3, int(row.get("count", 0) or 0), "#,##0")
-            _edit(ws_wl, r, 4, float(row.get("minutes", 0) or 0), "#,##0")
-            _edit(ws_wl, r, 5, float(row.get("L1_pct", 0) or 0), "#,##0")
-            _edit(ws_wl, r, 6, float(row.get("L1_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0")
-            _edit(ws_wl, r, 7, float(row.get("L2_pct", 0) or 0), "#,##0")
-            _edit(ws_wl, r, 8, float(row.get("L2_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0")
-            _edit(ws_wl, r, 9, float(row.get("L3_pct", 0) or 0), "#,##0")
-            _edit(ws_wl, r, 10, float(row.get("L3_buffer", DEFAULT_ROLE_BUFFER_PCT)), "#,##0")
+            _calc(ws_wl, r, 3, f"={ref['count']}", "#,##0")
+            _calc(ws_wl, r, 4, f"={ref['min']}", "#,##0")
+            _calc(ws_wl, r, 5, f"={ref['l1']}", "#,##0")
+            _calc(ws_wl, r, 6, f"={ref['l1b']}", "#,##0")
+            _calc(ws_wl, r, 7, f"={ref['l2']}", "#,##0")
+            _calc(ws_wl, r, 8, f"={ref['l2b']}", "#,##0")
+            _calc(ws_wl, r, 9, f"={ref['l3']}", "#,##0")
+            _calc(ws_wl, r, 10, f"={ref['l3b']}", "#,##0")
             _calc(ws_wl, r, 11, f"=C{r}*D{r}/60")
             _calc(ws_wl, r, 12, f"=C{r}*D{r}/60*E{r}/100*(1+F{r}/100)")
             _calc(ws_wl, r, 13, f"=C{r}*D{r}/60*G{r}/100*(1+H{r}/100)")
@@ -278,7 +408,6 @@ def generate_excel_model() -> bytes:
     WL_role = {}
     for role, col in (("L1", 12), ("L2", 13), ("L3", 14)):
         L = get_column_letter(col)
-        # sum only data rows (skip subtotal rows, which have no count*min cells in K..N)
         WL_role[role] = _calc(ws_wl, r, col, f"=SUM({L}{all_first}:{L}{all_last})")
     for c in range(2, 15):
         ws_wl.cell(r, c).fill = _fill(TEAL); ws_wl.cell(r, c).font = Font(bold=True, color="FFFFFF")
@@ -292,12 +421,11 @@ def generate_excel_model() -> bytes:
     _lbl(ws_pa, 3, 1, "Failed servers (tool mode) = ROUND(servers × error%)")
     _calc(ws_pa, 3, 2, f"=IF({IN['patchTool']}=1,ROUND({IN['servers']}*{IN['errRate']}/100,0),0)", "#,##0")
     _lbl(ws_pa, 4, 1, "Patching hours / month", bold=True)
-    PATCH_HRS = _calc(
-        ws_pa, 4, 2,
-        f"=IF({IN['patchInc']}=1,IF({IN['patchTool']}=1,B3*{IN['autoMin']}/60,"
-        f"{IN['servers']}*{IN['manMin']}/60),0)")
+    PATCH_HRS = _calc(ws_pa, 4, 2,
+                      f"=IF({IN['patchInc']}=1,IF({IN['patchTool']}=1,B3*{IN['autoMin']}/60,"
+                      f"{IN['servers']}*{IN['manMin']}/60),0)")
     _app(ws_pa, 4, 3, model["effort_sources"].get("Patching", 0))
-    _lbl(ws_pa, 5, 1, "Assigned to role"); ws_pa.cell(5, 2, "=" + IN["patchRole"])
+    _lbl(ws_pa, 5, 1, "Assigned to role"); _calc(ws_pa, 5, 2, f"={IN['patchRole']}", "General")
 
     # ════════════════════════════════════════════════════════════════════════
     # 4 ACTIVITIES
@@ -307,53 +435,21 @@ def generate_excel_model() -> bytes:
     for col in "BCDEFGH":
         ws_ac.column_dimensions[col].width = 10
     _title(ws_ac, 1, 1, "Additional activities (Step 4)")
-    ac_headers = ["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %"]
-    hr = 3
-    for i, h in enumerate(ac_headers, 1):
-        _hdr(ws_ac, hr, i, h)
-    r = hr + 1
+    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %"], 1):
+        _hdr(ws_ac, 3, i, h)
+    r = 4
     ac_first = r
-    role_pct_col = {"L1": 3, "L2": 4, "L3": 5, "Architect": 6, "SDM": 7, "SSDM": 8}
-
-    def _auto_formula(name):
-        v = WL_vol
-        if name == "Scheduled Maintenance":
-            return f"={IN['servers']}*30/60"
-        if name == "Root Cause Analysis (RCA)":
-            return f"={v['incidents']}*360/60"
-        if name == "Problem Management":
-            return f"={v['incidents']}*600/60"
-        if name == "Documentation & Knowledge Base":
-            return (f"=({IN['servers']}*30+{v['incidents']}*120+{v['service_requests']}*15"
-                    f"+{v['changes']}*120)/60")
-        return None
-
-    for act in ss.get("additional_activities", []) or []:
-        name = str(act.get("name", "Activity"))
-        _etext(ws_ac, r, 1, name)
-        auto = bool(act.get("auto")) and name in ACTIVITY_FORMULAS
-        fml = _auto_formula(name) if auto else None
-        if fml:
-            _calc(ws_ac, r, 2, fml, "#,##0.0")          # auto rows recompute from servers/volumes
-        else:
-            _edit(ws_ac, r, 2, float(act.get("hours", 0) or 0), "#,##0.0")
-        dist = act.get("dist", {}) or {}
-        for role, col in role_pct_col.items():
-            _edit(ws_ac, r, col, float(dist.get(role, 0) or 0), "#,##0")
-        r += 1
-    if r == ac_first:                                   # no activities — keep an empty editable row
-        _etext(ws_ac, r, 1, "—"); _edit(ws_ac, r, 2, 0, "#,##0.0")
-        for col in role_pct_col.values():
-            _edit(ws_ac, r, col, 0, "#,##0")
+    for rec in ACI:
+        _calc(ws_ac, r, 1, f"={rec['name']}", "General")
+        _calc(ws_ac, r, 2, f"={rec['hours']}", "#,##0.0")
+        for role, col in ROLE_PCT_COL.items():
+            _calc(ws_ac, r, col, f"={rec[role]}", "#,##0")
         r += 1
     ac_last = r - 1
     _lbl(ws_ac, r, 1, "Total hours / role hours", bold=True)
     AC_total = _calc(ws_ac, r, 2, f"=SUM(B{ac_first}:B{ac_last})")
     AC_add = {}
-    # role hours from activities = SUMPRODUCT(hours, role%) / 100.
-    # Ranges MUST be qualified with the Activities sheet — this string is embedded in
-    # formulas on the Effort sheet, where unqualified refs would self-reference Effort.
-    for role, col in role_pct_col.items():
+    for role, col in ROLE_PCT_COL.items():
         L = get_column_letter(col)
         AC_add[role] = (f"(SUMPRODUCT('{S_AC}'!$B${ac_first}:$B${ac_last},"
                         f"'{S_AC}'!{L}${ac_first}:{L}${ac_last})/100)")
@@ -371,6 +467,8 @@ def generate_excel_model() -> bytes:
     _hdr(ws_ef, 3, 1, "Source"); _hdr(ws_ef, 3, 2, "Hours"); _hdr(ws_ef, 3, 3, "App value")
     r = 4
     EF = {}
+    es = model["effort_sources"]
+
     def effort_row(label, formula, app_val, key=None, fmt="#,##0.0"):
         nonlocal r
         _lbl(ws_ef, r, 1, label); ref = _calc(ws_ef, r, 2, formula, fmt)
@@ -379,7 +477,7 @@ def generate_excel_model() -> bytes:
             EF[key] = ref
         r += 1
         return ref
-    es = model["effort_sources"]
+
     effort_row("Monitoring Alerts", f"={WL_cat_hrs['alerts']}", es.get("Monitoring Alerts", 0))
     effort_row("Service Requests", f"={WL_cat_hrs['service_requests']}", es.get("Service Requests", 0))
     effort_row("Incidents", f"={WL_cat_hrs['incidents']}", es.get("Incidents", 0))
@@ -395,7 +493,6 @@ def generate_excel_model() -> bytes:
     EF["total"] = effort_row("Total operational effort", f"={EF['base']}+{EF['contHrs']}",
                              model["total_effort"], key="total")
 
-    # overhead hours (per Arch/SDM/SSDM) = total_effort * ovh%/100
     r += 1
     _title(ws_ef, r, 1, "Assembled role hours"); r += 1
     _hdr(ws_ef, r, 1, "Role"); _hdr(ws_ef, r, 2, "Hours"); _hdr(ws_ef, r, 3, "App value"); r += 1
@@ -403,11 +500,11 @@ def generate_excel_model() -> bytes:
     cont_mult = f"(1+{IN['cont']}/100)"
     ovh_ref = {"Architect": IN["ovhArchitect"], "SDM": IN["ovhSDM"], "SSDM": IN["ovhSSDM"]}
     for role in ALL_ROLES:
-        ticket = WL_role.get(role)                      # L1/L2/L3 buffered ticket hours
+        ticket = WL_role.get(role)
         base_terms = []
         if ticket:
             base_terms.append(ticket)
-        base_terms.append(AC_add[role])                 # activity hours for this role
+        base_terms.append(AC_add[role])
         base_terms.append(f'IF({IN["patchRole"]}="{role}",{PATCH_HRS},0)')
         base_expr = "+".join(base_terms)
         ovh_term = f"+{EF['total']}*{ovh_ref[role]}/100" if role in OVERHEAD_ROLES else ""
@@ -431,7 +528,7 @@ def generate_excel_model() -> bytes:
     for i, h in enumerate(["Role", "Hours", "Raw FTE (adj)", "Final FTE ⌈0.5⌉", "FTE used", "App FTE used"], 1):
         _hdr(ws_ft, hr, i, h)
     r = hr + 1
-    FT_fte = {}; FT_final = {}; FT_raw = {}
+    FT_fte = {}
     fte_key = "raw_fte" if model.get("fte_basis") == "raw" else "final_fte"
     for role in ALL_ROLES:
         _lbl(ws_ft, r, 1, role)
@@ -439,7 +536,6 @@ def generate_excel_model() -> bytes:
         covf = f"*{IN['cov']}" if role in COVERAGE_APPLICABLE_ROLES else ""
         raw = _calc(ws_ft, r, 3, f"=IF({PROD}>0,{hcell}/{PROD}{covf},0)", "#,##0.000")
         final = _calc(ws_ft, r, 4, f"=IF({hcell}>0,MAX(CEILING({raw},0.5),0.5),0)", "#,##0.00")
-        FT_raw[role] = raw; FT_final[role] = final
         FT_fte[role] = _calc(ws_ft, r, 5, f"=IF({IN['basisRaw']}=1,{raw},{final})", "#,##0.00")
         _app(ws_ft, r, 6, model["fte_result"].get(role, {}).get(fte_key, 0), "#,##0.00")
         r += 1
@@ -454,154 +550,105 @@ def generate_excel_model() -> bytes:
     ws_rt.column_dimensions["A"].width = 12; ws_rt.column_dimensions["B"].width = 20
     for col in "CDEF":
         ws_rt.column_dimensions[col].width = 14
-    _title(ws_rt, 1, 1, "Role → grade → rate (Step 7)")
-    ws_rt.cell(2, 1, "Genus is looked up on 'Rate Cards' (scoped table) → × FX → INR.").font = \
+    _title(ws_rt, 1, 1, "Role → genus → rate (Step 7)")
+    ws_rt.cell(2, 1, "Genus is looked up on the Inputs scoped rate card → × FX → INR.").font = \
         Font(italic=True, size=9, color=GREY)
     hr = 4
     for i, h in enumerate(["Role", "Genus", "Rate (native)", "Currency", "Rate (INR)", "App INR"], 1):
         _hdr(ws_rt, hr, i, h)
     r = hr + 1
     RT_rate = {}
-    rc = model["resource_costs"]
     for role in ALL_ROLES:
         _lbl(ws_rt, r, 1, role)
-        g = _etext(ws_rt, r, 2, str(rc.get(role, {}).get("genus") or ""))
+        g = _calc(ws_rt, r, 2, f"={GENUS[role]}", "General")
         native = _calc(ws_rt, r, 3, f"=IFERROR(VLOOKUP({g},{SCOPED_RANGE},2,FALSE),0)", "#,##0.00")
         cur = _calc(ws_rt, r, 4, f'=IFERROR(VLOOKUP({g},{SCOPED_RANGE},3,FALSE),"INR")', "General")
-        RT_rate[role] = _calc(
-            ws_rt, r, 5,
-            f"={native}*IFERROR(VLOOKUP({cur},{FX_RANGE},2,FALSE),1)", "#,##0")
+        RT_rate[role] = _calc(ws_rt, r, 5,
+                              f"={native}*IFERROR(VLOOKUP({cur},{FX_RANGE},2,FALSE),1)", "#,##0")
         _app(ws_rt, r, 6, rc.get(role, {}).get("rate_inr", 0), "#,##0")
         r += 1
 
     # ════════════════════════════════════════════════════════════════════════
-    # TRANSITION & ONBOARDING  (phases + weekly utilisation → cost → treatment)
+    # TRANSITION  (formulas referencing Inputs)
     # ════════════════════════════════════════════════════════════════════════
-    tp = ss.get("transition_planner", {}) or {}
-    mtrans = model.get("transition", {}) or {}
     ws_tr = wb.create_sheet(S_TR)
     for col, w in (("A", 18), ("B", 12), ("C", 10), ("D", 12)):
         ws_tr.column_dimensions[col].width = w
     _title(ws_tr, 1, 1, "Transition & Onboarding Planner")
-    ws_tr.cell(2, 1, "Weekly cost = count × utilisation × weekly hours × role rate (from 7 Rates). "
-                     "Yellow = editable; grey = app cross-check.").font = Font(italic=True, size=9, color=GREY)
-
-    tr_enabled = bool(tp.get("enabled"))
-    total_weeks = int(tp.get("total_weeks", 0) or 0) if tr_enabled else 0
-    phases = tp.get("phases", []) or []
-    resources = tp.get("resources", []) or []
-    allocation = tp.get("allocation", {}) or {}
+    ws_tr.cell(2, 1, "Weekly cost = count × utilisation × weekly hours × role rate. "
+                     "Inputs are on the Inputs sheet.").font = Font(italic=True, size=9, color=GREY)
     TR_phase_refs = {}
-
     if not (tr_enabled and total_weeks > 0 and resources):
         _lbl(ws_tr, 4, 1, "Transition & Onboarding is not included in this estimate.", bold=True)
         ws_tr.cell(5, 2, 0).number_format = "#,##0"
         _zero = _aref(ws_tr, 5, 2)
         TR_total = TR_monthly = TR_onetime = TR_absorb = TR_net = _zero
     else:
-        # ── config block ──────────────────────────────────────
-        r = 4
-        _lbl(ws_tr, r, 1, "Weekly hours / full-capacity")
-        TR_wh = _edit(ws_tr, r, 2, float(mtrans.get("weekly_hours", 40) or 40), "#,##0"); r += 1
-        _lbl(ws_tr, r, 1, "Treatment (recurring/one_time/absorb)")
-        TR_treat = _etext(ws_tr, r, 2, str(tp.get("treatment", "recurring"))); r += 1
-        _lbl(ws_tr, r, 1, "Amortisation months")
-        TR_months = _edit(ws_tr, r, 2, int(tp.get("amortisation_months", 12) or 12), "#,##0"); r += 2
-
-        # ── phases table (weeks map sequentially) ─────────────
-        _title(ws_tr, r, 1, "Phases"); r += 1
-        _hdr(ws_tr, r, 1, "Phase"); _hdr(ws_tr, r, 2, "Weeks"); _hdr(ws_tr, r, 3, "Week range"); r += 1
-        phase_first = r
-        phase_span = {}   # name -> (start_week, end_week)
-        wk_cursor = 1
-        for ph in phases:
-            nm = str(ph.get("name", "")); wks = int(ph.get("weeks", 0) or 0)
-            start = wk_cursor; end = wk_cursor + wks - 1
-            _etext(ws_tr, r, 1, nm); _edit(ws_tr, r, 2, wks, "#,##0")
-            ws_tr.cell(r, 3, f"W{start}–W{end}" if wks > 0 else "—")
-            phase_span[nm] = (start, end); wk_cursor = end + 1; r += 1
-        phase_last = r - 1
-        _lbl(ws_tr, r, 1, "Allocated / Total", bold=True)
-        _calc(ws_tr, r, 2, f"=SUM(B{phase_first}:B{phase_last})", "#,##0")
-        ws_tr.cell(r, 3, f"of {total_weeks}").font = Font(size=9, color=GREY); r += 2
-
-        # ── weekly utilisation & cost grid ────────────────────
-        _title(ws_tr, r, 1, "Weekly utilisation & cost"); r += 1
-        wk_col0 = 5                                  # first week column (E)
-        _hdr(ws_tr, r, 1, "Resource"); _hdr(ws_tr, r, 2, "Role")
-        _hdr(ws_tr, r, 3, "Count"); _hdr(ws_tr, r, 4, "Rate")
+        # weekly cost grid: Resource | Role | Count | Rate | W1..WN | Total Hrs | Cost
+        wk_col0 = 5
+        hr = 4
+        _hdr(ws_tr, hr, 1, "Resource"); _hdr(ws_tr, hr, 2, "Role")
+        _hdr(ws_tr, hr, 3, "Count"); _hdr(ws_tr, hr, 4, "Rate")
         for w in range(1, total_weeks + 1):
             c = wk_col0 + (w - 1)
-            _hdr(ws_tr, r, c, f"W{w}"); ws_tr.column_dimensions[get_column_letter(c)].width = 6
-        hrs_col = wk_col0 + total_weeks
-        cost_col = hrs_col + 1
-        _hdr(ws_tr, r, hrs_col, "Total Hrs"); _hdr(ws_tr, r, cost_col, "Cost INR")
+            _hdr(ws_tr, hr, c, f"W{w}"); ws_tr.column_dimensions[get_column_letter(c)].width = 6
+        hrs_col = wk_col0 + total_weeks; cost_col = hrs_col + 1
+        _hdr(ws_tr, hr, hrs_col, "Total Hrs"); _hdr(ws_tr, hr, cost_col, "Cost INR")
         ws_tr.column_dimensions[get_column_letter(hrs_col)].width = 11
         ws_tr.column_dimensions[get_column_letter(cost_col)].width = 14
-        r += 1
+        r = hr + 1
         res_first = r
-        wk_first_L = get_column_letter(wk_col0)
-        wk_last_L = get_column_letter(wk_col0 + total_weeks - 1)
-        hrs_L = get_column_letter(hrs_col)
+        wk_first_L = get_column_letter(wk_col0); wk_last_L = get_column_letter(wk_col0 + total_weeks - 1)
+        hrs_L = get_column_letter(hrs_col); cost_L = get_column_letter(cost_col)
         seen = {}
-        for res in resources:
-            rid = str(res.get("id", "")); role = res.get("role")
-            cnt = float(res.get("count", 0) or 0)
-            alloc = allocation.get(rid) or allocation.get(res.get("id")) or {}
-            seen[role] = seen.get(role, 0) + 1
-            _etext(ws_tr, r, 1, f"{role} #{seen[role]}"); _etext(ws_tr, r, 2, str(role))
-            _edit(ws_tr, r, 3, cnt, "#,##0")
-            rate_ref = RT_rate.get(role)
-            if rate_ref:
-                _calc(ws_tr, r, 4, f"={rate_ref}", "#,##0")
-            else:
-                _edit(ws_tr, r, 4, 0, "#,##0")
+        for res in TRI["resources"]:
+            role = res["role"]; seen[role] = seen.get(role, 0) + 1
+            _calc(ws_tr, r, 1, f'="{role} #{seen[role]}"', "General")
+            _calc(ws_tr, r, 2, f"={res['role_ref']}", "General")
+            _calc(ws_tr, r, 3, f"={res['count']}", "#,##0")
+            rr = RT_rate.get(role)
+            _calc(ws_tr, r, 4, f"={rr}" if rr else "=0", "#,##0")
             for w in range(1, total_weeks + 1):
-                util = float(alloc.get(str(w), alloc.get(w, 0)) or 0)
-                _edit(ws_tr, r, wk_col0 + (w - 1), util, "0.00")
-            _calc(ws_tr, r, hrs_col, f"=C{r}*{TR_wh}*SUM({wk_first_L}{r}:{wk_last_L}{r})", "#,##0.0")
+                _calc(ws_tr, r, wk_col0 + (w - 1), f"={res['weeks'][w]}", "0.00")
+            _calc(ws_tr, r, hrs_col, f"=C{r}*{IN['trWH']}*SUM({wk_first_L}{r}:{wk_last_L}{r})", "#,##0.0")
             _calc(ws_tr, r, cost_col, f"={hrs_L}{r}*D{r}", "#,##0")
             r += 1
         res_last = r - 1
-        # constrained utilisation picker (0 / 0.25 / 0.5 / 1) on every week cell
-        dv = DataValidation(type="list", formula1='"0,0.25,0.5,1"', allow_blank=True)
-        dv.error = "Use 0, 0.25, 0.5 or 1 (=0%/25%/50%/100%)"; dv.errorTitle = "Utilisation"
-        ws_tr.add_data_validation(dv)
-        dv.add(f"{wk_first_L}{res_first}:{wk_last_L}{res_last}")
-        cost_L = get_column_letter(cost_col)
         _lbl(ws_tr, r, 1, "TOTAL", bold=True)
         TR_total = _calc(ws_tr, r, cost_col, f"=SUM({cost_L}{res_first}:{cost_L}{res_last})", "#,##0")
         _app(ws_tr, r, cost_col + 1, mtrans.get("total", 0)); r += 2
 
-        # ── cost by phase (contiguous week columns) ───────────
+        # cost by phase (contiguous week columns, mapped from phase weeks on Inputs)
         _title(ws_tr, r, 1, "Cost by phase"); r += 1
         _hdr(ws_tr, r, 1, "Phase"); _hdr(ws_tr, r, 2, "Cost INR"); _hdr(ws_tr, r, 3, "App value"); r += 1
         cnt_rng = f"$C${res_first}:$C${res_last}"; rate_rng = f"$D${res_first}:$D${res_last}"
-        for nm, (start, end) in phase_span.items():
-            _etext(ws_tr, r, 1, nm)
-            if end >= start:
+        wk_cursor = 1
+        for ph in TRI["phases"]:
+            nm_val = ph["name_val"]; wks = ph["weeks_val"]
+            start = wk_cursor; end = wk_cursor + wks - 1; wk_cursor = end + 1
+            _calc(ws_tr, r, 1, f"={ph['name']}", "General")
+            if end >= start and start >= 1 and end <= total_weeks:
                 cols = [get_column_letter(wk_col0 + (w - 1)) for w in range(start, end + 1)]
                 util_sum = "+".join(f"{c}{res_first}:{c}{res_last}" for c in cols)
-                ref = _calc(ws_tr, r, 2, f"={TR_wh}*SUMPRODUCT({cnt_rng},{rate_rng},({util_sum}))", "#,##0")
+                ref = _calc(ws_tr, r, 2, f"={IN['trWH']}*SUMPRODUCT({cnt_rng},{rate_rng},({util_sum}))", "#,##0")
             else:
                 ref = _calc(ws_tr, r, 2, "=0", "#,##0")
-            TR_phase_refs[nm] = ref
-            _app(ws_tr, r, 3, mtrans.get("per_phase", {}).get(nm, 0)); r += 1
+            TR_phase_refs[nm_val] = ref
+            _app(ws_tr, r, 3, mtrans.get("per_phase", {}).get(nm_val, 0)); r += 1
         r += 1
 
-        # ── commercial treatment ──────────────────────────────
         _title(ws_tr, r, 1, "Commercial treatment"); r += 1
         _hdr(ws_tr, r, 1, "Item"); _hdr(ws_tr, r, 2, "INR"); _hdr(ws_tr, r, 3, "App value"); r += 1
         _lbl(ws_tr, r, 1, "Total transition cost")
         _calc(ws_tr, r, 2, f"={TR_total}", "#,##0"); _app(ws_tr, r, 3, mtrans.get("total", 0)); r += 1
         _lbl(ws_tr, r, 1, "Monthly recurring (÷ months)")
-        TR_monthly = _calc(ws_tr, r, 2, f'=IF({TR_treat}="recurring",{TR_total}/MAX({TR_months},1),0)', "#,##0")
+        TR_monthly = _calc(ws_tr, r, 2, f'=IF({IN["trTreat"]}="recurring",{TR_total}/MAX({IN["trMonths"]},1),0)', "#,##0")
         _app(ws_tr, r, 3, mtrans.get("monthly_recurring", 0)); r += 1
         _lbl(ws_tr, r, 1, "One-time fee")
-        TR_onetime = _calc(ws_tr, r, 2, f'=IF({TR_treat}="one_time",{TR_total},0)', "#,##0")
+        TR_onetime = _calc(ws_tr, r, 2, f'=IF({IN["trTreat"]}="one_time",{TR_total},0)', "#,##0")
         _app(ws_tr, r, 3, mtrans.get("one_time_fee", 0)); r += 1
         _lbl(ws_tr, r, 1, "Absorbed (discount)")
-        TR_absorb = _calc(ws_tr, r, 2, f'=IF({TR_treat}="absorb",{TR_total},0)', "#,##0")
+        TR_absorb = _calc(ws_tr, r, 2, f'=IF({IN["trTreat"]}="absorb",{TR_total},0)', "#,##0")
         _app(ws_tr, r, 3, mtrans.get("absorbed", 0)); r += 1
         _lbl(ws_tr, r, 1, "Net charged", bold=True)
         TR_net = _calc(ws_tr, r, 2, f"={TR_total}-{TR_absorb}", "#,##0")
@@ -625,9 +672,8 @@ def generate_excel_model() -> bytes:
         _calc(ws_co, r, 2, f"={FT_fte[role]}", "#,##0.00")
         billed = _calc(ws_co, r, 3, f"={FT_fte[role]}*{IN['monthly']}", "#,##0")
         _calc(ws_co, r, 4, f"={RT_rate[role]}", "#,##0")
-        CO_cost[role] = _calc(
-            ws_co, r, 5,
-            f"=IF(AND({FT_fte[role]}>0,{RT_rate[role]}>0),{billed}*{RT_rate[role]},0)", "#,##0")
+        CO_cost[role] = _calc(ws_co, r, 5,
+                              f"=IF(AND({FT_fte[role]}>0,{RT_rate[role]}>0),{billed}*{RT_rate[role]},0)", "#,##0")
         r += 1
     _lbl(ws_co, r, 1, "Total resource cost", bold=True)
     CO_res = _calc(ws_co, r, 5, "=" + "+".join(CO_cost[x] for x in ALL_ROLES), "#,##0")
@@ -636,7 +682,7 @@ def generate_excel_model() -> bytes:
     _title(ws_co, r, 1, "Delivery → price"); r += 1
     _hdr(ws_co, r, 1, "Component"); _hdr(ws_co, r, 2, "INR"); _hdr(ws_co, r, 3, "App value"); r += 1
 
-    def cost_row(label, formula, app_val, key=None):
+    def cost_row(label, formula, app_val):
         nonlocal r
         _lbl(ws_co, r, 1, label); ref = _calc(ws_co, r, 2, formula, "#,##0")
         _app(ws_co, r, 3, app_val, "#,##0")
@@ -646,8 +692,7 @@ def generate_excel_model() -> bytes:
     CO["res"] = cost_row("Total resource cost", f"={CO_res}", model["cost_result"]["resource_cost"])
     CO["exp"] = cost_row("Additional expenses", f"={IN['expenses']}", model["cost_result"]["additional_expenses"])
     sub = cost_row("Subtotal before SLA", f"={CO['res']}+{CO['exp']}", model["cost_result"]["subtotal_before_sla"])
-    CO["sla"] = cost_row("SLA provision",
-                         f"={sub}*IF({IN['slaInc']}=1,{IN['slaPct']},0)/100",
+    CO["sla"] = cost_row("SLA provision", f"={sub}*IF({IN['slaInc']}=1,{IN['slaPct']},0)/100",
                          model["cost_result"]["sla_provision"])
     CO["deliver"] = cost_row("TOTAL DELIVERY COST", f"={sub}+{CO['sla']}",
                              model["cost_result"]["total_delivery_cost"])
@@ -655,7 +700,6 @@ def generate_excel_model() -> bytes:
                           model["price_result"]["selling_price"])
     CO["profit"] = cost_row("Gross profit", f"={CO['sell']}-{CO['deliver']}",
                             model["price_result"]["gross_profit"])
-    # Transition & Onboarding — applied to the PRICE post-margin (from the Transition sheet)
     cost_row("Transition — total cost", f"={TR_total}", mtrans.get("total", 0))
     cost_row("Transition — monthly recurring", f"={TR_monthly}", mtrans.get("monthly_recurring", 0))
     cost_row("Transition — one-time fee", f"={TR_onetime}", mtrans.get("one_time_fee", 0))
@@ -671,7 +715,6 @@ def generate_excel_model() -> bytes:
     for col in "BCDEF":
         ws_db.column_dimensions[col].width = 15
     _title(ws_db, 1, 1, "Dashboard — fully dynamic (recalculates with any input change)")
-
     r = 3
     _title(ws_db, r, 1, "Executive Summary"); r += 1
     _hdr(ws_db, r, 1, "Metric"); _hdr(ws_db, r, 2, "Value"); _hdr(ws_db, r, 3, "App value"); r += 1
@@ -696,7 +739,7 @@ def generate_excel_model() -> bytes:
     r += 1
     for role in ALL_ROLES:
         _lbl(ws_db, r, 1, role)
-        ws_db.cell(r, 2, f"='{S_RT}'!$B${5 + ALL_ROLES.index(role)}")
+        _calc(ws_db, r, 2, f"={GENUS[role]}", "General")
         _calc(ws_db, r, 3, f"={FT_fte[role]}", "#,##0.00")
         _calc(ws_db, r, 4, f"={FT_fte[role]}*{IN['monthly']}", "#,##0")
         _calc(ws_db, r, 5, f"={RT_rate[role]}", "#,##0")
@@ -726,26 +769,20 @@ def generate_excel_model() -> bytes:
         _lbl(ws_db, r, 1, label); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
     r += 1
 
-    # ── Transition summary (live) ─────────────────────────────
     _title(ws_db, r, 1, "Transition & Onboarding Summary"); r += 1
     _hdr(ws_db, r, 1, "Item"); _hdr(ws_db, r, 2, "INR"); r += 1
     for label, ref in [
         ("Total Transition Cost", TR_total), ("Monthly Recurring", TR_monthly),
-        ("One-time Fee", TR_onetime), ("Absorbed (discount)", TR_absorb),
-        ("Net Charged", TR_net),
+        ("One-time Fee", TR_onetime), ("Absorbed (discount)", TR_absorb), ("Net Charged", TR_net),
     ]:
         _lbl(ws_db, r, 1, label); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
     for nm, ref in TR_phase_refs.items():
         _lbl(ws_db, r, 1, f"  · {nm}"); _calc(ws_db, r, 2, f"={ref}", "#,##0"); r += 1
 
-    ws_db.cell(r + 1, 1, "Grey 'App value' cells echo the tool's result for cross-checking. "
-                         "Edit any yellow input and Excel recalculates everything.").font = \
-        Font(italic=True, size=9, color=GREY)
-
     # ════════════════════════════════════════════════════════════════════════
-    # SUMMARY / COVER  (client-facing, formula-linked) — built last, placed first
+    # SUMMARY / COVER  (client-facing) — built last, placed first
     # ════════════════════════════════════════════════════════════════════════
-    ws_sum = wb.create_sheet("Summary", 0)
+    ws_sum = wb.create_sheet(S_SUM, 0)
     for col, w in (("A", 38), ("B", 20), ("C", 20)):
         ws_sum.column_dimensions[col].width = w
     try:
@@ -761,37 +798,29 @@ def generate_excel_model() -> bytes:
     ws_sum["A2"] = "Managed Services — Cost & Price Summary"
     ws_sum["A2"].font = Font(italic=True, size=10, color=GREY)
     ws_sum["A3"] = f"Generated {date.today()}"; ws_sum["A3"].font = Font(size=9, color=GREY)
-
     repcur = str(ss.get("reporting_currency") or "INR")
     _treat_label = {"recurring": "Recover via monthly recurring charges",
                     "one_time": "Recover as a one-time fee",
                     "absorb": "Absorbed (discount — net ₹0)"}
-    _tp = ss.get("transition_planner", {}) or {}
-    treat_txt = _treat_label.get(_tp.get("treatment"), "—") if _tp.get("enabled") else "Not included"
+    treat_txt = _treat_label.get(tp.get("treatment"), "—") if tr_enabled else "Not included"
 
     r = 5
     _title(ws_sum, r, 1, "Engagement"); r += 1
-    for label, val in [
-        ("Customer / RFP", str(ss.get("project_name") or "—")),
-        ("Delivery", (f"{ss.get('delivery_country') or ''}"
-                      + (f" / {ss.get('delivery_location')}" if ss.get('delivery_location') else "")).strip() or "—"),
-        ("Coverage model", str(ss.get("coverage_model") or "—")),
-        ("Reporting currency", repcur),
-        ("Transition treatment", treat_txt),
-    ]:
-        _lbl(ws_sum, r, 1, label); ws_sum.cell(r, 2, val); r += 1
-    r += 1
+    for label, ref in [("Customer / RFP", IN["project"]), ("Prepared by", IN["prep"]),
+                       ("Delivery country", IN["country"]), ("Delivery location", IN["location"]),
+                       ("Coverage model", IN["covModel"]), ("Reporting currency", IN["repcur"])]:
+        _lbl(ws_sum, r, 1, label); _calc(ws_sum, r, 2, f"={ref}", "General"); r += 1
+    _lbl(ws_sum, r, 1, "Transition treatment"); ws_sum.cell(r, 2, treat_txt); r += 2
 
     _title(ws_sum, r, 1, "Commercial Headline"); r += 1
     _hdr(ws_sum, r, 1, "Metric"); _hdr(ws_sum, r, 2, "INR"); _hdr(ws_sum, r, 3, repcur); r += 1
 
-    def head(label, ref, fmt="#,##0", pct=False):
+    def head(label, ref, pct=False):
         nonlocal r
         _lbl(ws_sum, r, 1, label)
-        _calc(ws_sum, r, 2, f"={ref}", '0.0"%"' if pct else fmt)
+        _calc(ws_sum, r, 2, f"={ref}", '0.0"%"' if pct else "#,##0")
         if not pct:
-            _calc(ws_sum, r, 3,
-                  f"=B{r}/IFERROR(VLOOKUP({IN['repcur']},{FX_RANGE},2,FALSE),1)", fmt)
+            _calc(ws_sum, r, 3, f"=B{r}/IFERROR(VLOOKUP({IN['repcur']},{FX_RANGE},2,FALSE),1)", "#,##0")
         r += 1
 
     head("Total Delivery Cost", CO["deliver"])
@@ -802,8 +831,7 @@ def generate_excel_model() -> bytes:
     head("Transition — net charged", TR_net)
     head("Gross Margin % (on delivery)", IN["margin"], pct=True)
     _lbl(ws_sum, r, 1, "Blended margin % (profit ÷ monthly incl. transition)")
-    _calc(ws_sum, r, 2,
-          f"=IF({CO['monthly_final']}>0,{CO['profit']}/{CO['monthly_final']}*100,0)", '0.0"%"'); r += 2
+    _calc(ws_sum, r, 2, f"=IF({CO['monthly_final']}>0,{CO['profit']}/{CO['monthly_final']}*100,0)", '0.0"%"'); r += 2
 
     _title(ws_sum, r, 1, "Key Assumptions"); r += 1
     _hdr(ws_sum, r, 1, "Assumption"); _hdr(ws_sum, r, 2, "Value"); r += 1
@@ -811,23 +839,17 @@ def generate_excel_model() -> bytes:
         ("Monthly working hrs / FTE", IN["monthly"], "#,##0"),
         ("Productive utilisation %", IN["util"], '0"%"'),
         ("Contingency %", IN["cont"], '0"%"'),
-        ("Transition week = hours", None, None),
-        ("Transition amortisation (months)", None, None),
+        ("Coverage multiplier", IN["cov"], "#,##0.00"),
+        ("Transition week = hours", IN["trWH"], "#,##0"),
+        ("Transition amortisation (months)", IN["trMonths"], "#,##0"),
     ]:
-        _lbl(ws_sum, r, 1, label)
-        if ref:
-            _calc(ws_sum, r, 2, f"={ref}", fmt)
-        elif "week" in label:
-            ws_sum.cell(r, 2, float(mtrans.get("weekly_hours", 40) or 40)).number_format = "#,##0"
-        else:
-            ws_sum.cell(r, 2, int(_tp.get("amortisation_months", 12) or 12)).number_format = "#,##0"
-        r += 1
+        _lbl(ws_sum, r, 1, label); _calc(ws_sum, r, 2, f"={ref}", fmt); r += 1
     ws_sum.cell(r, 1, "Utilisation legend: 1 = 100%, 0.5 = 50%, 0.25 = 25%, 0 = not used. "
                       "Transition is applied to the price after margin (pass-through). "
-                      "Yellow cells are editable; the workbook recalculates live.").font = \
+                      "Only the Inputs sheet is editable; every other sheet is live formulas.").font = \
         Font(italic=True, size=9, color=GREY)
 
-    # ── Lock formulas, leave yellow inputs editable (no password) ─────────────
+    # ── Lock everything except the yellow Inputs cells ────────────────────────
     for ws in wb.worksheets:
         ws.protection.sheet = True
         ws.protection.selectLockedCells = False

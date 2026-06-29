@@ -40,6 +40,10 @@ screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/i
   **Summary** cover + every page + **Transition** + dynamic Dashboard), now the single Excel
   export and the email attachment; recalc-verified 100% against the engine (fixing a real v1.26
   activity-split formula bug). A direct step toward closing the **output-inconsistency** gap.
+- **v1.29** — Excel Workbook: **all application inputs consolidated onto one editable `Inputs`
+  sheet** (workload volumetrics, coverage model, identity, grade mapping, rates, transition);
+  every other sheet is locked formulas. Only the inputs the app asks for are editable — you can
+  reproduce and "play" the whole estimate in Excel.
 
 ## Critical issues (prioritized)
 - [x] **Step 2 mega-table** — replaced the faked 11-column grid with an

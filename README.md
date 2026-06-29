@@ -147,13 +147,13 @@ provide.
 ## Outputs
 
 - **Excel Workbook (formulas)** — a single, **fully formula-driven replica of the app** and the
-  same file attached to the approval email. A client-facing **Summary/cover** tab (headline price
-  in INR + reporting currency, blended margin, assumptions), then a page per app step (Inputs,
-  Rate Cards, Workload, Patching, Activities, Effort, FTE, Rates, **Transition**, Costing) and a
-  live **Dashboard**. Yellow cells are inputs (formula cells are protected); white cells are live
-  formulas mirroring the engine, so an Excel-first user can change any driver and watch every page
-  recalculate **without the app**. Grey "App value" cells echo the tool's result for cross-checking.
-  Every formula is recalc-verified to match the engine 100%
+  same file attached to the approval email. **Every application input lives on one editable
+  `Inputs` sheet** (workload volumetrics, coverage, patching, activities, grade mapping, rates,
+  costing, transition) — the only unlocked cells in the workbook. A client-facing **Summary/cover**
+  tab and a page per app step (Rate Cards, Workload, Patching, Activities, Effort, FTE, Rates,
+  **Transition**, Costing) plus a live **Dashboard**, all **locked formulas** referencing Inputs.
+  Change any input and every page recalculates **without the app**; grey "App value" cells
+  cross-check the tool. Every formula is recalc-verified to match the engine 100%
 - **PDF proposal** — client-facing branded quote
 - **Scenario comparison** — save scenarios in-session and compare effort / FTE /
   cost / price side by side (or import/export as JSON)

@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.28`** — *current stable.* The **Excel Workbook** export is reworked into a single,
+- **`v1.29`** — *current stable.* The **Excel Workbook** is restructured so **every application
+  input lives on one editable `Inputs` sheet** — the only yellow/unlocked cells in the workbook
+  (213 of them); every other sheet is 100% locked, formula-only, and references Inputs. This
+  closes the gap where the **monthly workload volumetrics**, **coverage model**, custom
+  hours/days and **project identity** were missing from or derived on the input view. The
+  coverage multiplier is now a derived formula (not a free input), grade→genus mapping and the
+  scoped rate card moved onto Inputs, and the full transition plan (phases, weekly utilisation
+  grid, treatment) is there too. So you can change any application input in Excel and the whole
+  model recalculates. Re-verified **100%** against the engine across all treatments. 92 tests pass.
+- **`v1.28`** — The **Excel Workbook** export is reworked into a single,
   fully **formula-driven replica of the whole app** and is now both the on-screen download and
   the approval-email attachment (the old static "Excel Report" is retired). Adds a client-facing
   **Summary/cover sheet** (branded, headline price in INR + reporting currency, blended margin,
@@ -126,7 +135,22 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.28` contains (current stable)
+## What `v1.29` contains (current stable)
+Everything in v1.28, plus the **single editable Inputs sheet** restructure of the Excel
+Workbook (`modules/outputs/excel_model.py`):
+- **One input register** — `Inputs` is the only editable sheet and holds *every* application
+  input: engagement/identity, coverage model (+ custom hrs/days), monthly working hrs,
+  utilisation, FTE basis, contingency, overheads, the full **monthly workload volumetrics grid**
+  (per category × severity: count / minutes / L1·L2·L3 % / buffers), patching, additional
+  activities, grade→genus mapping, the scoped rate card, costing (margin, SLA, FX, expenses) and
+  the full transition plan (phases, weekly utilisation grid, treatment, amortisation).
+- **Everything else is locked formulas** — Workload / Patching / Activities / Effort / FTE /
+  Rates / Transition / Costing / Dashboard contain no editable cells; they mirror their inputs
+  from `Inputs` and compute live. The coverage **multiplier** is a derived formula (was a
+  free-typed input). Audit: Inputs = 213 unlocked cells, every other sheet = 0.
+- **Verified** 100% formula-vs-engine across recurring/one-time/absorb/off; 92 tests pass.
+
+## What `v1.28` contains
 Everything in v1.27, plus the **Excel Workbook rework** (`modules/outputs/excel_model.py`):
 - **One canonical workbook** — a live formula-driven replica of the app, used for both the
   dashboard download and the approval-email attachment. The old static value-dump report
@@ -432,6 +456,9 @@ git push origin v1.27
 
 git tag -a v1.28 -m "Stable Version 1.28 — Excel Workbook reworked as a 100%-verified formula replica incl. Transition + Summary"
 git push origin v1.28
+
+git tag -a v1.29 -m "Stable Version 1.29 — Excel Workbook: all inputs on one editable Inputs sheet, every other sheet locked formulas"
+git push origin v1.29
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
