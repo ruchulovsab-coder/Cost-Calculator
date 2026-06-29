@@ -4,7 +4,13 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.32`** — *current stable.* The **Transition & Onboarding Planner** inputs (shown when
+- **`v1.33`** — *current stable.* Fixes the **Step 10 version-note auto-summary when resuming a
+  draft**: the draft-resume path (`_resume_draft_now`) loaded the inputs but never recorded a
+  baseline, so the change-diff had nothing to compare against and showed "Initial version". It
+  now calls `mark_saved_baseline()` on resume (capturing `_saved_inputs_snapshot`), and the note
+  field **keeps refreshing with the live change summary** as you edit — until you type your own
+  note (then it stops overriding). 92 tests pass.
+- **`v1.32`** — The **Transition & Onboarding Planner** inputs (shown when
   "Include Transition" = Yes) now use the same single-entry behaviour as the rest of the app:
   the **phases**, **resource roster** and **weekly utilisation** grids were `st.data_editor`s
   (commit-on-blur) and are now **individual widgets** — text/number inputs for phases (name,
@@ -495,6 +501,9 @@ git push origin v1.31
 
 git tag -a v1.32 -m "Stable Version 1.32 — transition planner inputs converted to single-entry widgets"
 git push origin v1.32
+
+git tag -a v1.33 -m "Stable Version 1.33 — fix Step 10 version-note auto-summary on draft resume (baseline + live refresh)"
+git push origin v1.33
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

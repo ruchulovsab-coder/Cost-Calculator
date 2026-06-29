@@ -96,11 +96,14 @@ def inline_save_version(note_default: str = "", key: str = "inline_save",
                         success_suffix: str = "") -> bool:
     """Note field + save button (shared by the first-save prompt and the changed-
     after-approval gate). Returns True only after a successful save."""
-    # Auto-populate the note from the diff vs the last saved version (the user can edit it).
-    nk = f"{key}_note"
-    if not st.session_state.get(nk):
-        from modules.state.session_manager import summarize_input_changes
-        st.session_state[nk] = note_default or summarize_input_changes()
+    # Auto-populate the note from the live diff vs the last saved/resumed version. It keeps
+    # refreshing as the user makes more changes — until they type their own note (override).
+    from modules.state.session_manager import summarize_input_changes
+    nk = f"{key}_note"; ak = f"{key}_note_auto"
+    auto = note_default or summarize_input_changes()
+    if st.session_state.get(nk) in (None, "", st.session_state.get(ak)):
+        st.session_state[nk] = auto
+    st.session_state[ak] = auto
     note = st.text_input("Version note", key=nk,
                          help="Auto-filled from what changed since the last version — edit if you like.")
     if st.button(button_label, type="primary", key=f"{key}_btn", use_container_width=True):

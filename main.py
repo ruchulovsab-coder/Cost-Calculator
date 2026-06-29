@@ -219,7 +219,7 @@ def goto_step(n: int):
 def _resume_draft_now(slug: str):
     """Load a stored draft back into the session and land where it was left off."""
     from modules.state.draft_store import get_draft
-    from modules.state.session_manager import load_scenario
+    from modules.state.session_manager import load_scenario, mark_saved_baseline
     rec = get_draft(slug)
     if not rec:
         return
@@ -229,6 +229,9 @@ def _resume_draft_now(slug: str):
     st.session_state["current_step"] = rec.get("inputs", {}).get("current_step", 1)
     st.session_state["_active_draft_slug"] = slug
     st.session_state["_resume_resolved"] = True
+    # Record the resumed state as the baseline so subsequent edits are detected and the
+    # Step 10 version-note auto-summary diffs against what was resumed (not "Initial").
+    mark_saved_baseline()
     st.rerun()
 
 
