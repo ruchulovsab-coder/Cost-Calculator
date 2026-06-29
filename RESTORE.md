@@ -4,7 +4,18 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.29`** — *current stable.* The **Excel Workbook** is restructured so **every application
+- **`v1.30`** — *current stable.* Input/UX fixes on the app form: **single-entry number fields**
+  on Step 8 (the nullable `value=… else None` widgets that needed two entries are now concrete —
+  people, days, cost/shift, additional cost, SLA %, margin %, FX). **Shift Allowance** and
+  **On-Call Allowance** each get their own **on/off switch** (like patching); the middle field is
+  renamed **"Monthly Days per Person"** (default **22**) and the calc is people × days ×
+  cost/shift, with default cost/shift **₹440** (shift) and **₹550** (on-call). **SSDM overhead**
+  now defaults to **0%** (still a user field like SDM/Architect). Default **transition duration =
+  4 weeks**, and the **"Process Understanding"** phase is removed from the defaults. Additional
+  activities now ship with **fixed default hours** instead of auto-derivation: Scheduled
+  Maintenance 0, RCA 40, Problem Management 80, Documentation 16, Service Review Prep 16 (all
+  manual). Engine/Excel untouched; 92 tests pass.
+- **`v1.29`** — The **Excel Workbook** is restructured so **every application
   input lives on one editable `Inputs` sheet** — the only yellow/unlocked cells in the workbook
   (213 of them); every other sheet is 100% locked, formula-only, and references Inputs. This
   closes the gap where the **monthly workload volumetrics**, **coverage model**, custom
@@ -459,6 +470,9 @@ git push origin v1.28
 
 git tag -a v1.29 -m "Stable Version 1.29 — Excel Workbook: all inputs on one editable Inputs sheet, every other sheet locked formulas"
 git push origin v1.29
+
+git tag -a v1.30 -m "Stable Version 1.30 — single-entry Step 8 fields, shift/on-call on-off switches, default tweaks (SSDM 0, transition 4wk, activity hours)"
+git push origin v1.30
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
