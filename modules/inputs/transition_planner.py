@@ -13,7 +13,6 @@ compute_full_model → calc_transition_cost.
 """
 import uuid
 
-import pandas as pd
 import streamlit as st
 
 from config.settings import (
@@ -67,52 +66,64 @@ def _resolve_rates() -> dict:
 
 
 def _sync_phases(tp: dict):
-    """Phase editor → tp['phases'] (preserve ids by position; mint ids for new rows)."""
-    rows = [{"Phase": p.get("name", ""), "Weeks": int(p.get("weeks", 0) or 0)}
-            for p in tp.get("phases", [])]
-    edited = st.data_editor(
-        pd.DataFrame(rows, columns=["Phase", "Weeks"]),
-        key="tp_phase_editor", hide_index=True, use_container_width=True, num_rows="dynamic",
-        column_config={
-            "Phase": st.column_config.TextColumn("Phase", width="large", required=True),
-            "Weeks": st.column_config.NumberColumn("Weeks", min_value=0, step=1, format="%d"),
-        },
-    )
-    old = tp.get("phases", [])
-    new = []
-    for i, r in edited.iterrows():
-        name = (str(r["Phase"]).strip() if not pd.isna(r["Phase"]) else "") or "Phase"
-        weeks = int(r["Weeks"]) if not pd.isna(r["Weeks"]) else 0
-        pid = old[i]["id"] if i < len(old) else _new_id()
-        new.append({"id": pid, "name": name, "weeks": max(0, weeks)})
-    tp["phases"] = new
+    """Phases as individual single-entry inputs (distinct id-keyed widgets + write-back),
+    with per-row delete and an add button."""
+    hc = st.columns([3, 1, 0.5])
+    hc[0].markdown("<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>Phase</div>",
+                   unsafe_allow_html=True)
+    hc[1].markdown("<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>Weeks</div>",
+                   unsafe_allow_html=True)
+    to_remove = []
+    for i, ph in enumerate(tp.get("phases", [])):
+        pid = ph["id"]
+        c = st.columns([3, 1, 0.5])
+        name = c[0].text_input(f"Phase name {i}", value=str(ph.get("name", "")),
+                               key=f"tp_ph_name_{pid}", label_visibility="collapsed")
+        weeks = c[1].number_input(f"Phase weeks {i}", min_value=0, step=1,
+                                  value=int(ph.get("weeks", 0) or 0),
+                                  key=f"tp_ph_wk_{pid}", label_visibility="collapsed")
+        if c[2].button("🗑️", key=f"tp_ph_del_{pid}", help="Remove this phase"):
+            to_remove.append(pid)
+        ph["name"] = name.strip() or "Phase"
+        ph["weeks"] = int(max(0, weeks))
+    if to_remove:
+        tp["phases"] = [p for p in tp["phases"] if p["id"] not in to_remove]
+        st.rerun()
+    if st.button("➕ Add phase", key="tp_ph_add", type="secondary"):
+        tp["phases"].append({"id": _new_id(), "name": "New Phase", "weeks": 0})
+        st.rerun()
 
 
 def _sync_roster(tp: dict):
-    """Roster editor → tp['resources'] (preserve ids by position; drop allocation for
-    removed rows)."""
-    rows = [{"Role": r.get("role", ALL_ROLES[0]), "Count": int(r.get("count", 0) or 0)}
-            for r in tp.get("resources", [])]
-    edited = st.data_editor(
-        pd.DataFrame(rows, columns=["Role", "Count"]),
-        key="tp_roster_editor", hide_index=True, use_container_width=True, num_rows="dynamic",
-        column_config={
-            "Role": st.column_config.SelectboxColumn("Role", options=ALL_ROLES, required=True),
-            "Count": st.column_config.NumberColumn("Count", min_value=0, step=1, format="%d",
-                                                   help="Number of people of this role in the transition team."),
-        },
-    )
-    old = tp.get("resources", [])
-    new = []
-    for i, r in edited.iterrows():
-        role = r["Role"] if not pd.isna(r["Role"]) else ALL_ROLES[0]
-        count = int(r["Count"]) if not pd.isna(r["Count"]) else 0
-        rid = old[i]["id"] if i < len(old) else _new_id()
-        new.append({"id": rid, "role": role, "count": max(0, count)})
-    tp["resources"] = new
-    # prune allocation for resources that no longer exist
-    live_ids = {r["id"] for r in new}
-    tp["allocation"] = {k: v for k, v in tp.get("allocation", {}).items() if k in live_ids}
+    """Roster as individual single-entry inputs (distinct id-keyed widgets + write-back),
+    with per-row delete and an add button."""
+    hc = st.columns([3, 1, 0.5])
+    hc[0].markdown("<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>Role</div>",
+                   unsafe_allow_html=True)
+    hc[1].markdown("<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>Count</div>",
+                   unsafe_allow_html=True)
+    to_remove = []
+    for i, r in enumerate(tp.get("resources", [])):
+        rid = r["id"]
+        c = st.columns([3, 1, 0.5])
+        role = c[0].selectbox(f"Role {i}", ALL_ROLES,
+                              index=ALL_ROLES.index(r["role"]) if r.get("role") in ALL_ROLES else 0,
+                              key=f"tp_res_role_{rid}", label_visibility="collapsed")
+        count = c[1].number_input(f"Count {i}", min_value=0, step=1,
+                                  value=int(r.get("count", 0) or 0),
+                                  key=f"tp_res_cnt_{rid}", label_visibility="collapsed")
+        if c[2].button("🗑️", key=f"tp_res_del_{rid}", help="Remove this resource"):
+            to_remove.append(rid)
+        r["role"] = role
+        r["count"] = int(max(0, count))
+    if to_remove:
+        tp["resources"] = [x for x in tp["resources"] if x["id"] not in to_remove]
+        for rid in to_remove:
+            tp.get("allocation", {}).pop(rid, None)
+        st.rerun()
+    if st.button("➕ Add resource", key="tp_res_add", type="secondary"):
+        tp["resources"].append({"id": _new_id(), "role": ALL_ROLES[0], "count": 1})
+        st.rerun()
 
 
 def _render_weekly_grids(tp: dict, total_weeks: int):
@@ -131,39 +142,39 @@ def _render_weekly_grids(tp: dict, total_weeks: int):
             phase_weeks.setdefault(ph, []).append(wk)
 
     alloc = tp.setdefault("allocation", {})
-    res_labels = []
+    util_opts = list(_UTIL_LABELS.values())          # ["0%", "25%", "50%", "100%"]
     seen = {}
+    res_labels = {}
     for r in resources:
         seen[r["role"]] = seen.get(r["role"], 0) + 1
-        res_labels.append(f"{r['role']} #{seen[r['role']]}")
+        res_labels[r["id"]] = f"{r['role']} #{seen[r['role']]}"
 
-    for ph_idx, (phase_name, weeks) in enumerate(phase_weeks.items()):
+    for phase_name, weeks in phase_weeks.items():
         span = f"W{weeks[0]}" if len(weeks) == 1 else f"W{weeks[0]}–W{weeks[-1]}"
         st.markdown(
             f"<div class='tp-phase-band' style='background:#1A5F6A;color:#fff;"
             f"padding:4px 10px;border-radius:6px 6px 0 0;font-weight:600;font-size:0.9rem'>"
             f"{phase_name} · {span}</div>", unsafe_allow_html=True)
-        grid_rows = []
-        for r, label in zip(resources, res_labels):
-            row = {"Resource": label}
-            r_alloc = alloc.get(r["id"], {})
-            for wk in weeks:
-                util = float(r_alloc.get(str(wk), r_alloc.get(wk, 0.0)) or 0.0)
-                row[f"W{wk}"] = _UTIL_LABELS.get(util, "0%")
-            grid_rows.append(row)
-        col_cfg = {"Resource": st.column_config.TextColumn("Resource", disabled=True)}
-        for wk in weeks:
-            col_cfg[f"W{wk}"] = st.column_config.SelectboxColumn(
-                f"W{wk}", options=list(_UTIL_LABELS.values()), required=True, width="small")
-        edited = st.data_editor(
-            pd.DataFrame(grid_rows), key=f"tp_grid_{ph_idx}", hide_index=True,
-            use_container_width=True, column_config=col_cfg)
-        # write back utilisation per resource/week
-        for ri, r in enumerate(resources):
-            r_alloc = alloc.setdefault(r["id"], {})
-            for wk in weeks:
-                lbl = edited.iloc[ri][f"W{wk}"]
-                r_alloc[str(wk)] = _LABEL_UTIL.get(lbl, 0.0)
+        widths = [1.5] + [1] * len(weeks)
+        hc = st.columns(widths)
+        hc[0].markdown("<div style='font-size:0.74rem;color:#1A5F6A;font-weight:600'>Resource</div>",
+                       unsafe_allow_html=True)
+        for j, wk in enumerate(weeks):
+            hc[j + 1].markdown(f"<div style='font-size:0.74rem;color:#1A5F6A;font-weight:600'>W{wk}</div>",
+                               unsafe_allow_html=True)
+        for r in resources:
+            rid = r["id"]
+            r_alloc = alloc.setdefault(rid, {})
+            rc = st.columns(widths)
+            rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{res_labels[rid]}</div>",
+                           unsafe_allow_html=True)
+            for j, wk in enumerate(weeks):
+                cur = float(r_alloc.get(str(wk), r_alloc.get(wk, 0.0)) or 0.0)
+                cur_lbl = _UTIL_LABELS.get(cur, "0%")
+                sel = rc[j + 1].selectbox(
+                    f"util {rid} {wk}", util_opts, index=util_opts.index(cur_lbl),
+                    key=f"tp_u_{rid}_{wk}", label_visibility="collapsed")
+                r_alloc[str(wk)] = _LABEL_UTIL.get(sel, 0.0)
 
 
 def render_transition_planner():
