@@ -173,7 +173,7 @@ TRANSITION_DURATION_PRESETS = [4, 8, 12, 16, 24]
 # are not hardcoded into any logic; weeks map to phases sequentially by order.
 DEFAULT_TRANSITION_PHASES = [
     "Assessment & Discovery", "Initiation & Planning", "Knowledge Transition",
-    "Process Understanding", "Stabilization",
+    "Stabilization",
 ]
 # Default roster roles (keys must match ALL_ROLES so rate-card rates resolve).
 TRANSITION_DEFAULT_ROLES = ["L1", "L2", "L3", "Architect", "SDM"]
@@ -209,33 +209,33 @@ DEFAULT_ADDITIONAL_ACTIVITIES = [
         "name": "Scheduled Maintenance",
         "hours": 0.0,
         "custom": False,
-        "auto": True,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Root Cause Analysis (RCA)",
-        "hours": 0.0,
+        "hours": 40.0,
         "custom": False,
-        "auto": True,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Problem Management",
-        "hours": 0.0,
+        "hours": 80.0,
         "custom": False,
-        "auto": True,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0, "SSDM": 0.0}
     },
     {
         "name": "Documentation & Knowledge Base",
-        "hours": 0.0,
+        "hours": 16.0,
         "custom": False,
-        "auto": True,
+        "auto": False,
         "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
     },
     {
         "name": "Service Review Preparation",
-        "hours": 0.0,
+        "hours": 16.0,
         "custom": False,
         "auto": False,
         "dist": {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0, "SSDM": 0.0}

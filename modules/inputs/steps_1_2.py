@@ -92,7 +92,7 @@ def render_overhead_inputs():
     sdm = oc2.number_input("SDM (%)", min_value=0.0, max_value=50.0, step=0.5,
                            value=float(overhead.get("SDM", 5.0)), key="overhead_sdm")
     ssdm = oc3.number_input("SSDM (%)", min_value=0.0, max_value=50.0, step=0.5,
-                            value=float(overhead.get("SSDM", 3.0)), key="overhead_ssdm")
+                            value=float(overhead.get("SSDM", 0.0)), key="overhead_ssdm")
     overhead["Architect"], overhead["SDM"], overhead["SSDM"] = arch, sdm, ssdm
     if arch + sdm + ssdm > 30:
         callout(f"⚠️ Overhead total {arch+sdm+ssdm:.1f}% — above typical range. Please confirm.", "warning")

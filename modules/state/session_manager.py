@@ -81,7 +81,7 @@ def _build_initial_state():
         "changes":          _build_workload_section("changes", 8),
 
         # ── Overhead roles % of total operational effort ──────────────
-        "overhead_pcts": {"Architect": 5.0, "SDM": 5.0, "SSDM": 3.0},
+        "overhead_pcts": {"Architect": 5.0, "SDM": 5.0, "SSDM": 0.0},
 
         # ── Patching role assignment ───────────────────────────────────
         "patching_role": "L2",
@@ -126,7 +126,7 @@ def _build_initial_state():
         # enabled; the planner UI seeds default phases/roster on first enable.
         "transition_planner": {
             "enabled":             False,
-            "total_weeks":         8,
+            "total_weeks":         4,
             "phases":              [],   # [{id, name, weeks}]
             "resources":           [],   # [{id, role, count}]
             "allocation":          {},   # {resource_id: {week: utilisation}}
@@ -135,8 +135,10 @@ def _build_initial_state():
         },
 
         "additional_costs": [
-            {"name": "Shift Allowance",              "cost": 0.0, "custom": False},
-            {"name": "On-Call Allowance",            "cost": 0.0, "custom": False},
+            {"name": "Shift Allowance",   "cost": 0.0, "custom": False,
+             "enabled": "No", "people": 0.0, "days": 22.0, "rate": 440.0},
+            {"name": "On-Call Allowance", "cost": 0.0, "custom": False,
+             "enabled": "No", "people": 0.0, "days": 22.0, "rate": 550.0},
             {"name": "Travel Expense",               "cost": 0.0, "custom": False},
             {"name": "Tools & Tooling Subscription", "cost": 0.0, "custom": False},
             {"name": "Software Licensing",           "cost": 0.0, "custom": False},
@@ -255,7 +257,7 @@ _STEP_RESET = {
          "reporting_currency", "exchange_rates", "fte_basis"],
         ["transition_included", "transition_total_cost_input", "sla_provision_included",
          "sla_provision_pct", "target_margin_pct", "reporting_currency", "fte_basis_w"],
-        ["addcost_", "ac_p_", "ac_h_", "ac_r_", "fx_", "tp_"]),
+        ["addcost_", "ac_en_", "ac_p_", "ac_h_", "ac_r_", "fx_", "tp_"]),
 }
 
 

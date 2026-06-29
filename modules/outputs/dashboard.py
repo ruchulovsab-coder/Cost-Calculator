@@ -41,25 +41,34 @@ def _render_cost_inputs():
     for i, row in enumerate(add_costs):
         name_val = row["name"]
         if name_val in ["Shift Allowance", "On-Call Allowance"]:
-            st.markdown(f"**{name_val}**")
-            ac1, ac2, ac3 = st.columns(3)
-            p_val = float(row.get("people", 0)); h_val = float(row.get("hours", 0)); r_val = float(row.get("rate", 0.0))
-            p = ac1.number_input("Number of People", min_value=0.0, step=1.0, value=p_val if p_val else None, placeholder="0", key=f"ac_p_{i}")
-            h = ac2.number_input("Monthly Hours per Person", min_value=0.0, step=10.0, value=h_val if h_val else None, placeholder="0", key=f"ac_h_{i}")
-            r = ac3.number_input("Cost per Shift/Hr (INR)", min_value=0.0, step=100.0, value=r_val if r_val else None, placeholder="0", key=f"ac_r_{i}")
-            p = p or 0.0; h = h or 0.0; r = r or 0.0
-            cost_v = p * h * r
-            add_costs[i].update({"people": p, "hours": h, "rate": r, "cost": cost_v})
-            st.markdown(f"<div style='margin-bottom: 15px; font-size: 0.85rem;'>Calculated Cost: <b>₹{cost_v:,.0f}</b></div>", unsafe_allow_html=True)
+            # Individual on/off switch (like patching), then people × monthly days × cost/shift.
+            en = st.radio(f"Include {name_val}?", ["Yes", "No"],
+                          index=0 if row.get("enabled", "No") == "Yes" else 1,
+                          key=f"ac_en_{i}", horizontal=True)
+            row["enabled"] = en
+            if en == "Yes":
+                ac1, ac2, ac3 = st.columns(3)
+                p = ac1.number_input("Number of People", min_value=0.0, step=1.0,
+                                     value=float(row.get("people", 0) or 0), key=f"ac_p_{i}")
+                d = ac2.number_input("Monthly Days per Person", min_value=0.0, step=1.0,
+                                     value=float(row.get("days", 22) or 22), key=f"ac_h_{i}")
+                rt = ac3.number_input("Cost per Shift (INR)", min_value=0.0, step=10.0,
+                                      value=float(row.get("rate", 0.0) or 0.0), key=f"ac_r_{i}")
+                cost_v = (p or 0.0) * (d or 0.0) * (rt or 0.0)
+                row.update({"people": p, "days": d, "rate": rt, "cost": cost_v})
+                st.markdown(f"<div style='margin-bottom: 15px; font-size: 0.85rem;'>"
+                            f"{p:,.0f} people × {d:,.0f} days × ₹{rt:,.0f}/shift = "
+                            f"<b>₹{cost_v:,.0f}</b> / month</div>", unsafe_allow_html=True)
+            else:
+                row["cost"] = 0.0
         else:
             ac1, ac2, ac3 = st.columns([4, 2.5, 0.8])
             if row.get("custom"):
                 add_costs[i]["name"] = ac1.text_input("Name", value=row["name"], key=f"addcost_name_{i}", label_visibility="collapsed")
             else:
                 ac1.markdown(f"*{row['name']}*")
-            val = float(row["cost"])
             cost_v = ac2.number_input("cost", min_value=0.0, step=100.0, format="%.0f",
-                                      value=val if val else None, placeholder="0",
+                                      value=float(row.get("cost", 0.0) or 0.0),
                                       key=f"addcost_{i}", label_visibility="collapsed", help="Monthly cost in INR")
             add_costs[i]["cost"] = cost_v or 0.0
             if row.get("custom"):
@@ -84,7 +93,7 @@ def _render_cost_inputs():
         val = float(st.session_state.get("sla_provision_pct", 2.0))
         st.number_input("SLA Provision (% of Delivery Cost before provision)",
                         min_value=0.0, max_value=15.0, step=0.5, format="%.1f",
-                        value=val if val else None, placeholder="0", key="sla_provision_pct")
+                        value=val, key="sla_provision_pct")
 
     # ── Target margin ─────────────────────────────────────────
     st.divider()
@@ -93,7 +102,7 @@ def _render_cost_inputs():
     st.number_input(
         "**Target Gross Margin (%)** *(required)*",
         min_value=0.0, max_value=80.0, step=0.5, format="%.1f",
-        value=val_margin if val_margin else None, placeholder="0", key="target_margin_pct",
+        value=val_margin, key="target_margin_pct",
         help="Selling Price = Delivery Cost ÷ (1 − Margin%). E.g., 20% margin on ₹100 cost → ₹125 selling price.",
     )
 
@@ -124,8 +133,7 @@ def _render_cost_inputs():
         for i, c in enumerate(sorted(needed)):
             with cols[i % len(cols)]:
                 rate = st.number_input(f"1 {c} = ? INR", min_value=0.0, step=0.5, format="%.4f",
-                                       value=float(fx.get(c, 0.0)) or None, placeholder="0",
-                                       key=f"fx_{c}")
+                                       value=float(fx.get(c, 0.0)), key=f"fx_{c}")
                 if rate:
                     fx[c] = float(rate)
     st.session_state["exchange_rates"] = fx
