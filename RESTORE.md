@@ -4,7 +4,14 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.31`** — *current stable.* **Uniform single-entry input behaviour** across the app:
+- **`v1.32`** — *current stable.* The **Transition & Onboarding Planner** inputs (shown when
+  "Include Transition" = Yes) now use the same single-entry behaviour as the rest of the app:
+  the **phases**, **resource roster** and **weekly utilisation** grids were `st.data_editor`s
+  (commit-on-blur) and are now **individual widgets** — text/number inputs for phases (name,
+  weeks), role selectbox + count per resource, and a utilisation selectbox (0/25/50/100%) per
+  resource-week — each id-keyed with write-back, plus add/remove buttons. Values register in one
+  interaction. Engine/Excel untouched; 92 tests pass.
+- **`v1.31`** — **Uniform single-entry input behaviour** across the app:
   every editable field now follows the Step-1 *Monitoring Alerts* pattern — a distinct widget
   key (`…_w`) + concrete `value=` + explicit write-back — so a typed value registers in one go.
   Fixes the Step 8 fields that still used the canonical key directly (SLA include/%, target
@@ -485,6 +492,9 @@ git push origin v1.30
 
 git tag -a v1.31 -m "Stable Version 1.31 — uniform single-entry inputs (grids to number_inputs), Step 10 auto version notes"
 git push origin v1.31
+
+git tag -a v1.32 -m "Stable Version 1.32 — transition planner inputs converted to single-entry widgets"
+git push origin v1.32
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
