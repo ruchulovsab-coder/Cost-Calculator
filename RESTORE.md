@@ -4,7 +4,19 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.27`** — *current stable.* New **Transition & Onboarding Planner** (a section inside
+- **`v1.28`** — *current stable.* The **Excel Workbook** export is reworked into a single,
+  fully **formula-driven replica of the whole app** and is now both the on-screen download and
+  the approval-email attachment (the old static "Excel Report" is retired). Adds a client-facing
+  **Summary/cover sheet** (branded, headline price in INR + reporting currency, blended margin,
+  key assumptions) and a full **Transition sheet** (phases, weekly utilisation grid with a
+  0/.25/.5/1 dropdown, per-phase cost, commercial treatment) that flows into the Costing and
+  dynamic **Dashboard** monthly price. Formula cells are protected (yellow inputs stay editable).
+  **Accuracy:** every formula was recalculated with the `formulas` engine and matches the app
+  **100%** across all transition treatments; a new `tests/test_excel_model.py` regression guard
+  recalculates the workbook in CI. **Bug fix:** a v1.26 cross-sheet `SUMPRODUCT` was missing its
+  sheet qualifier and self-referenced the Effort sheet, so role-hours/FTE/cost/price were wrong
+  whenever an additional activity existed — now fixed. 92 tests pass.
+- **`v1.27`** — New **Transition & Onboarding Planner** (a section inside
   Step 8 Costing): a fully dynamic phase/week resource grid that auto-calculates the transition
   cost from the existing Genus hourly rates, then lets the user choose the commercial treatment.
   Pick a **total duration** (auto-generates week columns), configure **dynamic phases**
@@ -114,7 +126,25 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.27` contains (current stable)
+## What `v1.28` contains (current stable)
+Everything in v1.27, plus the **Excel Workbook rework** (`modules/outputs/excel_model.py`):
+- **One canonical workbook** — a live formula-driven replica of the app, used for both the
+  dashboard download and the approval-email attachment. The old static value-dump report
+  (`excel_export.py`) is no longer surfaced.
+- **Summary / cover sheet** (first tab) — branded, client-facing: engagement, headline price
+  (INR + reporting currency), gross + blended margin, transition treatment, key assumptions.
+- **Transition sheet** — phases (with week-range mapping), a weekly utilisation grid (per-cell
+  0/.25/.5/1 dropdown), per-phase cost via `SUMPRODUCT`, and the commercial-treatment block
+  (recurring ÷ months / one-time / absorb). Feeds the Costing + Dashboard monthly price.
+- **Dashboard** — adds Monthly Price incl. Transition and a live Transition summary.
+- **Cell protection** — formula cells locked, yellow input cells editable (no password).
+- **Verified 100% accurate** — every formula recalculated with the `formulas` engine matches
+  `compute_full_model` across recurring/one-time/absorb/off; guarded by `tests/test_excel_model.py`.
+- **Fixed** a v1.26 bug: the Effort activity-split `SUMPRODUCT` lacked its `'4 Activities'!`
+  qualifier and self-referenced the Effort sheet, corrupting role-hours → FTE → cost → price for
+  any estimate with an additional activity.
+
+## What `v1.27` contains
 Everything in v1.26, plus the **Transition & Onboarding Planner**
 (`modules/inputs/transition_planner.py`, surfaced as a section at the top of Step 8 Costing):
 - **Dynamic duration** — pick the total transition weeks (presets 4/8/12/16/24, or any value);
@@ -399,6 +429,9 @@ git push origin v1.26
 
 git tag -a v1.27 -m "Stable Version 1.27 — Transition & Onboarding Planner (dynamic phase/week resource grid + commercial treatment)"
 git push origin v1.27
+
+git tag -a v1.28 -m "Stable Version 1.28 — Excel Workbook reworked as a 100%-verified formula replica incl. Transition + Summary"
+git push origin v1.28
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

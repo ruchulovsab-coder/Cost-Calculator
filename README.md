@@ -40,7 +40,7 @@ The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
 | 7 | Grade Mapping | Map each role to a Genus grade from the loaded rate card |
 | 8 | Costing Inputs | Transition, expenses, SLA provision, target margin, reporting currency + FX, Raw/Rounded FTE toggle, plus a compact estimate headline |
 | 9 | Results Dashboard | Resource Cost, Executive Summary, Effort breakdown + charts, Resolution detail, FTE Summary, Cost Waterfall, Financial Summary |
-| 10 | Approve & Export | Approval workflow (request / approve / reject); the reviewer sees an **estimate summary** up front; changing an **approved** estimate is blocked until it's saved as a new (draft) version; What-If sliders (incl. **save what-if as a new version**); downloads (Excel report, Editable Excel, PDF) |
+| 10 | Approve & Export | Approval workflow (request / approve / reject); the reviewer sees an **estimate summary** up front; changing an **approved** estimate is blocked until it's saved as a new (draft) version; What-If sliders (incl. **save what-if as a new version**); downloads (formula **Excel Workbook**, PDF) |
 | 11 | Compare | Compare saved/uploaded scenarios side by side |
 
 > **History note:** through v1.1 this was a **9-step** flow with the rate card,
@@ -146,13 +146,14 @@ provide.
 
 ## Outputs
 
-- **Excel report** — multi-sheet workbook (exec summary, effort, FTE, costs, audit)
-- **Editable Excel (formulas)** — a page-by-page, **fully formula-driven** workbook
-  mirroring the app (Inputs, Rate Cards, Workload, Patching, Activities, Effort, FTE,
-  Rates, Costing, live Dashboard). Yellow cells are inputs; white cells are live formulas
-  mirroring the engine, so an Excel-first user can change any driver and watch every page +
-  the Dashboard recalculate **without the app**. Grey "App value" cells echo the tool's
-  result for cross-checking
+- **Excel Workbook (formulas)** — a single, **fully formula-driven replica of the app** and the
+  same file attached to the approval email. A client-facing **Summary/cover** tab (headline price
+  in INR + reporting currency, blended margin, assumptions), then a page per app step (Inputs,
+  Rate Cards, Workload, Patching, Activities, Effort, FTE, Rates, **Transition**, Costing) and a
+  live **Dashboard**. Yellow cells are inputs (formula cells are protected); white cells are live
+  formulas mirroring the engine, so an Excel-first user can change any driver and watch every page
+  recalculate **without the app**. Grey "App value" cells echo the tool's result for cross-checking.
+  Every formula is recalc-verified to match the engine 100%
 - **PDF proposal** — client-facing branded quote
 - **Scenario comparison** — save scenarios in-session and compare effort / FTE /
   cost / price side by side (or import/export as JSON)
