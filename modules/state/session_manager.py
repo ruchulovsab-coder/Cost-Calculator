@@ -255,8 +255,8 @@ _STEP_RESET = {
     8: (["transition_included", "transition_total_cost", "transition_planner", "additional_costs",
          "sla_provision_included", "sla_provision_pct", "target_margin_pct",
          "reporting_currency", "exchange_rates", "fte_basis"],
-        ["transition_included", "transition_total_cost_input", "sla_provision_included",
-         "sla_provision_pct", "target_margin_pct", "reporting_currency", "fte_basis_w"],
+        ["sla_provision_included_w", "sla_provision_pct_w", "target_margin_pct_w",
+         "reporting_currency_w", "fte_basis_w"],
         ["addcost_", "ac_en_", "ac_p_", "ac_h_", "ac_r_", "fx_", "tp_"]),
 }
 
@@ -405,8 +405,59 @@ def inputs_fingerprint() -> str:
 
 def mark_saved_baseline():
     """Record the current inputs as the 'last saved' baseline — call right after a
-    version is saved or loaded, so subsequent edits register as divergence."""
+    version is saved or loaded, so subsequent edits register as divergence. Also keeps
+    a full input snapshot so the next save's note can be auto-generated from the diff."""
     st.session_state["_saved_fingerprint"] = inputs_fingerprint()
+    st.session_state["_saved_inputs_snapshot"] = serialize_inputs()
+
+
+def _workload_total(state: dict, cat_key: str) -> int:
+    return int(sum((r or {}).get("count", 0) for r in (state.get(cat_key) or {}).values()))
+
+
+def summarize_input_changes() -> str:
+    """Human-readable summary of what changed since the last saved version — used to
+    auto-populate the Version Notes field on Step 10. Returns 'Initial version' when
+    there is no prior snapshot, or 'Minor edits' when nothing notable differs."""
+    snap = st.session_state.get("_saved_inputs_snapshot")
+    if not snap:
+        return "Initial version"
+    cur = serialize_inputs()
+    changes = []
+    scalars = [
+        ("target_margin_pct", "Margin", "%"), ("contingency_pct", "Contingency", "%"),
+        ("sla_provision_included", "SLA", ""), ("sla_provision_pct", "SLA", "%"),
+        ("monthly_working_hours", "Monthly hrs", ""), ("productive_utilisation", "Utilisation", "%"),
+        ("coverage_model", "Coverage", ""), ("num_servers", "Servers", ""),
+        ("patching_included", "Patching", ""), ("patching_method", "Patch method", ""),
+        ("reporting_currency", "Currency", ""), ("fte_basis", "FTE basis", ""),
+        ("delivery_location", "Location", ""),
+    ]
+    for key, lbl, unit in scalars:
+        a, b = snap.get(key), cur.get(key)
+        if a != b:
+            fa = f"{a}{unit}" if a not in (None, "") else "—"
+            fb = f"{b}{unit}" if b not in (None, "") else "—"
+            changes.append(f"{lbl} {fa}→{fb}")
+    for cat, nm in [("alerts", "Alerts"), ("service_requests", "SRs"),
+                    ("incidents", "Incidents"), ("changes", "Changes")]:
+        a, b = _workload_total(snap, cat), _workload_total(cur, cat)
+        if a != b:
+            changes.append(f"{nm} {a:,}→{b:,}")
+    na = len(snap.get("additional_activities") or []); nb = len(cur.get("additional_activities") or [])
+    if na != nb:
+        changes.append(f"activities {na}→{nb}")
+    ta = (snap.get("transition_planner") or {}).get("enabled")
+    tb = (cur.get("transition_planner") or {}).get("enabled")
+    tta = (snap.get("transition_planner") or {}).get("treatment")
+    ttb = (cur.get("transition_planner") or {}).get("treatment")
+    if ta != tb:
+        changes.append(f"transition {'on' if tb else 'off'}")
+    elif tb and tta != ttb:
+        changes.append(f"transition {ttb}")
+    if not changes:
+        return "Minor edits"
+    return "; ".join(changes[:8])
 
 
 def inputs_changed_since_save() -> bool:
