@@ -135,7 +135,7 @@ def render_step4() -> bool:
         "Documentation & Knowledge Base", "Service Review Preparation", "Other",
     }
     ROLE_COLS = [("L1", "L1 %"), ("L2", "L2 %"), ("L3", "L3 %"),
-                 ("Architect", "Arch %"), ("SDM", "SDM %"), ("SSDM", "SSDM %")]
+                 ("Architect", "Arch %"), ("SDM", "SDM %")]
 
     def _num(v):
         try:
@@ -145,8 +145,8 @@ def render_step4() -> bool:
             return 0.0
 
     # ── Editable activities — individual number_inputs (single-entry, like Step 1) ──
-    _w = [2.4, 1.1, 0.85, 0.85, 0.85, 0.9, 0.85, 0.95, 0.5]
-    _heads = ["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %", ""]
+    _w = [2.4, 1.1, 0.9, 0.9, 0.9, 0.95, 0.9, 0.5]
+    _heads = ["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", ""]
     _hc = st.columns(_w)
     for _c, _t in zip(_hc, _heads):
         _c.markdown(f"<div style='font-size:0.74rem;color:#1A5F6A;font-weight:600'>{_t}</div>",
@@ -165,7 +165,7 @@ def render_step4() -> bool:
             new_dist[rk] = rc[2 + j].number_input(
                 f"act {rk} {i}", min_value=0.0, max_value=100.0, step=5.0,
                 value=_num(d.get(rk, 0)), key=f"act_{rk}_{i}", label_visibility="collapsed")
-        if rc[8].button("🗑️", key=f"act_del_{i}", help="Remove this activity"):
+        if rc[7].button("🗑️", key=f"act_del_{i}", help="Remove this activity"):
             to_remove.append(i)
         name = nm.strip() or "Custom Activity"
         act.update({"name": name, "hours": float(hrs or 0), "auto": False,
@@ -343,7 +343,7 @@ def render_step5() -> bool:
     )
 
     callout(
-        "ℹ️ Note: Overhead roles (Architect/SDM/SSDM) are additive. "
+        "ℹ️ Note: Overhead roles (Architect/SDM) are additive. "
         "Total assigned hours may exceed operational effort because overhead is calculated "
         "separately on top of ticket resolution hours.",
         "info",

@@ -42,12 +42,12 @@ def _state():
         # an additional activity with a NON-zero L2 split — this is what surfaced the
         # cross-sheet SUMPRODUCT bug; keep it in the regression scenario.
         "additional_activities": [{"name": "RCA", "hours": 12.0, "custom": True, "auto": False,
-                                   "dist": {"L1": 0, "L2": 30, "L3": 50, "Architect": 20, "SDM": 0, "SSDM": 0}}],
-        "contingency_pct": 10.0, "overhead_pcts": {"Architect": 5.0, "SDM": 5.0, "SSDM": 3.0},
+                                   "dist": {"L1": 0, "L2": 30, "L3": 50, "Architect": 20, "SDM": 0}}],
+        "contingency_pct": 10.0, "overhead_pcts": {"Architect": 5.0, "SDM": 5.0},
         "coverage_model": "24×7", "monthly_working_hours": 160.0, "productive_utilisation": 75.0,
         "delivery_country": "India", "delivery_location": "Pune",
         "role_genus": {"L1": "2.1-INFRAOPS", "L2": "2.3-INFRAOPS", "L3": "3.2-INFRAOPS",
-                       "Architect": "4.1-INFRAOPS", "SDM": "4.1-DELIVERY-ITIL", "SSDM": "4.2-DELIVERY-ITIL"},
+                       "Architect": "4.1-INFRAOPS", "SDM": "4.1-DELIVERY-ITIL"},
         "additional_costs": [{"name": "Tools", "cost": 20000.0, "custom": True}],
         "sla_provision_included": "Yes", "sla_provision_pct": 2.0,
         "target_margin_pct": 20.0, "reporting_currency": "INR", "fte_basis": "rounded",
@@ -100,7 +100,7 @@ def test_workbook_recalculates_to_engine(recalced):
 
     # Role hours (Effort sheet) — guards the activity cross-sheet SUMPRODUCT bug
     eff = wb["5 Effort"]
-    for i, role in enumerate(["L1", "L2", "L3", "Architect", "SDM", "SSDM"]):
+    for i, role in enumerate(["L1", "L2", "L3", "Architect", "SDM"]):
         coord = _find_row(eff, role)
         assert val("5 Effort", coord) == pytest.approx(model["role_hours"][role], rel=0.01), role
 

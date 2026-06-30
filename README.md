@@ -35,7 +35,7 @@ The flow is an **11-step** linear stepper (sidebar). Steps 1–8 collect inputs;
 | 2 | Resolution Split | L1/L2/L3 % + severity distribution + effort minutes. One **L1/L2/L3 buffer %** per category, set at the category heading (default 20%) |
 | 3 | Patching | Server count + method. **Manual** = min/server × servers; **Tool-Based** = (servers × error-rate %) failed servers × min/failed-server. Plus the patching role assignment |
 | 4 | Additional Activities | Auto-derived (per-row Auto toggle) + custom monthly operational hours |
-| 5 | Effort Summary | Contingency buffer + **Overhead Role Effort** (Architect/SDM/SSDM %) + role-hours preview |
+| 5 | Effort Summary | Contingency buffer + **Overhead Role Effort** (Architect/SDM %) + role-hours preview |
 | 6 | Coverage & FTE | Shift multiplier (from the Step 1 coverage model), working hours, productive utilisation, FTE |
 | 7 | Grade Mapping | Map each role to a Genus grade from the loaded rate card |
 | 8 | Costing Inputs | Transition, expenses, SLA provision, target margin, reporting currency + FX, Raw/Rounded FTE toggle, plus a compact estimate headline |
@@ -86,7 +86,7 @@ directly on screen.
 1. User enters volumes and avg minutes for Alerts, SRs, Incidents, Changes
 2. User defines resolution split: "X% of Alerts resolved by L1, Y% by L2, Z% by L3" — must sum to 100% per category
 3. System calculates: `L1 hours = Σ (category_hours × L1_pct)` for all categories
-4. Architect/SDM/SSDM hours = user-defined % of total operational effort (additive overhead)
+4. Architect/SDM hours = user-defined % of total operational effort (additive overhead)
 5. Patching hours added to the designated role (user-selectable, default L2)
 
 ### FTE Rounding

@@ -46,7 +46,7 @@ def render_glossary():
             "next 0.5 with a 0.5 minimum (the delivery staffing view).\n"
             "- **Buffer %** — per-row padding added to effort for unknowns (default 20%).\n"
             "- **Contingency %** — an overall effort buffer applied across the whole estimate.\n"
-            "- **Overhead roles** — Architect / SDM / SSDM effort, set as a % of total operational effort.\n"
+            "- **Overhead roles** — Architect / SDM effort, set as a % of total operational effort.\n"
             "- **Coverage model** — the support window (e.g. 24×7); scales L1/L2 staffing.\n"
             "- **Utilisation %** — share of working hours spent on billable delivery (typical ~75%).\n"
             "- **SLA provision %** — a percentage added to cover potential SLA penalties.\n"
@@ -80,22 +80,21 @@ def render_coverage_model():
 
 
 def render_overhead_inputs():
-    """Architect/SDM/SSDM overhead % (lives on Step 5)."""
+    """Architect/SDM overhead % (lives on Step 5)."""
     section_hdr("🏗️ Overhead Role Effort (% of Total Operational Hours)")
-    callout("Architect, SDM and SSDM hours are a percentage of total operational effort. "
+    callout("Architect and SDM hours are a percentage of total operational effort. "
             "These are <strong>additive</strong> — they don't reduce L1/L2/L3 hours.", "info")
     overhead = st.session_state.overhead_pcts
-    oc1, oc2, oc3 = st.columns(3)
+    overhead.pop("SSDM", None)              # SSDM removed from the model
+    oc1, oc2 = st.columns(2)
     arch = oc1.number_input("Architect (%)", min_value=0.0, max_value=50.0, step=0.5,
                             value=float(overhead.get("Architect", 5.0)), key="overhead_architect",
                             help="Architect hours = this % × total operational effort.")
     sdm = oc2.number_input("SDM (%)", min_value=0.0, max_value=50.0, step=0.5,
                            value=float(overhead.get("SDM", 5.0)), key="overhead_sdm")
-    ssdm = oc3.number_input("SSDM (%)", min_value=0.0, max_value=50.0, step=0.5,
-                            value=float(overhead.get("SSDM", 0.0)), key="overhead_ssdm")
-    overhead["Architect"], overhead["SDM"], overhead["SSDM"] = arch, sdm, ssdm
-    if arch + sdm + ssdm > 30:
-        callout(f"⚠️ Overhead total {arch+sdm+ssdm:.1f}% — above typical range. Please confirm.", "warning")
+    overhead["Architect"], overhead["SDM"] = arch, sdm
+    if arch + sdm > 30:
+        callout(f"⚠️ Overhead total {arch+sdm:.1f}% — above typical range. Please confirm.", "warning")
 
 
 def render_patching_role():

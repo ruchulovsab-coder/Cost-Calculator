@@ -38,7 +38,7 @@ def hx(name: str) -> str:
     return THEME[name].lstrip("#")
 
 # ── Roles ─────────────────────────────────────────────────────────────────────
-ALL_ROLES = ["L1", "L2", "L3", "Architect", "SDM", "SSDM"]
+ALL_ROLES = ["L1", "L2", "L3", "Architect", "SDM"]
 COVERAGE_APPLICABLE_ROLES = ["L1", "L2"]
 
 # ── Grade eligibility ─────────────────────────────────────────────────────────
@@ -48,7 +48,6 @@ GRADE_ELIGIBILITY = {
     "L3":        ["3.2-INFRAOPS", "3.3-INFRAOPS"],
     "Architect": ["4.1-INFRAOPS"],
     "SDM":       ["4.1-DELIVERY-ITIL"],
-    "SSDM":      ["4.2-DELIVERY-ITIL"],
 }
 
 # ── Coverage models ───────────────────────────────────────────────────────────
@@ -144,7 +143,7 @@ DEFAULT_RESOLUTION_PCT = {
 }
 
 # Overhead roles
-OVERHEAD_ROLES   = ["Architect", "SDM", "SSDM"]
+OVERHEAD_ROLES   = ["Architect", "SDM"]
 RESOLUTION_ROLES = ["L1", "L2", "L3"]
 
 # Default per-row, per-role effort buffer (%) applied to L1/L2/L3 hours in Step 2.
@@ -210,42 +209,42 @@ DEFAULT_ADDITIONAL_ACTIVITIES = [
         "hours": 0.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0}
     },
     {
         "name": "Root Cause Analysis (RCA)",
         "hours": 40.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0}
     },
     {
         "name": "Problem Management",
         "hours": 80.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0}
     },
     {
         "name": "Documentation & Knowledge Base",
         "hours": 16.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0}
     },
     {
         "name": "Service Review Preparation",
         "hours": 16.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0}
     },
     {
         "name": "Other",
         "hours": 0.0,
         "custom": False,
         "auto": False,
-        "dist": {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0}
+        "dist": {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0}
     },
 ]
 
