@@ -38,7 +38,7 @@ def render_step6() -> bool:
     callout(
         f"📊 Coverage model <strong>{model}</strong> → multiplier "
         f"<strong>{multiplier:.2f}×</strong>, applied to <strong>L1 and L2</strong> FTE only "
-        f"(L3 / Architect / SDM / SSDM are standard-hours). "
+        f"(L3 / Architect / SDM are standard-hours). "
         f"Change the coverage model on <strong>Step 1</strong>.",
         "info",
     )

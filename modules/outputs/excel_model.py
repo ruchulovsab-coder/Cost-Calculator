@@ -52,7 +52,7 @@ S_RT = "7 Rates"; S_TR = "Transition"; S_CO = "8 Costing"; S_DB = "Dashboard"
 
 CAT_DISPLAY = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
                ("incidents", "Incidents"), ("changes", "Change Requests")]
-ROLE_PCT_COL = {"L1": 3, "L2": 4, "L3": 5, "Architect": 6, "SDM": 7, "SSDM": 8}
+ROLE_PCT_COL = {"L1": 3, "L2": 4, "L3": 5, "Architect": 6, "SDM": 7}
 
 
 def _fill(c): return PatternFill("solid", fgColor=c)
@@ -154,7 +154,6 @@ def generate_excel_model() -> bytes:
     ovh = ss.get("overhead_pcts", {}) or {}
     scalar("Overhead % — Architect", float(ovh.get("Architect", 0) or 0), "ovhArchitect", "#,##0")
     scalar("Overhead % — SDM", float(ovh.get("SDM", 0) or 0), "ovhSDM", "#,##0")
-    scalar("Overhead % — SSDM", float(ovh.get("SSDM", 0) or 0), "ovhSSDM", "#,##0")
     # coverage multiplier reference table (locked) + derived multiplier
     cov_first = r
     _lbl(ws_in, r, 4, "Coverage model"); _lbl(ws_in, r, 5, "Mult"); r += 1
@@ -212,7 +211,7 @@ def generate_excel_model() -> bytes:
 
     # ── Additional activities (Step 4) ────────────────────────
     section("ADDITIONAL ACTIVITIES (Step 4)")
-    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %"], 1):
+    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %"], 1):
         _hdr(ws_in, r, i, h)
     r += 1
     ACI = []
@@ -435,7 +434,7 @@ def generate_excel_model() -> bytes:
     for col in "BCDEFGH":
         ws_ac.column_dimensions[col].width = 10
     _title(ws_ac, 1, 1, "Additional activities (Step 4)")
-    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %", "SSDM %"], 1):
+    for i, h in enumerate(["Activity", "Monthly Hrs", "L1 %", "L2 %", "L3 %", "Arch %", "SDM %"], 1):
         _hdr(ws_ac, 3, i, h)
     r = 4
     ac_first = r
@@ -498,7 +497,7 @@ def generate_excel_model() -> bytes:
     _hdr(ws_ef, r, 1, "Role"); _hdr(ws_ef, r, 2, "Hours"); _hdr(ws_ef, r, 3, "App value"); r += 1
     EF_role = {}
     cont_mult = f"(1+{IN['cont']}/100)"
-    ovh_ref = {"Architect": IN["ovhArchitect"], "SDM": IN["ovhSDM"], "SSDM": IN["ovhSSDM"]}
+    ovh_ref = {"Architect": IN["ovhArchitect"], "SDM": IN["ovhSDM"]}
     for role in ALL_ROLES:
         ticket = WL_role.get(role)
         base_terms = []

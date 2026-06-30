@@ -81,7 +81,7 @@ def _build_initial_state():
         "changes":          _build_workload_section("changes", 8),
 
         # ── Overhead roles % of total operational effort ──────────────
-        "overhead_pcts": {"Architect": 5.0, "SDM": 5.0, "SSDM": 0.0},
+        "overhead_pcts": {"Architect": 5.0, "SDM": 5.0},
 
         # ── Patching role assignment ───────────────────────────────────
         "patching_role": "L2",
@@ -187,12 +187,12 @@ def sanitize_additional_activities():
     
     # Pre-defined default distributions for standard activities
     defaults = {
-        "Scheduled Maintenance":          {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0},
-        "Root Cause Analysis (RCA)":      {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0},
-        "Problem Management":             {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0, "SSDM": 0.0},
-        "Documentation & Knowledge Base": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0, "SSDM": 0.0},
-        "Service Review Preparation":     {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0, "SSDM": 0.0},
-        "Other":                          {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0, "SSDM": 0.0},
+        "Scheduled Maintenance":          {"L1": 0.0, "L2": 70.0, "L3": 30.0, "Architect": 0.0, "SDM": 0.0},
+        "Root Cause Analysis (RCA)":      {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0},
+        "Problem Management":             {"L1": 0.0, "L2": 0.0, "L3": 70.0, "Architect": 20.0, "SDM": 10.0},
+        "Documentation & Knowledge Base": {"L1": 0.0, "L2": 20.0, "L3": 50.0, "Architect": 30.0, "SDM": 0.0},
+        "Service Review Preparation":     {"L1": 0.0, "L2": 40.0, "L3": 50.0, "Architect": 0.0, "SDM": 10.0},
+        "Other":                          {"L1": 0.0, "L2": 100.0, "L3": 0.0, "Architect": 0.0, "SDM": 0.0},
     }
     
     from config.settings import ACTIVITY_FORMULAS
@@ -248,7 +248,7 @@ _STEP_RESET = {
          "patching_role_w"], []),
     4: (["additional_activities"], [], ["act_"]),
     5: (["contingency_pct", "overhead_pcts"],
-        ["contingency_pct_w", "overhead_architect", "overhead_sdm", "overhead_ssdm"], []),
+        ["contingency_pct_w", "overhead_architect", "overhead_sdm"], []),
     6: (["monthly_working_hours", "productive_utilisation"],
         ["monthly_working_hours_w", "productive_utilisation_w"], []),
     7: (["role_genus"], [], ["genus_"]),

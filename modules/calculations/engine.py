@@ -149,8 +149,8 @@ def calc_overhead_hours(
     overhead_pcts: Dict[str, float],
 ) -> Dict[str, float]:
     """
-    Architect/SDM/SSDM hours defined as % of total operational effort.
-    E.g. {"Architect": 5, "SDM": 5, "SSDM": 3}
+    Architect/SDM hours defined as % of total operational effort.
+    E.g. {"Architect": 5, "SDM": 5}
     """
     return {
         role: total_operational_hours * (pct / 100.0)
@@ -198,7 +198,7 @@ def calc_contingency(base_effort: float, contingency_pct: float) -> Dict[str, fl
 
 def assemble_role_hours(
     ticket_role_hours: Dict[str, float],   # L1/L2/L3 from resolution split
-    overhead_role_hours: Dict[str, float], # Architect/SDM/SSDM
+    overhead_role_hours: Dict[str, float], # Architect/SDM
     patching_hours: float,
     patching_role: str,                    # which role handles patching (e.g. "L2")
     additional_activities: List[Dict],     # All additional activities with hours and role distributions
@@ -661,7 +661,10 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         g("alerts", {}) or {}, g("service_requests", {}) or {},
         g("incidents", {}) or {}, g("changes", {}) or {},
     )
-    overhead_pcts = g("overhead_pcts", {}) or {}
+    # Only recognised overhead roles — ignore stray keys (e.g. SSDM from older
+    # estimates) so they never leak into role hours / FTE / cost.
+    from config.settings import OVERHEAD_ROLES
+    overhead_pcts = {r: v for r, v in (g("overhead_pcts", {}) or {}).items() if r in OVERHEAD_ROLES}
     overhead_role_hours = calc_overhead_hours(total_effort, overhead_pcts)
     role_hours = assemble_role_hours(
         ticket_role_hours, overhead_role_hours, patch_h,

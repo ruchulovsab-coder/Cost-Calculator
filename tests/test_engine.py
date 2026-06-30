@@ -172,12 +172,12 @@ def test_selling_price_margin_100_raises():
 def test_assemble_role_hours_explicit_distribution():
     res = assemble_role_hours(
         {"L1": 10.0, "L2": 20.0, "L3": 30.0},
-        {"Architect": 5.0, "SDM": 5.0, "SSDM": 0.0},
+        {"Architect": 5.0, "SDM": 5.0},
         patching_hours=10.0,
         patching_role="L2",
         additional_activities=[
-            {"hours": 10.0, "dist": {"L1": 0, "L2": 70, "L3": 30, "Architect": 0, "SDM": 0, "SSDM": 0}},
-            {"hours": 20.0, "dist": {"L1": 0, "L2": 0, "L3": 70, "Architect": 20, "SDM": 10, "SSDM": 0}},
+            {"hours": 10.0, "dist": {"L1": 0, "L2": 70, "L3": 30, "Architect": 0, "SDM": 0}},
+            {"hours": 20.0, "dist": {"L1": 0, "L2": 0, "L3": 70, "Architect": 20, "SDM": 10}},
         ],
         contingency_pct=10.0,
     )
@@ -186,7 +186,7 @@ def test_assemble_role_hours_explicit_distribution():
     assert res["L3"] == pytest.approx(51.7, abs=0.05)
     assert res["Architect"] == pytest.approx(9.4, abs=0.05)
     assert res["SDM"] == pytest.approx(7.2, abs=0.05)
-    assert res["SSDM"] == pytest.approx(0.0, abs=0.05)
+    assert "SSDM" not in res
 
 
 # ── Rate-card resolution / location scoping ────────────────────────────────────

@@ -4,7 +4,13 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.33`** — *current stable.* Fixes the **Step 10 version-note auto-summary when resuming a
+- **`v1.34`** — *current stable.* **SSDM removed from the application at every level** — the role
+  is dropped from `ALL_ROLES`, `OVERHEAD_ROLES`, grade eligibility, the Step-5 overhead inputs
+  (now Architect/SDM only), activity role-splits, the Excel workbook, and the docs. The engine
+  now **filters overhead to recognised roles**, so an older saved estimate carrying an SSDM
+  overhead % no longer leaks SSDM into role hours / FTE / cost (it's ignored cleanly). Excel
+  recalc still matches the engine 100%; 92 tests pass.
+- **`v1.33`** — Fixes the **Step 10 version-note auto-summary when resuming a
   draft**: the draft-resume path (`_resume_draft_now`) loaded the inputs but never recorded a
   baseline, so the change-diff had nothing to compare against and showed "Initial version". It
   now calls `mark_saved_baseline()` on resume (capturing `_saved_inputs_snapshot`), and the note
@@ -504,6 +510,9 @@ git push origin v1.32
 
 git tag -a v1.33 -m "Stable Version 1.33 — fix Step 10 version-note auto-summary on draft resume (baseline + live refresh)"
 git push origin v1.33
+
+git tag -a v1.34 -m "Stable Version 1.34 — remove SSDM role from the application at every level"
+git push origin v1.34
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

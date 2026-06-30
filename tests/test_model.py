@@ -10,7 +10,7 @@ from modules.state.session_manager import _build_initial_state
 def state():
     s = _build_initial_state()
     s["role_rates_inr"] = {"L1": 800, "L2": 1200, "L3": 1800,
-                           "Architect": 2500, "SDM": 2200, "SSDM": 2800}
+                           "Architect": 2500, "SDM": 2200}
     s["coverage_model"] = "24×7"
     return s
 
