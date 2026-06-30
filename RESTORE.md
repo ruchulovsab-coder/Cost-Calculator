@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.35`** — *current stable.* **Multi-skill estimation — Phase 1 (engine + data model only,
+- **`v1.36`** — *current stable.* **Multi-skill — Phase 2 (first UI slice).** After **Manual →
+  Start afresh** a **mode chooser** appears: **Single** (the classic stepper, unchanged & default)
+  or **Multi-skill**. Multi opens a self-contained page (`modules/inputs/multi_skill.py`) with
+  tabs: **Skills** (add/remove; per skill set name, InfraOps/CloudOps family, active levels,
+  coverage model, Architect + %), **Workload** (per-skill volume / minutes / L1-L2-L3 split per
+  category), and **Effort & FTE** (per-skill L1/L2/L3/Architect hours + FTE + engagement totals,
+  via `compute_multi_skill_model`). Single mode and Chat are **untouched**. **Cost/price
+  (InfraOps/CloudOps rate families) is Phase 3** — this slice shows effort + FTE. Resumed drafts
+  keep their saved mode. 98 tests pass. Blueprint: `docs/multi-skill-strategy.md`.
+- **`v1.35`** — **Multi-skill estimation — Phase 1 (engine + data model only,
   no UI, no behaviour change).** Adds the pure `engine.compute_multi_skill_model(state)` that
   estimates per **(skill × level)** and aggregates: per-skill effort/FTE/cost, **Architect per
   skill**, one engagement **SDM**, **per-skill coverage**, **InfraOps/CloudOps** band rates,
@@ -525,6 +534,9 @@ git push origin v1.34
 
 git tag -a v1.35 -m "Stable Version 1.35 — multi-skill estimation Phase 1 (engine + data model, single = 1 skill, no UI)"
 git push origin v1.35
+
+git tag -a v1.36 -m "Stable Version 1.36 — multi-skill Phase 2 (mode chooser + skill setup + per-skill workload + effort/FTE)"
+git push origin v1.36
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

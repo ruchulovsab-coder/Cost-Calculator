@@ -229,6 +229,7 @@ def _resume_draft_now(slug: str):
     st.session_state["current_step"] = rec.get("inputs", {}).get("current_step", 1)
     st.session_state["_active_draft_slug"] = slug
     st.session_state["_resume_resolved"] = True
+    st.session_state["_ms_mode_resolved"] = True   # resumed draft carries its own mode
     # Record the resumed state as the baseline so subsequent edits are detected and the
     # Step 10 version-note auto-summary diffs against what was resumed (not "Initial").
     mark_saved_baseline()
@@ -261,6 +262,15 @@ if not _token_mode:
             render_resume_modal(st.session_state["user_email"], _resume_draft_now)
             st.stop()
         st.session_state["_resume_resolved"] = True
+
+    # ── Estimation mode: Single (classic stepper) vs Multi-skill (own page) ──
+    from modules.inputs.multi_skill import render_mode_chooser, render_multi_skill_app
+    if not st.session_state.get("_ms_mode_resolved"):
+        render_mode_chooser()
+        st.stop()
+    if st.session_state.get("estimation_mode") == "multi":
+        render_multi_skill_app()
+        st.stop()
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────

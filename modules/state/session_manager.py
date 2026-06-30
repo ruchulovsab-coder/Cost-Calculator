@@ -159,6 +159,7 @@ def _build_initial_state():
         "estimation_mode": "single",   # "single" | "multi"
         "skills":          [],         # [{id,name,genus_category,active_levels,...}]
         "resource_sharing": [],        # [{id,level,skill_ids,genus_category,coverage_model}]
+        "sdm_overhead_pct": 5.0,       # one engagement SDM (multi mode)
 
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
