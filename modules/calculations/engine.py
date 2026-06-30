@@ -754,3 +754,178 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
         "transition_cost": transition_cost_legacy,
         "transition_cost_converted": _conv(transition_cost_legacy),
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# MULTI-SKILL engine (Phase 1) — (skill × level). Single tower = a 1-element
+# skills list. See docs/multi-skill-strategy.md. Pure: (state) → results.
+# No UI wiring yet; reachable via compute_multi_skill_model() and covered by tests.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_MS_LEVELS = ["L1", "L2", "L3", "Architect"]
+
+
+def _skill_role_hours(skill: Dict[str, Any], contingency_pct: float) -> Tuple[Dict[str, float], float]:
+    """Per-skill assembled role hours (L1/L2/L3/Architect) + the skill's total operational
+    effort (base × contingency). Reuses the single-tower helpers so a 1-skill estimate
+    matches compute_full_model. Hidden / inactive levels are zeroed."""
+    wl = skill.get("workload", {}) or {}
+    cats = {c: (wl.get(c, {}) or {}) for c in ("alerts", "service_requests", "incidents", "changes")}
+    ticket_rh = calc_all_ticket_role_hours(cats["alerts"], cats["service_requests"],
+                                           cats["incidents"], cats["changes"])
+    ticket_total = sum(calc_category_hours(cats[c])[1] for c in cats)
+
+    p = skill.get("patching") or {}
+    patch_h = 0.0
+    patch_role = p.get("patching_role") or "L2"
+    if p.get("included"):
+        patch_h = calc_patching_effort(
+            True, p.get("num_servers", 0) or 0, p.get("method") or "Manual",
+            p.get("manual_effort_per_server", 45) or 45, p.get("auto_effort_per_server", 30) or 30,
+            error_rate_pct=p.get("error_rate_pct", 0) or 0,
+        )["hours"]
+
+    acts = skill.get("activities", []) or []
+    add_h = sum(a.get("hours", 0.0) for a in acts)
+
+    base_effort = ticket_total + patch_h + add_h
+    skill_total = base_effort * (1.0 + contingency_pct / 100.0)
+
+    has_arch = bool(skill.get("has_architect"))
+    arch_hours = skill_total * float(skill.get("architect_pct", 0.0) or 0.0) / 100.0 if has_arch else 0.0
+    overhead = {"Architect": arch_hours} if has_arch else {}
+
+    role_hours = assemble_role_hours(ticket_rh, overhead, patch_h, patch_role, acts, contingency_pct)
+
+    active = set(skill.get("active_levels", []) or [])
+    if has_arch:
+        active.add("Architect")
+    lv = skill.get("level_visible", {}) or {}
+    out = {}
+    for lvl in _MS_LEVELS:
+        on = (lvl in active) and lv.get(lvl, True)
+        out[lvl] = role_hours.get(lvl, 0.0) if on else 0.0
+    return out, skill_total
+
+
+def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Multi-skill estimation. `state` carries:
+      skills: [ {id, name, genus_category, active_levels, has_architect, coverage_model,
+                 visible, level_visible, architect_pct, workload, patching, activities} ]
+      resource_sharing: [ {id, level (L2/L3/Architect), skill_ids, genus_category, coverage_model} ]
+      rates_by_category: { "InfraOps"|"CloudOps": {L1,L2,L3,Architect: rate_inr} }
+      sdm_overhead_pct, sdm_rate_inr  (one engagement SDM)
+      monthly_working_hours, productive_utilisation, contingency_pct, fte_basis,
+      additional_costs, sla_provision_included/pct, target_margin_pct,
+      coverage custom_hours_per_day / custom_days_per_week
+    L2/L3/Architect pool hours within a sharing group before FTE (min-0.5 on the pool);
+    L1 is always per-skill; SDM is one engagement resource. Hidden skills/levels contribute 0.
+    """
+    from config.settings import COVERAGE_APPLICABLE_ROLES
+    g = state.get
+    monthly = float(g("monthly_working_hours", 160.0) or 160.0)
+    util = float(g("productive_utilisation", 75.0) or 75.0)
+    productive = calc_productive_hours(monthly, util)
+    contingency_pct = float(g("contingency_pct", 0.0) or 0.0)
+    sdm_pct = float(g("sdm_overhead_pct", 0.0) or 0.0)
+    rates_by_cat = g("rates_by_category", {}) or {}
+    sharing = g("resource_sharing", []) or []
+    fte_key = "raw_fte" if (g("fte_basis", "rounded") or "rounded").lower() == "raw" else "final_fte"
+    chpd = g("custom_hours_per_day", 8) or 8
+    cdpw = g("custom_days_per_week", 5) or 5
+
+    skills = [s for s in (g("skills", []) or []) if s.get("visible", True)]
+
+    # 1. Per-skill role hours + skill totals
+    per_skill = {}
+    engagement_total_effort = 0.0
+    for sk in skills:
+        rh, skill_total = _skill_role_hours(sk, contingency_pct)
+        per_skill[sk["id"]] = {
+            "name": sk.get("name"), "genus_category": sk.get("genus_category"),
+            "coverage_model": sk.get("coverage_model") or "8×5",
+            "role_hours": rh, "total_effort": skill_total,
+        }
+        engagement_total_effort += skill_total
+    sdm_hours = engagement_total_effort * sdm_pct / 100.0
+
+    # 2. Build resources, pooling L2/L3/Architect by sharing group
+    group_of, groups = {}, {}
+    for grp in sharing:
+        lvl = grp.get("level")
+        if lvl not in ("L2", "L3", "Architect"):
+            continue
+        groups[grp.get("id")] = grp
+        for sid in grp.get("skill_ids", []) or []:
+            group_of[(sid, lvl)] = grp.get("id")
+
+    resources, pooled = [], {}
+    for sid, ps in per_skill.items():
+        cat, cov = ps["genus_category"], ps["coverage_model"]
+        for lvl in _MS_LEVELS:
+            hrs = ps["role_hours"].get(lvl, 0.0)
+            if hrs <= 0:
+                continue
+            gid = group_of.get((sid, lvl)) if lvl in ("L2", "L3", "Architect") else None
+            if gid is not None:
+                if gid not in pooled:
+                    grp = groups[gid]
+                    pooled[gid] = {"key": f"group:{gid}", "category": grp.get("genus_category", cat),
+                                   "level": lvl, "coverage_model": grp.get("coverage_model", cov),
+                                   "hours": 0.0, "skills": []}
+                pooled[gid]["hours"] += hrs
+                pooled[gid]["skills"].append((sid, hrs))
+            else:
+                resources.append({"key": f"{sid}:{lvl}", "category": cat, "level": lvl,
+                                  "coverage_model": cov, "hours": hrs, "skills": [(sid, hrs)]})
+    resources.extend(pooled.values())
+    if sdm_hours > 0:
+        resources.append({"key": "engagement:SDM", "category": None, "level": "SDM",
+                          "coverage_model": "8×5", "hours": sdm_hours, "skills": []})
+
+    # 3. FTE + cost per resource (min-0.5 on the pooled hours; coverage only on L1/L2)
+    total_resource_cost = 0.0
+    res_out = []
+    for r in resources:
+        mult = calc_coverage_multiplier(r["coverage_model"] or "8×5", chpd, cdpw)
+        applies = r["level"] in COVERAGE_APPLICABLE_ROLES
+        raw = (r["hours"] / productive * (mult if applies else 1.0)) if productive > 0 else 0.0
+        final = max(ceil_half(raw), 0.5) if r["hours"] > 0 else 0.0
+        fte = raw if fte_key == "raw_fte" else final
+        if r["level"] == "SDM":
+            rate = float(g("sdm_rate_inr", 0) or 0)
+        else:
+            rate = float((rates_by_cat.get(r["category"], {}) or {}).get(r["level"], 0) or 0)
+        cost = fte * monthly * rate if (fte > 0 and rate > 0) else 0.0
+        total_resource_cost += cost
+        res_out.append({**r, "raw_fte": raw, "final_fte": final, "fte": fte,
+                        "rate_inr": rate, "cost": cost})
+
+    # 4. Attribute pooled cost back to skills (proportional by hours) for per-skill visibility
+    for sid in per_skill:
+        per_skill[sid]["cost"] = 0.0
+    for r in res_out:
+        th = sum(h for _, h in r["skills"])
+        for sid, h in r["skills"]:
+            per_skill[sid]["cost"] += r["cost"] * (h / th if th > 0 else 0.0)
+
+    # 5. Engagement costing → price
+    additional = sum(c.get("cost", 0.0) for c in (g("additional_costs", []) or []))
+    sla_pct = float(g("sla_provision_pct", 0.0) or 0.0) if g("sla_provision_included") == "Yes" else 0.0
+    cost_result = calc_total_delivery_cost(total_resource_cost, 0.0, additional, sla_pct)
+    margin = float(g("target_margin_pct", 0.0) or 0.0)
+    price_result = calc_selling_price(cost_result["total_delivery_cost"], margin)
+    total_fte = sum(r["fte"] for r in res_out)
+
+    return {
+        "mode": "multi",
+        "per_skill": per_skill,
+        "resources": res_out,
+        "engagement_total_effort": engagement_total_effort,
+        "sdm_hours": sdm_hours,
+        "total_fte": total_fte,
+        "total_resource_cost": total_resource_cost,
+        "cost_result": cost_result,
+        "price_result": price_result,
+    }

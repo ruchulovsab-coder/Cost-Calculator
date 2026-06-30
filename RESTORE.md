@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.34`** — *current stable.* **SSDM removed from the application at every level** — the role
+- **`v1.35`** — *current stable.* **Multi-skill estimation — Phase 1 (engine + data model only,
+  no UI, no behaviour change).** Adds the pure `engine.compute_multi_skill_model(state)` that
+  estimates per **(skill × level)** and aggregates: per-skill effort/FTE/cost, **Architect per
+  skill**, one engagement **SDM**, **per-skill coverage**, **InfraOps/CloudOps** band rates,
+  **resource sharing** (L2/L3/Architect pool hours before FTE; L1 always per-skill), and
+  **hide** (skill or level) excluded from totals. Verified that **a single skill reproduces the
+  single-tower `compute_full_model`** (backward-compatible). Data-model defaults added
+  (`estimation_mode="single"`, `skills`, `resource_sharing`) — inert until the Phase 2 UI. 98
+  tests pass. Blueprint: `docs/multi-skill-strategy.md`.
+- **`v1.34`** — **SSDM removed from the application at every level** — the role
   is dropped from `ALL_ROLES`, `OVERHEAD_ROLES`, grade eligibility, the Step-5 overhead inputs
   (now Architect/SDM only), activity role-splits, the Excel workbook, and the docs. The engine
   now **filters overhead to recognised roles**, so an older saved estimate carrying an SSDM
@@ -513,6 +522,9 @@ git push origin v1.33
 
 git tag -a v1.34 -m "Stable Version 1.34 — remove SSDM role from the application at every level"
 git push origin v1.34
+
+git tag -a v1.35 -m "Stable Version 1.35 — multi-skill estimation Phase 1 (engine + data model, single = 1 skill, no UI)"
+git push origin v1.35
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
