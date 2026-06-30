@@ -4,7 +4,15 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.36`** — *current stable.* **Multi-skill — Phase 2 (first UI slice).** After **Manual →
+- **`v1.37`** — *current stable.* **Multi-skill — per-level effort buffer made explicit +
+  consistent effort dashboard.** The previously hidden 20% per-role buffer is now three editable
+  inputs (**L1 / L2 / L3 buffer %**, default 20) on the multi-skill **Workload** tab, applied
+  across all categories for that skill. The **Effort & FTE** table now adds up across its own row:
+  the total column is **Staffed hrs** (= L1+L2+L3+Arch, what FTE is built from) with **Effort
+  (pre-buffer)** shown alongside (raw tickets + contingency), so "total" no longer reads smaller
+  than a level. Display/transparency change only — the engine (`compute_multi_skill_model`) is
+  untouched and single mode / Chat are unaffected. 98 tests pass.
+- **`v1.36`** — **Multi-skill — Phase 2 (first UI slice).** After **Manual →
   Start afresh** a **mode chooser** appears: **Single** (the classic stepper, unchanged & default)
   or **Multi-skill**. Multi opens a self-contained page (`modules/inputs/multi_skill.py`) with
   tabs: **Skills** (add/remove; per skill set name, InfraOps/CloudOps family, active levels,
