@@ -152,6 +152,14 @@ def _build_initial_state():
         "reporting_currency":      "INR",
         "fte_basis":               "rounded",   # "rounded" (⌈0.5⌉) or "raw"
 
+        # ── Multi-skill estimation (Phase 1 data model; default = single) ─────
+        # "single" keeps today's single-tower flow; "multi" uses the (skill × level)
+        # engine (engine.compute_multi_skill_model). No UI yet — these stay empty in
+        # single mode. See docs/multi-skill-strategy.md.
+        "estimation_mode": "single",   # "single" | "multi"
+        "skills":          [],         # [{id,name,genus_category,active_levels,...}]
+        "resource_sharing": [],        # [{id,level,skill_ids,genus_category,coverage_model}]
+
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
         "prepared_by":  "",     # Author / estimator
