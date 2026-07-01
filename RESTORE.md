@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.44`** — *current stable.* **AI Team Optimizer (v1 core).** New multi-skill tab **5 ·
+- **`v1.45`** — *current stable.* **AI Team Optimizer — feedback & steering.** Two refinements to
+  the Optimize tab: (1) it **no longer sits silent** — a per-level **Analysis** line reports each
+  selected level's outcome (e.g. selecting **L2** now explains *"adjacent skills found, but pooling
+  didn't cut FTE within the ceiling — L2 needs shift coverage"* instead of showing nothing), and the
+  compute runs under a spinner. (2) **Light AI steering** without a form: an **"Optimise for"**
+  objective dial (Balanced 85% / Aggressive 95% / Conservative 70% utilisation ceiling) that visibly
+  changes results, plus an optional **"Constraints for the AI"** free-text box (e.g. "keep Security
+  dedicated") passed to the Groq narration. Optimizer now returns per-level diagnostics
+  (`level_notes`). 104 tests pass.
+- **`v1.44`** — **AI Team Optimizer (v1 core).** New multi-skill tab **5 ·
   Optimize (AI)** that recommends sharing senior resources across **technically-adjacent skills**
   (Architect / L3 freely, L2 to a degree; **L1 never**) to shrink the team **without dropping
   coverage** (a pool always covers the widest window). Deterministic core in

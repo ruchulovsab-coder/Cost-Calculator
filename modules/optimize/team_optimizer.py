@@ -101,28 +101,32 @@ def optimize_team(state: Dict[str, Any],
     names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
 
     suggestions: List[Dict[str, Any]] = []
+    level_notes: Dict[str, Dict[str, int]] = {}
     for level in share_levels:
         eligible = [sid for sid, ps in baseline["per_skill"].items()
                     if ps["role_hours"].get(level, 0.0) > 1e-9 and sid in by_id]
         by_family: Dict[str, List[str]] = {}
         for sid in eligible:
             by_family.setdefault(by_id[sid].get("genus_category"), []).append(sid)
+        clusters_found = suggested = rejected_ceiling = rejected_nosave = 0
         for fam, sids in by_family.items():
             for cluster in _clusters(sids, names):
+                clusters_found += 1
                 cov = _widest_coverage([by_id[s].get("coverage_model", "8×5") for s in cluster])
                 gid = f"opt_{level}_{'_'.join(cluster)}"
                 grp = {"id": gid, "level": level, "skill_ids": list(cluster),
                        "genus_category": fam, "coverage_model": cov}
                 cand = compute_multi_skill_model({**state, "resource_sharing": [grp]})
                 fte_saved = baseline["total_fte"] - cand["total_fte"]
-                if fte_saved <= 1e-9:
-                    continue
                 pooled = next((r for r in cand["resources"] if r.get("key") == f"group:{gid}"), None)
-                if not pooled or pooled["final_fte"] <= 0:
+                if fte_saved <= 1e-9 or not pooled or pooled["final_fte"] <= 0:
+                    rejected_nosave += 1
                     continue
                 fill = pooled["raw_fte"] / pooled["final_fte"] * 100.0
                 if fill > ceiling_pct + 1e-9:
+                    rejected_ceiling += 1
                     continue  # too loaded — would risk coverage/quality
+                suggested += 1
                 cost_saved = baseline["total_resource_cost"] - cand["total_resource_cost"]
                 fte_before = sum(baseline["per_skill"][s]["breakdown"][level]["fte_staffed"]
                                  for s in cluster)
@@ -137,8 +141,11 @@ def optimize_team(state: Dict[str, Any],
                     "rationale": _rationale(level, [names[s] for s in cluster], cov,
                                             fte_saved, max(cost_saved, 0.0), key_person),
                 })
+        level_notes[level] = {"eligible": len(eligible), "clusters": clusters_found,
+                              "suggested": suggested, "rejected_ceiling": rejected_ceiling,
+                              "rejected_nosave": rejected_nosave}
     suggestions.sort(key=lambda x: (x["fte_saved"], x["cost_saved"]), reverse=True)
-    return {"baseline": baseline, "suggestions": suggestions}
+    return {"baseline": baseline, "suggestions": suggestions, "level_notes": level_notes}
 
 
 def apply_optimization(state: Dict[str, Any], groups: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -156,9 +163,10 @@ def ai_available() -> bool:
 
 
 def ai_narrative(skill_names: List[str], suggestions: List[Dict[str, Any]],
-                 totals: Dict[str, float]) -> Dict[str, str]:
+                 totals: Dict[str, float], context: str = "") -> Dict[str, str]:
     """Ask Groq for a short executive summary of the optimization + any *advisory*
-    cross-skill ideas the deterministic map may have missed. Returns
+    cross-skill ideas the deterministic map may have missed. `context` is optional
+    free-text constraints from the user (e.g. 'security must stay dedicated'). Returns
     {'summary': str} or {'error': str}. Never alters the computed suggestions."""
     try:
         from modules.llm.chat_assist import llm_configured, model_id
@@ -169,14 +177,16 @@ def ai_narrative(skill_names: List[str], suggestions: List[Dict[str, Any]],
         lines = "; ".join(
             f"{'+'.join(s['skill_names'])} @ {s['level']} → save {s['fte_saved']:.1f} FTE"
             for s in suggestions) or "no pooling opportunities found"
+        ctx = f" The delivery lead added these constraints/context: \"{context.strip()}\"." if context.strip() else ""
         prompt = (
             "You are an AMS staffing optimization advisor. Skills in this engagement: "
             f"{', '.join(skill_names)}. A deterministic optimizer proposed these resource-sharing "
             f"moves (Architect/L3/L2 pooled across adjacent skills): {lines}. Baseline team = "
-            f"{totals.get('fte_before', 0):.1f} FTE; optimized = {totals.get('fte_after', 0):.1f} FTE. "
-            "In 3-4 sentences, give an executive rationale a delivery lead can trust: why these "
+            f"{totals.get('fte_before', 0):.1f} FTE; optimized = {totals.get('fte_after', 0):.1f} FTE."
+            f"{ctx} In 3-4 sentences, give an executive rationale a delivery lead can trust: why these "
             "pairings make sense, the coverage/key-person caveat, and (advisory only) any adjacent "
-            "skills that could also share seniors. Be concrete and concise. Plain text, no markdown."
+            "skills that could also share seniors. Honour any stated constraints. Be concrete and "
+            "concise. Plain text, no markdown."
         )
         client = Groq(api_key=os.environ["GROQ_API_KEY"].strip())
         resp = client.chat.completions.create(

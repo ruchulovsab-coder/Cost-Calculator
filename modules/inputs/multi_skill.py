@@ -12,8 +12,7 @@ import uuid
 
 import streamlit as st
 
-from config.settings import (COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY,
-                             OPTIMIZER_UTIL_CEILING_PCT)
+from config.settings import COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
 from modules.calculations.engine import compute_multi_skill_model, resolve_role_rates
 from utils.formatters import fmt_hours
@@ -639,22 +638,48 @@ def _render_optimize():
     from modules.optimize.team_optimizer import (optimize_team, apply_optimization,
                                                  ai_available, ai_narrative)
 
-    c1, c2 = st.columns([1.2, 2])
-    ceiling = c1.number_input("Utilisation ceiling %", min_value=50.0, max_value=100.0, step=5.0,
-                              value=float(st.session_state.get("ms_opt_ceiling",
-                                                               OPTIMIZER_UTIL_CEILING_PCT) or 85.0),
-                              key="ms_opt_ceiling", help="Don't pool past this load — protects coverage")
-    levels = c2.multiselect("Levels to optimise", ["Architect", "L3", "L2"],
+    # A light touch of steering — one objective dial + optional free-text constraints for the AI.
+    OBJECTIVES = {"Balanced": 85.0, "Aggressive — max savings": 95.0,
+                  "Conservative — max resilience": 70.0}
+    o1, o2 = st.columns([1.4, 2])
+    obj = o1.selectbox("Optimise for", list(OBJECTIVES),
+                       index=(list(OBJECTIVES).index(st.session_state["ms_opt_objective"])
+                              if st.session_state.get("ms_opt_objective") in OBJECTIVES else 0),
+                       key="ms_opt_objective",
+                       help="How aggressively to share resources (sets the utilisation ceiling).")
+    levels = o2.multiselect("Levels to optimise", ["Architect", "L3", "L2"],
                             default=st.session_state.get("ms_opt_levels", ["Architect", "L3"]),
                             key="ms_opt_levels", help="L1 is never shared (front-line, per-skill)")
+    ceiling = OBJECTIVES[obj]
+    context = st.text_input(
+        "Constraints for the AI (optional)", value=st.session_state.get("ms_opt_context", ""),
+        key="ms_opt_context",
+        placeholder="e.g. keep Security dedicated · we already run a 24×7 NOC · minimise key-person risk")
 
     state = _build_multi_state()
-    res = optimize_team(state, ceiling_pct=ceiling, share_levels=tuple(levels) or ("Architect", "L3"))
-    baseline, suggestions = res["baseline"], res["suggestions"]
+    sel_levels = tuple(levels) or ("Architect", "L3")
+    with st.spinner("Analysing sharing opportunities…"):
+        res = optimize_team(state, ceiling_pct=ceiling, share_levels=sel_levels)
+    baseline, suggestions, notes = res["baseline"], res["suggestions"], res["level_notes"]
+
+    # Per-level analysis — never sit silent (esp. when a level like L2 yields nothing).
+    parts = []
+    for lvl in sel_levels:
+        n = notes.get(lvl, {})
+        if not n or n.get("clusters", 0) == 0:
+            parts.append(f"<strong>{lvl}</strong>: no adjacent skills use this level — nothing to pool")
+        elif n.get("suggested", 0) > 0:
+            parts.append(f"<strong>{lvl}</strong>: {n['suggested']} opportunity(ies)")
+        else:
+            why = (" — L2 needs shift coverage, so cross-window pooling rarely helps"
+                   if lvl == "L2" else "")
+            parts.append(f"<strong>{lvl}</strong>: adjacent skills found, but pooling didn't cut FTE "
+                         f"within the {ceiling:.0f}% ceiling{why}")
+    callout("Analysis (" + obj + ") — " + " &nbsp;·&nbsp; ".join(parts), "info")
 
     if not suggestions:
-        callout("No safe cross-skill pooling found for the current skills — either the skills aren't "
-                "adjacent, or there's no spare capacity to share without exceeding the ceiling.", "warning")
+        callout("No safe cross-skill pooling for the current selection — try a less conservative "
+                "objective, add L2, or the skills simply aren't adjacent / have no spare capacity.", "warning")
         st.metric("Current team", f"{baseline['total_fte']:.1f} FTE")
         return
 
@@ -722,7 +747,7 @@ def _render_optimize():
         if st.button("✨ Explain with AI", key="ms_opt_ai"):
             with st.spinner("Asking the AI advisor…"):
                 out = ai_narrative([s.get("name") or s["id"] for s in skills], suggestions,
-                                   {"fte_before": fte_b, "fte_after": fte_a})
+                                   {"fte_before": fte_b, "fte_after": fte_a}, context=context)
             if out.get("summary"):
                 st.session_state["ms_opt_ai_text"] = out["summary"]
             else:
