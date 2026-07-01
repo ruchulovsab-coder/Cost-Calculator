@@ -633,154 +633,138 @@ def _render_optimize():
     if not skills:
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
-    callout("Finds where <strong>technically-adjacent skills can share senior resources</strong> "
-            "(Architect / L3, and L2 to a degree) to shrink the team — <strong>without dropping "
-            "coverage</strong> (a shared pool always covers the widest window). The engine computes "
-            "every number; you approve each move.", "info")
+    st.caption("Share senior people across similar skills to cut team size — without losing coverage. "
+               "The engine does the maths; you approve each move.")
 
     from modules.optimize.team_optimizer import (optimize_team, apply_optimization,
                                                  ai_available, ai_narrative)
 
-    # A light touch of steering — one objective dial + optional free-text constraints for the AI.
-    OBJECTIVES = {"Balanced": 85.0, "Aggressive — max savings": 95.0,
-                  "Conservative — max resilience": 70.0}
-    o1, o2 = st.columns([1.4, 2])
-    obj = o1.selectbox("Optimise for", list(OBJECTIVES),
-                       index=(list(OBJECTIVES).index(st.session_state["ms_opt_objective"])
-                              if st.session_state.get("ms_opt_objective") in OBJECTIVES else 0),
-                       key="ms_opt_objective",
-                       help="How aggressively to share resources (sets the utilisation ceiling).")
-    levels = o2.multiselect("Levels to optimise", ["Architect", "L3", "L2"],
-                            default=st.session_state.get("ms_opt_levels", ["Architect", "L3"]),
-                            key="ms_opt_levels", help="L1 is never shared (front-line, per-skill)")
-    ceiling = OBJECTIVES[obj]
-    cross_family = st.checkbox(
-        "Allow cross-family sharing — a senior Architect/L3 spanning InfraOps ↔ CloudOps",
-        value=bool(st.session_state.get("ms_opt_crossfam", False)), key="ms_opt_crossfam",
-        help="Off by default: pools stay within one rate family. On: adjacent skills can share a "
-             "senior across families (priced at the higher family's rate). L2 always stays in-family.")
-    context = st.text_input(
-        "Constraints for the AI (optional)", value=st.session_state.get("ms_opt_context", ""),
-        key="ms_opt_context",
-        placeholder="e.g. keep Security dedicated · we already run a 24×7 NOC · minimise key-person risk")
-
-    with st.expander("Realism assumptions (keep savings honest & deliverable)", expanded=False):
-        r1, r2 = st.columns(2)
-        st.session_state["ms_context_switch_pct"] = r1.number_input(
+    # All knobs live behind one Settings expander — sensible defaults just work.
+    OBJECTIVES = {"Balanced": 85.0, "Lean — save the most": 95.0, "Safe — lowest risk": 70.0}
+    with st.expander("⚙️ Settings (optional)", expanded=False):
+        obj = st.selectbox("How aggressive?", list(OBJECTIVES),
+                           index=(list(OBJECTIVES).index(st.session_state["ms_opt_objective"])
+                                  if st.session_state.get("ms_opt_objective") in OBJECTIVES else 0),
+                           key="ms_opt_objective")
+        levels = st.multiselect("Levels to share", ["Architect", "L3", "L2"],
+                                default=st.session_state.get("ms_opt_levels", ["Architect", "L3"]),
+                                key="ms_opt_levels", help="L1 is never shared (front-line, per-skill).")
+        cross_family = st.checkbox("Allow sharing across InfraOps ↔ CloudOps (senior roles)",
+                                   value=bool(st.session_state.get("ms_opt_crossfam", False)),
+                                   key="ms_opt_crossfam")
+        s1, s2 = st.columns(2)
+        st.session_state["ms_context_switch_pct"] = s1.number_input(
             "Context-switch penalty %", min_value=0.0, max_value=50.0, step=5.0,
             value=float(st.session_state.get("ms_context_switch_pct", 10.0) or 0.0), key="ms_csw",
-            help="Extra effort when one shared resource spans multiple skills — so savings aren't overstated.")
-        st.session_state["ms_enforce_min_shift"] = r2.toggle(
-            "Enforce 24×7 / 24×5 shift minimums",
+            help="Extra effort when one person spans several skills — keeps savings honest.")
+        st.session_state["ms_enforce_min_shift"] = s2.toggle(
+            "Enforce 24×7 shift minimums",
             value=bool(st.session_state.get("ms_enforce_min_shift", False)), key="ms_minshift",
-            help="Require enough bodies for continuous presence on multi-shift windows (L1/L2). "
-                 "Applies to the whole estimate; makes cross-skill pooling of shift desks more valuable.")
-        st.caption("These apply to the whole estimate (Effort & Cost too). Defaults: 10% penalty, "
-                   "shift minimums off.")
+            help="Require enough bodies for round-the-clock presence (applies to the whole estimate).")
+        context = st.text_input("Notes for the AI (optional)",
+                                value=st.session_state.get("ms_opt_context", ""), key="ms_opt_context",
+                                placeholder="e.g. keep Security dedicated; minimise key-person risk")
+    ceiling = OBJECTIVES[obj]
+    sel_levels = tuple(levels) or ("Architect", "L3")
 
     state = _build_multi_state()
-    sel_levels = tuple(levels) or ("Architect", "L3")
-    with st.spinner("Analysing sharing opportunities…"):
-        res = optimize_team(state, ceiling_pct=ceiling, share_levels=sel_levels,
-                            cross_family=cross_family)
+    with st.spinner("Finding sharing opportunities…"):
+        res = optimize_team(state, ceiling_pct=ceiling, share_levels=sel_levels, cross_family=cross_family)
     baseline, suggestions, notes = res["baseline"], res["suggestions"], res["level_notes"]
 
-    # Per-level analysis — never sit silent (esp. when a level like L2 yields nothing).
-    parts = []
-    for lvl in sel_levels:
-        n = notes.get(lvl, {})
-        if not n or n.get("clusters", 0) == 0:
-            parts.append(f"<strong>{lvl}</strong>: no adjacent skills use this level — nothing to pool")
-        elif n.get("suggested", 0) > 0:
-            parts.append(f"<strong>{lvl}</strong>: {n['suggested']} opportunity(ies)")
-        else:
-            why = (" — L2 needs shift coverage, so cross-window pooling rarely helps"
-                   if lvl == "L2" else "")
-            parts.append(f"<strong>{lvl}</strong>: adjacent skills found, but pooling didn't cut FTE "
-                         f"within the {ceiling:.0f}% ceiling{why}")
-    callout("Analysis (" + obj + ") — " + " &nbsp;·&nbsp; ".join(parts), "info")
-
     if not suggestions:
-        callout("No safe cross-skill pooling for the current selection — try a less conservative "
-                "objective, add L2, or the skills simply aren't adjacent / have no spare capacity.", "warning")
+        callout("No safe team savings for the current setup — the skills aren't similar enough, or "
+                "there's no spare capacity to share. Try **Settings → How aggressive → Lean**, or "
+                "add **L2**.", "warning")
         st.metric("Current team", f"{baseline['total_fte']:.1f} FTE")
         return
 
-    st.markdown("#### Suggested resource sharing")
-    accepted_ids = st.session_state.get("ms_opt_accepted")
-    if accepted_ids is None:
-        accepted_ids = {s["id"] for s in suggestions}     # default: all accepted
-    accepted_groups = []
-    new_accepted = set()
+    # Default: accept every suggestion (tick boxes persist in session by suggestion id).
     for s in suggestions:
-        with st.container(border=True):
-            h1, h2 = st.columns([4, 1])
-            on = h2.checkbox("Apply", value=(s["id"] in accepted_ids), key=f"ms_optchk_{s['id']}")
-            if on:
-                new_accepted.add(s["id"]); accepted_groups.append(s["group"])
-            risk = (" · <span style='color:#B8860B'>⚠ key-person risk</span>"
-                    if s["key_person_risk"] else "")
-            xf = (" · <span style='color:#1A5F6A;font-weight:600'>cross-family</span>"
-                  if s.get("cross_family") else "")
-            h1.markdown(f"**{' + '.join(s['skill_names'])}** → share **{s['level']}** "
-                        f"<span style='color:#7A8A99'>({s['coverage_model']}, {s['fill_pct']:.0f}% "
-                        f"utilised){risk}{xf}</span>", unsafe_allow_html=True)
-            h1.caption(s["rationale"])
-            mc = st.columns(3)
-            mc[0].metric("FTE saved", f"{s['fte_saved']:.1f}")
-            mc[1].metric("Cost saved / mo", _inr(s["cost_saved"]) if s["cost_saved"] > 0 else "—")
-            mc[2].metric("Pool size", f"{s['fte_after']:.1f} FTE",
-                         help=f"{s['fte_before']:.1f} FTE dedicated → {s['fte_after']:.1f} shared")
-    st.session_state["ms_opt_accepted"] = new_accepted
-
+        st.session_state.setdefault(f"ms_optchk_{s['id']}", True)
+    accepted = [s for s in suggestions if st.session_state.get(f"ms_optchk_{s['id']}", True)]
+    accepted_groups = [s["group"] for s in accepted]
     optimized = apply_optimization(state, accepted_groups)
+
     fte_b, fte_a = baseline["total_fte"], optimized["total_fte"]
     cost_b, cost_a = baseline["total_resource_cost"], optimized["total_resource_cost"]
     price_b = baseline["price_result"]["selling_price"]
     price_a = optimized["price_result"]["selling_price"]
     saved_pct = ((fte_b - fte_a) / fte_b * 100.0) if fte_b > 1e-9 else 0.0
 
-    st.divider()
-    section_hdr("📉 Before vs After")
-    rows = (
-        f"<tr><td>Total FTE</td><td class='r'>{fte_b:.1f}</td><td class='r'><strong>{fte_a:.1f}</strong></td>"
-        f"<td class='r' style='color:#1A7F37'>−{fte_b - fte_a:.1f} ({saved_pct:.0f}%)</td></tr>"
-        f"<tr><td>Resource cost / mo</td><td class='r'>{_inr(cost_b)}</td><td class='r'><strong>{_inr(cost_a)}</strong></td>"
-        f"<td class='r' style='color:#1A7F37'>−{_inr(cost_b - cost_a)}</td></tr>"
-        f"<tr><td>Selling price / mo</td><td class='r'>{_inr(price_b)}</td><td class='r'><strong>{_inr(price_a)}</strong></td>"
-        f"<td class='r' style='color:#1A7F37'>−{_inr(price_b - price_a)}</td></tr>")
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Metric</th><th class="r">Siloed</th>
-        <th class="r">Optimised</th><th class="r">Saving</th></tr></thead><tbody>{rows}</tbody></table>""",
-        unsafe_allow_html=True)
-
-    a1, a2 = st.columns([1, 1])
-    if a1.button("✅ Apply sharing to the estimate", key="ms_opt_apply", type="primary",
-                 disabled=not accepted_groups):
-        st.session_state["resource_sharing"] = accepted_groups
-        st.success(f"Applied {len(accepted_groups)} sharing group(s) — the Effort & Cost tabs now "
-                   "reflect the optimised team.")
-    if a2.button("↩ Clear applied sharing", key="ms_opt_clear",
-                 disabled=not st.session_state.get("resource_sharing")):
-        st.session_state["resource_sharing"] = []
-        st.info("Cleared — back to the siloed team.")
-    st.caption("Applying writes the pools into the engagement so Effort & Cost reflect them. The "
-               "per-skill FTE build-up on the Effort tab stays standalone (shows each skill before "
-               "pooling); the engagement totals here are the pooled figures.")
-
-    if ai_available():
-        if st.button("✨ Explain with AI", key="ms_opt_ai"):
-            with st.spinner("Asking the AI advisor…"):
-                out = ai_narrative([s.get("name") or s["id"] for s in skills], suggestions,
-                                   {"fte_before": fte_b, "fte_after": fte_a}, context=context)
-            if out.get("summary"):
-                st.session_state["ms_opt_ai_text"] = out["summary"]
-            else:
-                st.warning(out.get("error", "AI narration unavailable."))
-        if st.session_state.get("ms_opt_ai_text"):
-            callout(st.session_state["ms_opt_ai_text"], "info")
+    # ── Headline: the answer, first ──
+    h1, h2, h3 = st.columns(3)
+    h1.metric("Optimised team", f"{fte_a:.1f} FTE", f"-{fte_b - fte_a:.1f} FTE", delta_color="inverse")
+    if cost_b > 0:
+        h2.metric("Monthly cost", _inr(cost_a), f"-{_inr(cost_b - cost_a)}", delta_color="inverse")
+        h3.metric("Monthly price", _inr(price_a), f"-{_inr(price_b - price_a)}", delta_color="inverse")
     else:
-        st.caption("💡 Set GROQ_API_KEY to enable an AI-written executive rationale for these moves.")
+        h2.metric("Team saved", f"{fte_b - fte_a:.1f} FTE")
+        h3.caption("Load a rate card (tab 4) to see cost & price savings.")
+    st.caption(f"From **{fte_b:.1f}** to **{fte_a:.1f} FTE** by applying **{len(accepted)} of "
+               f"{len(suggestions)}** suggested moves"
+               + (f" — a **{saved_pct:.0f}%** smaller team." if saved_pct > 0 else "."))
+
+    # ── Recommended moves: one line each ──
+    st.markdown("**Recommended moves** — tick the ones to apply")
+    for s in suggestions:
+        c_chk, c_txt = st.columns([0.6, 9])
+        c_chk.checkbox("apply", key=f"ms_optchk_{s['id']}", label_visibility="collapsed")
+        chips = ""
+        if s.get("cross_family"):
+            chips += (" &nbsp;<span style='background:#E8F0F2;color:#1A5F6A;padding:1px 6px;"
+                      "border-radius:8px;font-size:0.72rem'>cross-family</span>")
+        if s["key_person_risk"]:
+            chips += (" &nbsp;<span style='background:#FBEED9;color:#B8860B;padding:1px 6px;"
+                      "border-radius:8px;font-size:0.72rem'>⚠ key person</span>")
+        cost_txt = f" &nbsp;·&nbsp; ~{_inr(s['cost_saved'])}/mo" if s["cost_saved"] > 0 else ""
+        c_txt.markdown(
+            f"Share **1 {s['level']}** across **{' + '.join(s['skill_names'])}** — "
+            f"saves **{s['fte_saved']:.1f} FTE**{cost_txt}{chips}", unsafe_allow_html=True)
+
+    a1, a2, a3 = st.columns([1.5, 1, 2])
+    if a1.button("✅ Apply to estimate", key="ms_opt_apply", type="primary", disabled=not accepted_groups):
+        st.session_state["resource_sharing"] = accepted_groups
+        st.success(f"Applied {len(accepted_groups)} move(s) — Effort & Cost now reflect the leaner team.")
+    if a2.button("↩ Reset", key="ms_opt_clear", disabled=not st.session_state.get("resource_sharing")):
+        st.session_state["resource_sharing"] = []
+        st.info("Reset — back to the current team.")
+    if ai_available() and a3.button("✨ Explain with AI", key="ms_opt_ai"):
+        with st.spinner("Asking the AI advisor…"):
+            out = ai_narrative([s.get("name") or s["id"] for s in skills], accepted or suggestions,
+                               {"fte_before": fte_b, "fte_after": fte_a}, context=context)
+        st.session_state["ms_opt_ai_text"] = out.get("summary") or out.get("error", "")
+    if st.session_state.get("ms_opt_ai_text"):
+        callout(st.session_state["ms_opt_ai_text"], "info")
+
+    # ── Details (collapsed): full numbers + what was analysed + how it works ──
+    with st.expander("📊 Details — before vs after, and what was analysed", expanded=False):
+        rows = (
+            f"<tr><td>Total FTE</td><td class='r'>{fte_b:.1f}</td><td class='r'><strong>{fte_a:.1f}</strong></td>"
+            f"<td class='r' style='color:#1A7F37'>−{fte_b - fte_a:.1f} ({saved_pct:.0f}%)</td></tr>"
+            f"<tr><td>Resource cost / mo</td><td class='r'>{_inr(cost_b)}</td><td class='r'><strong>{_inr(cost_a)}</strong></td>"
+            f"<td class='r' style='color:#1A7F37'>−{_inr(cost_b - cost_a)}</td></tr>"
+            f"<tr><td>Selling price / mo</td><td class='r'>{_inr(price_b)}</td><td class='r'><strong>{_inr(price_a)}</strong></td>"
+            f"<td class='r' style='color:#1A7F37'>−{_inr(price_b - price_a)}</td></tr>")
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr><th>Metric</th><th class="r">Current</th>
+            <th class="r">Optimised</th><th class="r">Saving</th></tr></thead><tbody>{rows}</tbody></table>""",
+            unsafe_allow_html=True)
+        parts = []
+        for lvl in sel_levels:
+            n = notes.get(lvl, {})
+            if not n or n.get("clusters", 0) == 0:
+                parts.append(f"**{lvl}** — no similar skills at this level")
+            elif n.get("suggested", 0) > 0:
+                parts.append(f"**{lvl}** — {n['suggested']} move(s)")
+            else:
+                why = " (needs shift coverage)" if lvl == "L2" else ""
+                parts.append(f"**{lvl}** — similar skills found, but sharing didn't cut FTE at the "
+                             f"current setting{why}")
+        st.caption("What was analysed: " + "  ·  ".join(parts))
+        st.caption("How it works: adjacent skills share Architect/L3 (and L2 within one coverage "
+                   "window); a shared pool always covers the widest window, so coverage never drops. "
+                   "Only moves that cut FTE and keep utilisation under the ceiling are shown.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

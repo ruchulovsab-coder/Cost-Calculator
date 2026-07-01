@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.47`** — *current stable.* **AI Team Optimizer — cross-family sharing + FTE reconciliation.**
+- **`v1.48`** — *current stable.* **AI Team Optimizer — simplified UI (representation only).** After
+  an internal + delivery-director + dry-run review, the Optimize tab was decluttered: it now **leads
+  with the answer** (3-metric headline: Optimised team / Monthly cost / Monthly price, each showing
+  the saving), then **one-line moves** ("Share 1 Architect across Cloud Ops + DevOps — saves 0.5 FTE"
+  with a tick box and small risk/cross-family chips). All six tuning knobs moved into a single
+  collapsed **⚙️ Settings** expander (plain labels: How aggressive? Balanced / Lean / Safe); the
+  before/after table, "what was analysed" notes, and "how it works" moved into a collapsed **📊
+  Details** expander. Jargon removed from the surface (siloed→current; fill%/pool-size dropped).
+  **No maths/engine change** — same optimizer, clearer presentation. 108 tests pass.
+- **`v1.47`** — **AI Team Optimizer — cross-family sharing + FTE reconciliation.**
   (1) **Cross-family sharing** (opt-in checkbox, default off): Architect/L3 may pool across rate
   families (InfraOps ↔ CloudOps) for adjacent skills, priced at the higher family's band; L2 always
   stays in-family. Added a `devops↔linux` adjacency (real overlap; bridges the families). Suggestions
