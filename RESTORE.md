@@ -4,7 +4,18 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.38`** — *current stable.* **Multi-skill — buffer moved to Effort & FTE tab (per skill ×
+- **`v1.39`** — *current stable.* **Multi-skill — Effort & FTE page restructured for calculation
+  transparency.** The page now reads top-to-bottom: **① engagement inputs → ② Per-Level Effort
+  Buffer** (skill × level matrix) **→ ③ Step-by-Step Build-up** (per-skill expanders: Raw → after
+  Buffer → Final, hours + FTE + variance) **→ ④ Summary** (`Skill · Family · L1 · L2 · L3 ·
+  Architect · Raw Hours · Final Hours`; per-level cols are Final and sum to Final Hours) **→ ⑤
+  Overall Comparison** (engagement Raw → After-Buffer → Final with absolute + % variance per stage)
+  **→ ⑥ Overall Team Summary** (two FTE matrices by skill × level — **Raw FTE exact** and **Final
+  FTE staffed headcount** — each with an SDM row and grand totals; totals surfaced as Total Raw
+  FTE / Total Final FTE exact / Total Final FTE headcount). UI-only reshape — no engine change; the
+  team-matrix headcount grand total reconciles exactly to the engine's `total_fte`. Single mode /
+  Chat untouched. 100 tests pass.
+- **`v1.38`** — **Multi-skill — buffer moved to Effort & FTE tab (per skill ×
   per level, incl. Architect) + step-by-step effort/FTE build-up with variance.** The per-level
   buffer now lives on the **Effort & FTE** tab as a **skill × level matrix** (L1/L2/L3/Architect,
   each independently editable; the Workload tab is back to raw volume/split only). A new

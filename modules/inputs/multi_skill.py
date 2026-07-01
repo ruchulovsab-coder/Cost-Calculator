@@ -20,6 +20,7 @@ from utils.formatters import fmt_hours
 CATEGORIES = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
               ("incidents", "Incidents"), ("changes", "Change Requests")]
 LEVELS = ["L1", "L2", "L3"]
+BD_LEVELS = ["L1", "L2", "L3", "Architect"]   # buffered/breakdown levels, matches engine _MS_LEVELS
 GENUS = ["InfraOps", "CloudOps"]
 COV_MODELS = [m for m in COVERAGE_MODELS if m != "Custom"]
 
@@ -292,6 +293,132 @@ def _render_skill_buildup(name: str, ps: dict, cont_pct: float):
               delta_color="off", help="Total uplift from raw effort to final staffed hours")
 
 
+def _render_summary(model, names):
+    """Per-skill final role hours by level + Raw and Final totals (§4)."""
+    section_hdr("📋 Summary")
+    rows = ""
+    tot = {lvl: 0.0 for lvl in BD_LEVELS}
+    raw_tot = fin_tot = 0.0
+    for sid, ps in model["per_skill"].items():
+        rh, bd = ps["role_hours"], ps["breakdown"]
+        raw = sum(bd[lvl]["raw"] for lvl in BD_LEVELS)
+        fin = sum(rh[lvl] for lvl in BD_LEVELS)   # = L1+L2+L3+Arch final hours
+        raw_tot += raw; fin_tot += fin
+        for lvl in BD_LEVELS:
+            tot[lvl] += rh[lvl]
+        rows += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
+                 f"<td class='r'>{rh['L1']:.1f}</td><td class='r'>{rh['L2']:.1f}</td>"
+                 f"<td class='r'>{rh['L3']:.1f}</td><td class='r'>{rh['Architect']:.1f}</td>"
+                 f"<td class='r' style='color:#7A8A99'>{raw:.1f}</td><td class='r'><strong>{fin:.1f}</strong></td></tr>")
+    rows += (f"<tr class='total-row'><td><strong>Engagement</strong></td><td></td>"
+             f"<td class='r'><strong>{tot['L1']:.1f}</strong></td><td class='r'><strong>{tot['L2']:.1f}</strong></td>"
+             f"<td class='r'><strong>{tot['L3']:.1f}</strong></td><td class='r'><strong>{tot['Architect']:.1f}</strong></td>"
+             f"<td class='r' style='color:#7A8A99'><strong>{raw_tot:.1f}</strong></td>"
+             f"<td class='r'><strong>{fin_tot:.1f}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Skill</th><th>Family</th><th class="r">L1 Hours</th><th class="r">L2 Hours</th>
+        <th class="r">L3 Hours</th><th class="r">Architect Hours</th>
+        <th class="r">Raw Hours</th><th class="r">Final Hours</th>
+        </tr></thead><tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
+    st.caption("**L1–Architect Hours** are Final (buffer + contingency) and sum to **Final Hours**. "
+               "**Raw Hours** = effort before any buffer or contingency.")
+
+
+def _render_overall_comparison(model):
+    """Engagement Raw → Buffered → Final totals with absolute & % variance (§5)."""
+    section_hdr("📊 Overall Comparison")
+    raw = buf = fin = 0.0
+    for ps in model["per_skill"].values():
+        for lvl in BD_LEVELS:
+            d = ps["breakdown"][lvl]
+            raw += d["raw"]; buf += d["buffered"]; fin += d["final"]
+    pct = lambda n, d: f"+{n / d * 100:.1f}%" if d > 1e-9 else "—"
+    body = (
+        f"<tr><td>Raw (before any adjustment)</td><td class='r'>{raw:.1f}</td><td class='r'>—</td>"
+        f"<td class='r'>—</td></tr>"
+        f"<tr><td>After Buffer</td><td class='r'>{buf:.1f}</td>"
+        f"<td class='r' style='color:#1A7F37'>+{buf - raw:.1f}</td><td class='r' style='color:#1A7F37'>{pct(buf - raw, raw)}</td></tr>"
+        f"<tr><td>Final (Buffer + Contingency)</td><td class='r'><strong>{fin:.1f}</strong></td>"
+        f"<td class='r' style='color:#1A7F37'>+{fin - buf:.1f}</td><td class='r' style='color:#1A7F37'>{pct(fin - buf, buf)}</td></tr>"
+    )
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Stage</th><th class="r">Total Hours</th><th class="r">Δ from previous</th>
+        <th class="r">Δ % from previous</th></tr></thead><tbody>{body}</tbody></table>""",
+        unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Buffer impact", fmt_hours(buf - raw), delta=pct(buf - raw, raw), delta_color="off",
+              help="Raw → After Buffer")
+    c2.metric("Contingency impact", fmt_hours(fin - buf), delta=pct(fin - buf, buf), delta_color="off",
+              help="After Buffer → Final")
+    c3.metric("Combined (Raw → Final)", fmt_hours(fin - raw), delta=pct(fin - raw, raw), delta_color="off",
+              help="Total uplift from raw effort to final")
+
+
+def _fte_matrix(model, names, stage_key, staffed=False):
+    """One FTE matrix (rows = skills, cols = L1/L2/L3/Architect + Total). `stage_key` is a
+    breakdown key: 'fte_raw' (exact) or 'fte_staffed'/'fte_final' (final). Returns (html, col_totals, grand)."""
+    rows = ""
+    col_tot = {lvl: 0.0 for lvl in BD_LEVELS}
+    grand = 0.0
+    for sid, ps in model["per_skill"].items():
+        bd = ps["breakdown"]
+        cells = ""
+        row_tot = 0.0
+        for lvl in BD_LEVELS:
+            v = bd[lvl][stage_key]
+            col_tot[lvl] += v
+            row_tot += v
+            cells += f"<td class='r'>{v:.2f}</td>" if not staffed else f"<td class='r'>{v:.1f}</td>"
+        grand += row_tot
+        rt = f"{row_tot:.2f}" if not staffed else f"{row_tot:.1f}"
+        rows += f"<tr><td>{names.get(sid, sid)}</td>{cells}<td class='r'><strong>{rt}</strong></td></tr>"
+    return rows, col_tot, grand
+
+
+def _render_team_summary(model, names):
+    """Raw vs Final FTE by skill × level, with SDM and grand totals (§6)."""
+    section_hdr("👥 Overall Team Summary")
+    st.caption("Team composition before and after adjustments. **Raw FTE** is exact "
+               "(hours ÷ productive × coverage). **Final FTE** is the staffed headcount — each cell "
+               "rounded up to the nearest 0.5 (min 0.5). SDM is one engagement resource.")
+
+    sdm = next((r for r in model["resources"] if r["level"] == "SDM"), None)
+    sdm_raw = float(sdm["raw_fte"]) if sdm else 0.0
+    sdm_final = float(sdm["final_fte"]) if sdm else 0.0
+
+    def _table(title, stage_key, staffed):
+        rows, col_tot, grand = _fte_matrix(model, names, stage_key, staffed=staffed)
+        fmt = (lambda v: f"{v:.1f}") if staffed else (lambda v: f"{v:.2f}")
+        gtot = grand + (sdm_final if staffed else sdm_raw)
+        if sdm and (sdm_raw > 0 or sdm_final > 0):
+            rows += (f"<tr><td>SDM <span style='color:#7A8A99'>(engagement)</span></td>"
+                     f"<td class='r'>—</td><td class='r'>—</td><td class='r'>—</td><td class='r'>—</td>"
+                     f"<td class='r'><strong>{fmt(sdm_final if staffed else sdm_raw)}</strong></td></tr>")
+        tcells = "".join(f"<td class='r'><strong>{fmt(col_tot[lvl])}</strong></td>" for lvl in BD_LEVELS)
+        rows += (f"<tr class='total-row'><td><strong>Grand total</strong></td>{tcells}"
+                 f"<td class='r'><strong>{fmt(gtot)}</strong></td></tr>")
+        st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .2rem'>{title}</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr>
+            <th>Skill</th><th class="r">L1</th><th class="r">L2</th><th class="r">L3</th>
+            <th class="r">Architect</th><th class="r">Total</th></tr></thead><tbody>{rows}</tbody></table>""",
+            unsafe_allow_html=True)
+        return gtot
+
+    raw_grand = _table("Raw FTE (exact)", "fte_raw", staffed=False)
+    fin_grand = _table("Final FTE (staffed headcount)", "fte_staffed", staffed=True)
+    fin_exact = sum(ps["breakdown"][lvl]["fte_final"] for ps in model["per_skill"].values()
+                    for lvl in BD_LEVELS) + sdm_raw  # sdm has no buffer stage → same as raw
+
+    g1, g2, g3 = st.columns(3)
+    g1.metric("Total Raw FTE", f"{raw_grand:.2f}")
+    g2.metric("Total Final FTE (exact)", f"{fin_exact:.2f}")
+    g3.metric("Total Final FTE (headcount)", f"{fin_grand:.1f}")
+
+
 def _render_dashboard():
     section_hdr("📈 Effort & FTE by Skill")
     skills = st.session_state.get("skills", [])
@@ -312,45 +439,14 @@ def _render_dashboard():
         "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
         value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
 
+    # §2 Per-level effort buffer
     _render_buffer_config(skills)
 
     cont_pct = float(st.session_state.get("contingency_pct", 10.0) or 0.0)
     model = compute_multi_skill_model(_build_multi_state())
     names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
 
-    # ── Summary: staffed hours per skill (self-consistent row) ──
-    st.divider()
-    section_hdr("Summary")
-    rows = ""
-    staffed_total = 0.0
-    for sid, ps in model["per_skill"].items():
-        rh = ps["role_hours"]
-        staffed = rh["L1"] + rh["L2"] + rh["L3"] + rh["Architect"]   # row adds up across columns
-        staffed_total += staffed
-        rows += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
-                 f"<td class='r'>{rh['L1']:.1f}</td><td class='r'>{rh['L2']:.1f}</td>"
-                 f"<td class='r'>{rh['L3']:.1f}</td><td class='r'>{rh['Architect']:.1f}</td>"
-                 f"<td class='r'>{staffed:.1f}</td><td class='r' style='color:#7A8A99'>{ps['total_effort']:.1f}</td></tr>")
-    rows += (f"<tr class='total-row'><td><strong>Engagement</strong></td><td></td><td></td><td></td>"
-             f"<td></td><td></td><td class='r'><strong>{staffed_total:.1f}</strong></td>"
-             f"<td class='r' style='color:#7A8A99'><strong>{model['engagement_total_effort']:.1f}</strong></td></tr>")
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr>
-        <th>Skill</th><th>Family</th><th class="r">L1 hrs</th><th class="r">L2 hrs</th>
-        <th class="r">L3 hrs</th><th class="r">Arch hrs</th><th class="r">Staffed hrs</th>
-        <th class="r">Effort (pre-buffer)</th>
-        </tr></thead><tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
-    st.caption("**Staffed hrs** = L1+L2+L3+Arch role hours (buffered + contingency) — what FTE is built "
-               "from. **Effort (pre-buffer)** = raw ticket effort + contingency, before per-level buffer.")
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Staffed effort", fmt_hours(staffed_total), help="Role hours incl. per-level buffer")
-    m2.metric("Effort (pre-buffer)", fmt_hours(model["engagement_total_effort"]),
-              help="Raw ticket effort + contingency, before per-level buffer")
-    m3.metric("Total FTE", f"{model['total_fte']:.2f}")
-    m4.metric("SDM hours", fmt_hours(model["sdm_hours"]))
-
-    # ── Step-by-step build-up per skill ──
+    # §3 Step-by-step build-up (per skill)
     st.divider()
     section_hdr("🔍 Step-by-step build-up (Raw → Buffered → Final)")
     st.caption("For each skill: Raw effort/FTE (no adjustments) → after the configured Buffer → "
@@ -358,6 +454,18 @@ def _render_dashboard():
     for sid, ps in model["per_skill"].items():
         with st.expander(f"{names.get(sid, sid)} · {ps['genus_category']}", expanded=len(skills) == 1):
             _render_skill_buildup(names.get(sid, sid), ps, cont_pct)
+
+    # §4 Summary
+    st.divider()
+    _render_summary(model, names)
+
+    # §5 Overall Comparison
+    st.divider()
+    _render_overall_comparison(model)
+
+    # §6 Overall Team Summary
+    st.divider()
+    _render_team_summary(model, names)
 
     callout("💡 Cost & price (InfraOps/CloudOps rate families) arrive in <strong>Phase 3</strong>. "
             "This view shows effort and FTE per skill.", "info")
