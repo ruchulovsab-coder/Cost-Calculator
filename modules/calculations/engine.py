@@ -867,7 +867,11 @@ def _skill_role_hours(
     lv = skill.get("level_visible", {}) or {}
     out = {}
     for lvl in _MS_LEVELS:
-        on = (lvl in active) and lv.get(lvl, True)
+        # A level counts if it's an active (ticket) level OR it has assigned work from
+        # patching / additional activities / architect overhead — non-ticket effort can
+        # land on any role. Explicit level_visible=False still hides it.
+        has_work = role_hours.get(lvl, 0.0) > 1e-9 or breakdown[lvl]["final"] > 1e-9
+        on = lv.get(lvl, True) and (lvl in active or has_work)
         out[lvl] = role_hours.get(lvl, 0.0) if on else 0.0
         if not on:
             breakdown[lvl] = {"raw": 0.0, "buffered": 0.0, "buffer_pct": buf.get(lvl, 0.0), "final": 0.0}

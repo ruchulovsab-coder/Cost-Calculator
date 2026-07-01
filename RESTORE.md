@@ -4,7 +4,16 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.49`** — *current stable.* **Multi-skill — per-skill Patching + Additional Operational
+- **`v1.50`** — *current stable.* **Multi-skill — Patching/Activities can use any role (L1/L2/L3/
+  Architect).** The "Handled by" (patching) and Additional-Activities role columns now always offer
+  the full **L1/L2/L3/Architect** set — non-ticket work can land on any role regardless of which
+  levels handle the skill's tickets (patching defaults to L2 when present). Engine fix: a level is
+  now counted if it's an active ticket level **or** it has assigned work (patching/activities/
+  architect overhead) — previously hours on a non-active level were silently dropped; explicit
+  `level_visible=False` still hides. (Verified: an L1-only skill with an L3-patching + Architect
+  activity now surfaces those hours.) Updated one optimizer test whose "L1-only" fixture had
+  contradictory L2/L3 ticket data. 108 tests pass.
+- **`v1.49`** — **Multi-skill — per-skill Patching + Additional Operational
   Activities (Phase 1 of tower-model parity).** The Workload tab now splits each skill into
   collapsible **🎫 Tickets · 🖥️ Patching · 🧰 Additional Activities** sub-sections. **Patching**:
   in-scope toggle, servers, Manual/Tool-based effort, error rate, handled-by role (from the skill's

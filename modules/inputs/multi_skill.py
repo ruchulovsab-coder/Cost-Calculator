@@ -130,12 +130,10 @@ def _render_skill_setup():
 # Tab 2 — Per-skill workload (direct entry; one aggregate row per category)
 # ──────────────────────────────────────────────────────────────────────────────
 def _skill_dist_roles(sk) -> list:
-    """Roles an activity/overhead can be distributed to for this skill: its active
-    levels plus Architect (if the skill has one). L1 included only if active."""
-    active = [lvl for lvl in LEVELS if lvl in set(sk.get("active_levels", []) or [])]
-    if sk.get("has_architect"):
-        active.append("Architect")
-    return active or ["L2"]
+    """Roles that patching / additional activities can be assigned to — always the full
+    L1/L2/L3/Architect set (non-ticket work can land on any role, independent of which
+    levels handle this skill's tickets). The engine counts any level that gets work."""
+    return list(BD_LEVELS)
 
 
 def _skill_volumes(sk) -> dict:
@@ -196,8 +194,9 @@ def _render_skill_patching(sk, sid):
     method = c2.selectbox("Method", ["Manual", "Tool-Based"],
                           index=0 if (p.get("method") or "Manual") == "Manual" else 1,
                           key=f"ms_{sid}_patch_method")
-    role = c3.selectbox("Handled by", roles,
-                        index=roles.index(p.get("patching_role")) if p.get("patching_role") in roles else 0,
+    default_role = p.get("patching_role") if p.get("patching_role") in roles else (
+        "L2" if "L2" in roles else roles[0])
+    role = c3.selectbox("Handled by", roles, index=roles.index(default_role),
                         key=f"ms_{sid}_patch_role")
     man = float(p.get("manual_effort_per_server", PATCHING_EFFORT_DEFAULTS["Manual"]) or 45)
     auto = float(p.get("auto_effort_per_server", PATCHING_EFFORT_DEFAULTS["Tool-Based"]) or 30)

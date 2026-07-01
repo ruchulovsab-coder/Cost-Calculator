@@ -96,7 +96,10 @@ def test_l1_only_skill_has_no_suggestions():
         _skill("s1", "Cloud Operations", "CloudOps", ["L1"], "24×7", 0, 10),
         _skill("s2", "DevOps", "CloudOps", ["L1"], "24×7", 0, 10),
     ]
-    # both L1-only → nothing shareable (L1 never pools)
+    # genuinely L1-only: tickets handled at L1 (no L2/L3/architect work) → nothing shareable
+    for s in skills:
+        s["workload"] = {"service_requests": {"All": {"count": 10, "minutes": 60,
+                                                      "L1_pct": 100, "L2_pct": 0, "L3_pct": 0}}}
     res = optimize_team(_state(skills))
-    assert all(s["level"] != "L1" for s in res["suggestions"])
+    assert all(s["level"] != "L1" for s in res["suggestions"])   # L1 never pools
     assert res["suggestions"] == []
