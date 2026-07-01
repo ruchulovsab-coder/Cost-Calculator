@@ -914,6 +914,19 @@ def _render_optimize():
 def render_multi_skill_app():
     page_header(0, "Multi-skill Estimate",
                 "Define skills, enter per-skill workload, review effort & FTE, price it, and optimise the team.")
+
+    # ── Estimate identity (required to save/resume) — mirrors single-mode Step 1 ──
+    proj = st.text_input(
+        "Customer / RFP Name *", value=st.session_state.get("project_name", ""),
+        key="ms_project_name_w", placeholder="e.g. Acme Corp — Infra RFP 2026",
+        help="Every estimate is saved and resumed under this name. Your work autosaves once named.")
+    st.session_state["project_name"] = proj
+    if not proj.strip():
+        callout("📝 <strong>Name this estimate</strong> (Customer / RFP) to autosave it and be "
+                "able to resume later.", "info")
+    else:
+        st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — autosaves as you go.")
+
     hc1, hc2 = st.columns([1.4, 1.4])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"

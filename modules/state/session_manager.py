@@ -161,6 +161,18 @@ def _build_initial_state():
         "resource_sharing": [],        # [{id,level,skill_ids,genus_category,coverage_model}]
         "sdm_overhead_pct": 5.0,       # one engagement SDM (multi mode)
 
+        # Multi-skill rates + optimizer state. Kept in the initial state so drafts
+        # round-trip: serialize_inputs() / load_scenario() only touch initial-state keys.
+        # ms_context_switch_pct=10 matches the Optimize-tab default and is a no-op until
+        # resource_sharing is set; ms_enforce_min_shift default off keeps engine parity.
+        # See docs/multi-skill-parity.md.
+        "ms_family_grades":      {},    # {InfraOps/CloudOps: {L1..Architect: grade}}
+        "ms_sdm_grade":          None,  # engagement SDM grade
+        "ms_rates_by_category":  {},    # resolved band rates (INR) per family
+        "ms_sdm_rate_inr":       0.0,   # resolved SDM rate (INR)
+        "ms_context_switch_pct": 10.0,  # optimizer realism knob (no-op w/o sharing)
+        "ms_enforce_min_shift":  False, # optimizer realism knob (off by default)
+
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
         "prepared_by":  "",     # Author / estimator

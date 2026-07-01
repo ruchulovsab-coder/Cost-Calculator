@@ -195,8 +195,10 @@ def step_icon(n):
 # ── Draft autosave + restore ────────────────────────────────────────────────────
 def _autosave_draft():
     """Silently persist the current WIP as this project's live draft (best-effort).
-    Fires on every page navigation. No-op when the store is unconfigured or the
-    project is still unnamed."""
+    Fires on every page navigation (single mode) and on every rerun (multi-skill,
+    which is tabbed and has no navigation hook). No-op when the store is unconfigured
+    or the project is still unnamed. Skips redundant writes when the inputs are
+    unchanged since the last save, so the multi-skill per-rerun call stays cheap."""
     try:
         from modules.state.estimate_store import store_configured, slugify
         if not store_configured():
@@ -207,10 +209,21 @@ def _autosave_draft():
         from modules.state.draft_store import save_draft
         from modules.state.session_manager import serialize_inputs
         slug = slugify(project)
-        if save_draft(slug, project, st.session_state.get("prepared_by", ""), serialize_inputs()):
+        inputs = serialize_inputs()
+        # Skip the write when nothing changed (multi-skill autosaves every rerun).
+        import json
+        try:
+            sig = hash(json.dumps(inputs, sort_keys=True, default=str))
+        except Exception:
+            sig = None
+        if sig is not None and sig == st.session_state.get("_autosave_sig"):
+            st.session_state["_active_draft_slug"] = slug
+            return
+        if save_draft(slug, project, st.session_state.get("prepared_by", ""), inputs):
             # This session now "owns" the draft for this slug, so we don't prompt to
             # restore our own in-progress work.
             st.session_state["_active_draft_slug"] = slug
+            st.session_state["_autosave_sig"] = sig
     except Exception:
         pass
 
@@ -276,6 +289,7 @@ if not _token_mode:
         st.stop()
     if st.session_state.get("estimation_mode") == "multi":
         render_multi_skill_app()
+        _autosave_draft()   # tabbed page has no nav hook — autosave after render
         st.stop()
 
 
