@@ -23,10 +23,10 @@ from config.settings import DEMO_SEED_DATA
 
 # workload tuple = (count, minutes/ticket, L1_pct, L2_pct, L3_pct); level splits sum to 100%.
 _WORKLOADS = {
+    # Monitoring is an L1-only alert-watching function: alerts only (100), no SRs /
+    # incidents / changes, and 100% L1 (no L2/L3).
     "demo_monitoring": {
-        "alerts": (800, 10, 100, 0, 0),
-        "service_requests": (200, 15, 100, 0, 0),
-        "incidents": (100, 20, 100, 0, 0),
+        "alerts": (100, 10, 100, 0, 0),
     },
     "demo_cloudops": {
         "service_requests": (300, 30, 0, 70, 30),

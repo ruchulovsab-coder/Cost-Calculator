@@ -4,7 +4,11 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.41`** — *current stable.* **⚠️ TEMPORARY testing aid — sample-data seeding.** On startup,
+- **`v1.42`** — *current stable.* **⚠️ TEMPORARY demo-seed — tweak Monitoring workload.** Monitoring
+  is now **alerts-only** (count 100, 100% L1); its seeded service requests / incidents were removed
+  (it's an L1 alert-watching function — no L2/L3, no SR/change work). Everything else is unchanged
+  from v1.41. Still gated by `DEMO_SEED_DATA`; **revert before production**. 100 tests pass.
+- **`v1.41`** — **⚠️ TEMPORARY testing aid — sample-data seeding.** On startup,
   `modules/demo_seed.py::seed_demo_data()` (gated by `config.settings.DEMO_SEED_DATA`) pre-fills a
   representative **multi-skill AMS scenario** into **empty** session fields so testers skip manual
   entry after each deploy: 4 skills — **Monitoring** (InfraOps, L1, 24×7), **Cloud Operations**
