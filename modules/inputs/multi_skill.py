@@ -12,9 +12,11 @@ import uuid
 
 import streamlit as st
 
-from config.settings import COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY
+from config.settings import (COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY,
+                             PATCHING_EFFORT_DEFAULTS, DEFAULT_NUM_SERVERS, ACTIVITY_FORMULAS)
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
-from modules.calculations.engine import compute_multi_skill_model, resolve_role_rates
+from modules.calculations.engine import (compute_multi_skill_model, resolve_role_rates,
+                                         calc_patching_effort, derive_activity_hours)
 from utils.formatters import fmt_hours
 
 CATEGORIES = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
@@ -127,20 +129,26 @@ def _render_skill_setup():
 # ──────────────────────────────────────────────────────────────────────────────
 # Tab 2 — Per-skill workload (direct entry; one aggregate row per category)
 # ──────────────────────────────────────────────────────────────────────────────
-def _render_workload():
-    section_hdr("📊 Per-skill Workload")
-    skills = st.session_state.get("skills", [])
-    if not skills:
-        callout("Add a skill on the Skills tab first.", "info")
-        return
-    names = {s["id"]: s.get("name") or s["id"] for s in skills}
-    sid = st.selectbox("Skill", list(names), format_func=lambda x: names[x], key="ms_wl_skill")
-    sk = next(s for s in skills if s["id"] == sid)
-    st.caption("Enter monthly volume, average minutes/ticket, and the L1/L2/L3 split per category "
-               "for this skill. Per-level **buffers** are configured on the **Effort & FTE** tab. "
-               "(Per-severity detail, patching and activities come in later phases.)")
-    wl = sk.setdefault("workload", {})
+def _skill_dist_roles(sk) -> list:
+    """Roles an activity/overhead can be distributed to for this skill: its active
+    levels plus Architect (if the skill has one). L1 included only if active."""
+    active = [lvl for lvl in LEVELS if lvl in set(sk.get("active_levels", []) or [])]
+    if sk.get("has_architect"):
+        active.append("Architect")
+    return active or ["L2"]
 
+
+def _skill_volumes(sk) -> dict:
+    """This skill's monthly ticket counts, for auto-deriving activity effort."""
+    wl = sk.get("workload", {}) or {}
+    return {c: float((wl.get(c, {}) or {}).get("All", {}).get("count", 0) or 0)
+            for c in ("alerts", "service_requests", "incidents", "changes")}
+
+
+def _render_skill_tickets(sk, sid):
+    st.caption("Monthly volume, average minutes/ticket, and the L1/L2/L3 split per category. "
+               "Per-level **buffers** are on the **Effort & FTE** tab.")
+    wl = sk.setdefault("workload", {})
     hdr = st.columns([2, 1, 1, 1, 1, 1])
     for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
         col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
@@ -165,18 +173,150 @@ def _render_workload():
         l3 = rc[5].number_input(f"{cat_key} l3", min_value=0.0, max_value=100.0, step=1.0,
                                 value=float(row.get("L3_pct", 0) or 0),
                                 key=f"ms_{sid}_{cat_key}_l3", label_visibility="collapsed")
-        # Buffers are applied by the engine from the skill's role_buffers (Effort & FTE tab),
-        # so the workload rows carry only the raw volume/split.
         wl[cat_key] = {"All": {"count": cnt, "minutes": mins, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
         if abs(l1 + l2 + l3 - 100.0) > 0.5 and (l1 + l2 + l3) > 0:
             rc[0].markdown("<span style='color:#E74C3C;font-size:0.72rem'>L1+L2+L3 ≠ 100%</span>",
                            unsafe_allow_html=True)
 
 
+def _render_skill_patching(sk, sid):
+    st.caption("Server patching effort for this skill. Assigned to one role; excluded by default.")
+    p = sk.get("patching") or {}
+    roles = _skill_dist_roles(sk)
+    included = st.checkbox("Patching in scope for this skill", value=bool(p.get("included")),
+                           key=f"ms_{sid}_patch_on")
+    if not included:
+        sk["patching"] = None
+        st.caption("Excluded — patching effort = 0.")
+        return
+    c1, c2, c3 = st.columns(3)
+    servers = c1.number_input("Servers", min_value=0, step=1,
+                              value=int(p.get("num_servers", DEFAULT_NUM_SERVERS) or 0),
+                              key=f"ms_{sid}_patch_srv")
+    method = c2.selectbox("Method", ["Manual", "Tool-Based"],
+                          index=0 if (p.get("method") or "Manual") == "Manual" else 1,
+                          key=f"ms_{sid}_patch_method")
+    role = c3.selectbox("Handled by", roles,
+                        index=roles.index(p.get("patching_role")) if p.get("patching_role") in roles else 0,
+                        key=f"ms_{sid}_patch_role")
+    man = float(p.get("manual_effort_per_server", PATCHING_EFFORT_DEFAULTS["Manual"]) or 45)
+    auto = float(p.get("auto_effort_per_server", PATCHING_EFFORT_DEFAULTS["Tool-Based"]) or 30)
+    err = float(p.get("error_rate_pct", 10.0) or 0)
+    d1, d2 = st.columns(2)
+    if method == "Manual":
+        man = d1.number_input("Min/server", min_value=0.0, step=5.0, value=man, key=f"ms_{sid}_patch_man")
+    else:
+        auto = d1.number_input("Min/failed server", min_value=0.0, step=5.0, value=auto, key=f"ms_{sid}_patch_auto")
+        err = d2.number_input("Error rate %", min_value=0.0, max_value=100.0, step=1.0, value=err,
+                              key=f"ms_{sid}_patch_err")
+    sk["patching"] = {"included": True, "num_servers": servers, "method": method,
+                      "manual_effort_per_server": man, "auto_effort_per_server": auto,
+                      "error_rate_pct": err, "patching_role": role}
+    res = calc_patching_effort(True, servers, method, man, auto, error_rate_pct=err)
+    callout(f"📊 {res['detail']} = <strong>{res['hours']:.1f} hrs/month</strong> → {role}", "success")
+
+
+def _render_skill_activities(sk, sid):
+    st.caption("Recurring operational tasks beyond tickets/patching. Tick **Auto** to derive hours "
+               "from this skill's volumes/servers, or enter your own. Role % must sum to 100% for "
+               "any activity with hours > 0.")
+    roles = _skill_dist_roles(sk)
+    acts = sk.setdefault("activities", [])
+    servers = int((sk.get("patching") or {}).get("num_servers", 0) or 0)
+    volumes = _skill_volumes(sk)
+
+    widths = [2.3, 0.7, 1.0] + [0.9] * len(roles) + [0.5]
+    heads = ["Activity", "Auto", "Monthly Hrs"] + [f"{r} %" for r in roles] + [""]
+    hc = st.columns(widths)
+    for col, t in zip(hc, heads):
+        col.markdown(f"<div style='font-size:0.74rem;color:#1A5F6A;font-weight:600'>{t}</div>",
+                     unsafe_allow_html=True)
+    to_remove = []
+    for i, act in enumerate(acts):
+        rc = st.columns(widths)
+        nm = rc[0].text_input(f"a name {sid}{i}", value=str(act.get("name", "")),
+                              key=f"ms_{sid}_act_nm_{i}", label_visibility="collapsed")
+        derivable = nm.strip() in ACTIVITY_FORMULAS
+        auto = rc[1].checkbox(f"a auto {sid}{i}", value=bool(act.get("auto")) and derivable,
+                              key=f"ms_{sid}_act_auto_{i}", label_visibility="collapsed",
+                              disabled=not derivable)
+        if auto:
+            hrs = derive_activity_hours(nm.strip(), servers, volumes)
+            rc[2].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{hrs:.1f}</div>",
+                           unsafe_allow_html=True)
+        else:
+            hrs = rc[2].number_input(f"a hrs {sid}{i}", min_value=0.0, step=1.0,
+                                     value=float(act.get("hours", 0) or 0),
+                                     key=f"ms_{sid}_act_hrs_{i}", label_visibility="collapsed")
+        d = act.get("dist", {}) or {}
+        new_dist = {}
+        for j, r in enumerate(roles):
+            new_dist[r] = rc[3 + j].number_input(
+                f"a {r} {sid}{i}", min_value=0.0, max_value=100.0, step=5.0,
+                value=float(d.get(r, 0) or 0), key=f"ms_{sid}_act_{r}_{i}", label_visibility="collapsed")
+        if rc[-1].button("🗑️", key=f"ms_{sid}_act_del_{i}", help="Remove"):
+            to_remove.append(i)
+        act.update({"name": nm.strip() or "Custom Activity", "hours": float(hrs or 0),
+                    "auto": bool(auto), "dist": new_dist})
+        if hrs > 0 and abs(sum(new_dist.values()) - 100.0) > 0.5:
+            rc[0].markdown("<span style='color:#E74C3C;font-size:0.72rem'>roles ≠ 100%</span>",
+                           unsafe_allow_html=True)
+    for idx in reversed(to_remove):
+        acts.pop(idx)
+    if to_remove:
+        st.rerun()
+    a1, a2 = st.columns([1.4, 3])
+    if a1.button("➕ Add activity", key=f"ms_{sid}_act_add", type="secondary"):
+        acts.append({"name": "Custom Activity", "hours": 0.0, "auto": False,
+                     "dist": {r: 0.0 for r in roles}})
+        st.rerun()
+    std = [n for n in ACTIVITY_FORMULAS if n not in {a.get("name") for a in acts}]
+    if std:
+        pick = a2.selectbox("Add standard activity", ["—"] + std, key=f"ms_{sid}_act_std")
+        if pick != "—":
+            acts.append({"name": pick, "hours": 0.0, "auto": True,
+                         "dist": {r: 0.0 for r in roles}})
+            st.rerun()
+    total = sum(a.get("hours", 0.0) for a in acts)
+    st.info(f"**Total additional activity effort: {total:.1f} hrs/month**")
+
+
+def _render_workload():
+    section_hdr("📊 Per-skill Workload")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill on the Skills tab first.", "info")
+        return
+    names = {s["id"]: s.get("name") or s["id"] for s in skills}
+    sid = st.selectbox("Skill", list(names), format_func=lambda x: names[x], key="ms_wl_skill")
+    sk = next(s for s in skills if s["id"] == sid)
+    with st.expander("🎫 Tickets", expanded=True):
+        _render_skill_tickets(sk, sid)
+    with st.expander("🖥️ Patching", expanded=False):
+        _render_skill_patching(sk, sid)
+    with st.expander("🧰 Additional Activities", expanded=False):
+        _render_skill_activities(sk, sid)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Tab 3 — Engagement inputs + Effort/FTE dashboard
 # ──────────────────────────────────────────────────────────────────────────────
+def _refresh_auto_activities():
+    """Recompute 'auto' activity hours from each skill's current volumes/servers, so the
+    numbers stay correct on tabs other than Workload (parity with single-mode refresh)."""
+    for sk in st.session_state.get("skills", []) or []:
+        acts = sk.get("activities") or []
+        if not acts:
+            continue
+        servers = int((sk.get("patching") or {}).get("num_servers", 0) or 0)
+        vols = _skill_volumes(sk)
+        for a in acts:
+            if a.get("auto") and a.get("name") in ACTIVITY_FORMULAS:
+                a["hours"] = derive_activity_hours(a["name"], servers, vols)
+
+
 def _build_multi_state() -> dict:
+    _refresh_auto_activities()
     ss = st.session_state
     return {
         "skills": ss.get("skills", []),

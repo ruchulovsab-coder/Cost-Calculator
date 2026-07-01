@@ -4,7 +4,18 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.48`** — *current stable.* **AI Team Optimizer — simplified UI (representation only).** After
+- **`v1.49`** — *current stable.* **Multi-skill — per-skill Patching + Additional Operational
+  Activities (Phase 1 of tower-model parity).** The Workload tab now splits each skill into
+  collapsible **🎫 Tickets · 🖥️ Patching · 🧰 Additional Activities** sub-sections. **Patching**:
+  in-scope toggle, servers, Manual/Tool-based effort, error rate, handled-by role (from the skill's
+  active levels) → live hours. **Additional Activities**: per-skill grid (name, **Auto**-derive from
+  the skill's volumes/servers via `ACTIVITY_FORMULAS`, or manual hours, role split) with add-row +
+  add-standard-activity; role % validated to 100%. Role distribution is restricted to each skill's
+  **active levels + Architect** (decision). `_build_multi_state` refreshes auto activity hours engine-
+  wide (parity with single mode). **No engine change** — `_skill_role_hours` already consumed
+  patching/activities; they now flow into effort/FTE/cost/optimizer. Demo-seed: Linux gains patching
+  (20 servers) + an auto Scheduled-Maintenance activity to show the feature. 108 tests pass.
+- **`v1.48`** — **AI Team Optimizer — simplified UI (representation only).** After
   an internal + delivery-director + dry-run review, the Optimize tab was decluttered: it now **leads
   with the answer** (3-metric headline: Optimised team / Monthly cost / Monthly price, each showing
   the saving), then **one-line moves** ("Share 1 Architect across Cloud Ops + DevOps — saves 0.5 FTE"

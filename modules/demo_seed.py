@@ -47,7 +47,7 @@ _WORKLOADS = {
 }
 
 
-def _skill(sid, name, genus, levels, coverage, arch_pct):
+def _skill(sid, name, genus, levels, coverage, arch_pct, patching=None, activities=None):
     has_arch = arch_pct > 0
     return {
         "id": sid, "name": name, "genus_category": genus, "active_levels": list(levels),
@@ -57,7 +57,7 @@ def _skill(sid, name, genus, levels, coverage, arch_pct):
         "workload": {cat: {"All": {"count": c, "minutes": m,
                                    "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
                      for cat, (c, m, l1, l2, l3) in _WORKLOADS[sid].items()},
-        "patching": None, "activities": [],
+        "patching": patching, "activities": activities or [],
     }
 
 
@@ -68,7 +68,12 @@ def _demo_skills():
         _skill("demo_monitoring", "Monitoring", "InfraOps", ["L1"], "24×7", 0),
         _skill("demo_cloudops", "Cloud Operations", "CloudOps", ["L2", "L3"], "16×5", 25),
         _skill("demo_devops", "DevOps", "CloudOps", ["L2", "L3"], "24×7", 25),
-        _skill("demo_linux", "Linux Administration", "InfraOps", ["L2", "L3"], "24×7", 25),
+        _skill("demo_linux", "Linux Administration", "InfraOps", ["L2", "L3"], "24×7", 25,
+               patching={"included": True, "num_servers": 20, "method": "Manual",
+                         "manual_effort_per_server": 45.0, "auto_effort_per_server": 30.0,
+                         "error_rate_pct": 10.0, "patching_role": "L2"},
+               activities=[{"name": "Scheduled Maintenance", "hours": 10.0, "auto": True,
+                            "dist": {"L2": 70.0, "L3": 30.0, "Architect": 0.0}}]),
     ]
 
 
