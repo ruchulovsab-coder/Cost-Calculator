@@ -4,7 +4,12 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.42`** — *current stable.* **⚠️ TEMPORARY demo-seed — tweak Monitoring workload.** Monitoring
+- **`v1.43`** — *current stable.* **⚠️ TEMPORARY demo-seed — realistic low volumes.** Reduced the
+  seeded ticket counts across all skills per requested caps: **service requests < 20, incidents
+  6–9, change requests 5–7** (Monitoring stays alerts-only, 100). Cloud Ops 18/8/6, DevOps
+  15(SR)/9(inc)/7(chg), Linux 12/6/5. Gated by `DEMO_SEED_DATA`; **revert before production**.
+  100 tests pass.
+- **`v1.42`** — **⚠️ TEMPORARY demo-seed — tweak Monitoring workload.** Monitoring
   is now **alerts-only** (count 100, 100% L1); its seeded service requests / incidents were removed
   (it's an L1 alert-watching function — no L2/L3, no SR/change work). Everything else is unchanged
   from v1.41. Still gated by `DEMO_SEED_DATA`; **revert before production**. 100 tests pass.

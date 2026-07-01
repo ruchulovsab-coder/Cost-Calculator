@@ -28,20 +28,21 @@ _WORKLOADS = {
     "demo_monitoring": {
         "alerts": (100, 10, 100, 0, 0),
     },
+    # Volume caps (per user): service requests < 20, incidents 6–9, change requests 5–7.
     "demo_cloudops": {
-        "service_requests": (300, 30, 0, 70, 30),
-        "incidents": (120, 60, 0, 50, 50),
-        "changes": (80, 90, 0, 40, 60),
+        "service_requests": (18, 30, 0, 70, 30),
+        "incidents": (8, 60, 0, 50, 50),
+        "changes": (6, 90, 0, 40, 60),
     },
     "demo_devops": {
-        "service_requests": (150, 45, 0, 60, 40),
-        "changes": (200, 60, 0, 50, 50),
-        "incidents": (60, 90, 0, 40, 60),
+        "service_requests": (15, 45, 0, 60, 40),
+        "changes": (7, 60, 0, 50, 50),
+        "incidents": (9, 90, 0, 40, 60),
     },
     "demo_linux": {
-        "service_requests": (250, 25, 0, 70, 30),
-        "incidents": (90, 75, 0, 50, 50),
-        "changes": (120, 45, 0, 60, 40),
+        "service_requests": (12, 25, 0, 70, 30),
+        "incidents": (6, 75, 0, 50, 50),
+        "changes": (5, 45, 0, 60, 40),
     },
 }
 
