@@ -765,15 +765,54 @@ def compute_full_model(state: Dict[str, Any]) -> Dict[str, Any]:
 _MS_LEVELS = ["L1", "L2", "L3", "Architect"]
 
 
-def _skill_role_hours(skill: Dict[str, Any], contingency_pct: float) -> Tuple[Dict[str, float], float]:
-    """Per-skill assembled role hours (L1/L2/L3/Architect) + the skill's total operational
-    effort (base × contingency). Reuses the single-tower helpers so a 1-skill estimate
-    matches compute_full_model. Hidden / inactive levels are zeroed."""
+def _skill_role_hours(
+    skill: Dict[str, Any], contingency_pct: float
+) -> Tuple[Dict[str, float], float, Dict[str, Dict[str, float]]]:
+    """Per-skill assembled role hours (L1/L2/L3/Architect), the skill's total operational
+    effort (base × contingency), and a per-level **raw → buffered → final** breakdown.
+
+    Pipeline per level:  raw (no adjustments)  → ×(1+buffer%)  → ×(1+contingency%) = final.
+    `role_buffers` on the skill ({L1,L2,L3,Architect: %}) drives the buffer: when present it
+    overrides the workload-row buffers (the multi UI configures buffers per skill×level, not
+    per row); Architect gets a buffer too (default 0). When `role_buffers` is absent the
+    workload-row buffers are used and Architect buffer is 0, so a 1-skill estimate still
+    matches compute_full_model. Hidden / inactive levels are zeroed (in both outputs)."""
+    from config.settings import DEFAULT_ROLE_BUFFER_PCT
     wl = skill.get("workload", {}) or {}
-    cats = {c: (wl.get(c, {}) or {}) for c in ("alerts", "service_requests", "incidents", "changes")}
+    cat_keys = ("alerts", "service_requests", "incidents", "changes")
+
+    rb = skill.get("role_buffers") or {}
+    buf = {"L1": DEFAULT_ROLE_BUFFER_PCT, "L2": DEFAULT_ROLE_BUFFER_PCT,
+           "L3": DEFAULT_ROLE_BUFFER_PCT, "Architect": 0.0}
+    for k in buf:
+        if rb.get(k) is not None:
+            buf[k] = float(rb.get(k) or 0.0)
+
+    # Build category rows; when role_buffers is set, inject the skill-level buffers so the
+    # ticket split honours them (multi-UI workload rows no longer carry per-row buffers).
+    cats: Dict[str, Dict[str, Dict]] = {}
+    for c in cat_keys:
+        rows = {}
+        for label, row in (wl.get(c, {}) or {}).items():
+            r = dict(row)
+            if rb:
+                for lvl in ("L1", "L2", "L3"):
+                    if rb.get(lvl) is not None:
+                        r[f"{lvl}_buffer"] = buf[lvl]
+            rows[label] = r
+        cats[c] = rows
+
     ticket_rh = calc_all_ticket_role_hours(cats["alerts"], cats["service_requests"],
-                                           cats["incidents"], cats["changes"])
-    ticket_total = sum(calc_category_hours(cats[c])[1] for c in cats)
+                                           cats["incidents"], cats["changes"])   # buffered
+    ticket_total = sum(calc_category_hours(cats[c])[1] for c in cat_keys)
+
+    # Raw (pre-buffer) ticket hours per level, for the breakdown.
+    ticket_raw = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+    for c in cat_keys:
+        for row in cats[c].values():
+            h = (row.get("count", 0) * row.get("minutes", 0)) / 60.0
+            for lvl in ("L1", "L2", "L3"):
+                ticket_raw[lvl] += h * row.get(f"{lvl}_pct", 0.0) / 100.0
 
     p = skill.get("patching") or {}
     patch_h = 0.0
@@ -789,13 +828,38 @@ def _skill_role_hours(skill: Dict[str, Any], contingency_pct: float) -> Tuple[Di
     add_h = sum(a.get("hours", 0.0) for a in acts)
 
     base_effort = ticket_total + patch_h + add_h
-    skill_total = base_effort * (1.0 + contingency_pct / 100.0)
+    cont_m = 1.0 + contingency_pct / 100.0
+    skill_total = base_effort * cont_m
 
     has_arch = bool(skill.get("has_architect"))
-    arch_hours = skill_total * float(skill.get("architect_pct", 0.0) or 0.0) / 100.0 if has_arch else 0.0
+    arch_pct = float(skill.get("architect_pct", 0.0) or 0.0) if has_arch else 0.0
+    arch_raw = base_effort * arch_pct / 100.0
+    arch_buffered = arch_raw * (1.0 + buf["Architect"] / 100.0)
+    arch_hours = arch_buffered * cont_m if has_arch else 0.0
     overhead = {"Architect": arch_hours} if has_arch else {}
 
     role_hours = assemble_role_hours(ticket_rh, overhead, patch_h, patch_role, acts, contingency_pct)
+
+    # Per-level raw & buffered "base" hours (before contingency) for the build-up.
+    #   L1/L2/L3 base = ticket hours;  Architect base = the architect-% overhead.
+    #   Activities (distributed) and patching are added un-buffered, exactly as
+    #   assemble_role_hours accumulates them, so final == role_hours for every level.
+    act_share = {lvl: 0.0 for lvl in _MS_LEVELS}
+    for a in acts:
+        ah, dist = a.get("hours", 0.0), (a.get("dist", {}) or {})
+        for lvl in _MS_LEVELS:
+            act_share[lvl] += ah * dist.get(lvl, 0.0) / 100.0
+    raw_base = {"L1": ticket_raw["L1"], "L2": ticket_raw["L2"], "L3": ticket_raw["L3"],
+                "Architect": arch_raw}
+    buf_base = {"L1": ticket_rh["L1"], "L2": ticket_rh["L2"], "L3": ticket_rh["L3"],
+                "Architect": arch_buffered}
+    breakdown: Dict[str, Dict[str, float]] = {}
+    for lvl in _MS_LEVELS:
+        extra = act_share[lvl] + (patch_h if patch_role == lvl else 0.0)   # un-buffered
+        raw = raw_base[lvl] + extra                                        # pre-buffer, pre-contingency
+        buffered = buf_base[lvl] + extra                                   # buffer on the base only
+        breakdown[lvl] = {"raw": raw, "buffered": buffered, "buffer_pct": buf[lvl],
+                          "final": buffered * cont_m}
 
     active = set(skill.get("active_levels", []) or [])
     if has_arch:
@@ -805,7 +869,9 @@ def _skill_role_hours(skill: Dict[str, Any], contingency_pct: float) -> Tuple[Di
     for lvl in _MS_LEVELS:
         on = (lvl in active) and lv.get(lvl, True)
         out[lvl] = role_hours.get(lvl, 0.0) if on else 0.0
-    return out, skill_total
+        if not on:
+            breakdown[lvl] = {"raw": 0.0, "buffered": 0.0, "buffer_pct": buf.get(lvl, 0.0), "final": 0.0}
+    return out, skill_total, breakdown
 
 
 def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -837,15 +903,24 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
 
     skills = [s for s in (g("skills", []) or []) if s.get("visible", True)]
 
-    # 1. Per-skill role hours + skill totals
+    # 1. Per-skill role hours + skill totals + raw→buffered→final build-up (with FTE per stage).
+    #    The build-up FTE is standalone per (skill, level) — it ignores resource-sharing pooling
+    #    (which reshapes FTE at the engagement level in step 3); it exists for transparency.
     per_skill = {}
     engagement_total_effort = 0.0
     for sk in skills:
-        rh, skill_total = _skill_role_hours(sk, contingency_pct)
+        rh, skill_total, breakdown = _skill_role_hours(sk, contingency_pct)
+        cov = sk.get("coverage_model") or "8×5"
+        mult = calc_coverage_multiplier(cov, chpd, cdpw)
+        for lvl, d in breakdown.items():
+            m = mult if lvl in COVERAGE_APPLICABLE_ROLES else 1.0
+            for stage in ("raw", "buffered", "final"):
+                d[f"fte_{stage}"] = (d[stage] / productive * m) if productive > 0 else 0.0
+            d["fte_staffed"] = max(ceil_half(d["fte_final"]), 0.5) if d["final"] > 0 else 0.0
         per_skill[sk["id"]] = {
             "name": sk.get("name"), "genus_category": sk.get("genus_category"),
-            "coverage_model": sk.get("coverage_model") or "8×5",
-            "role_hours": rh, "total_effort": skill_total,
+            "coverage_model": cov, "role_hours": rh, "total_effort": skill_total,
+            "breakdown": breakdown,
         }
         engagement_total_effort += skill_total
     sdm_hours = engagement_total_effort * sdm_pct / 100.0

@@ -132,6 +132,34 @@ def test_hidden_level_zeroed():
     assert not any(r["level"] == "L1" for r in res["resources"])
 
 
+def test_breakdown_raw_buffered_final_reconciles():
+    """Per-level build-up: final == role_hours, and raw ×(1+buf)×(1+cont) == final."""
+    st = _multi_1skill_state()
+    st["skills"][0]["role_buffers"] = {"L1": 20, "L2": 25, "L3": 30, "Architect": 10}
+    st["contingency_pct"] = 10.0
+    res = compute_multi_skill_model(st)
+    ps = res["per_skill"]["s1"]
+    bd, rh = ps["breakdown"], ps["role_hours"]
+    for lvl in ("L1", "L2", "L3", "Architect"):
+        d = bd[lvl]
+        assert d["final"] == pytest.approx(rh[lvl], rel=1e-6), lvl          # final == staffed role hrs
+        assert d["final"] == pytest.approx(d["buffered"] * 1.10, rel=1e-6), lvl  # contingency step
+        assert d["raw"] <= d["buffered"] <= d["final"], lvl
+    # Architect buffer (10%) actually moves the number vs a zero-buffer architect.
+    st0 = _multi_1skill_state()
+    st0["skills"][0]["role_buffers"] = {"L1": 20, "L2": 20, "L3": 20, "Architect": 0}
+    arch0 = compute_multi_skill_model(st0)["per_skill"]["s1"]["role_hours"]["Architect"]
+    assert res["per_skill"]["s1"]["role_hours"]["Architect"] > arch0
+
+
+def test_zero_buffer_makes_raw_equal_buffered():
+    st = _multi_1skill_state()
+    st["skills"][0]["role_buffers"] = {"L1": 0, "L2": 0, "L3": 0, "Architect": 0}
+    bd = compute_multi_skill_model(st)["per_skill"]["s1"]["breakdown"]
+    for lvl in ("L1", "L2", "L3", "Architect"):
+        assert bd[lvl]["raw"] == pytest.approx(bd[lvl]["buffered"], rel=1e-6), lvl
+
+
 def test_genus_family_rates_differ():
     st = _multi_1skill_state()
     st["rates_by_category"] = {"InfraOps": {"L1": 700, "L2": 1100, "L3": 1600, "Architect": 2400},

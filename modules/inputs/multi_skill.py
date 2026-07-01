@@ -65,7 +65,19 @@ def _blank_skill(name="New Skill"):
     return {"id": _new_id(), "name": name, "genus_category": "InfraOps",
             "active_levels": ["L1", "L2", "L3"], "has_architect": False, "architect_pct": 5.0,
             "coverage_model": "8×5", "visible": True, "level_visible": {},
+            "role_buffers": {"L1": DEFAULT_ROLE_BUFFER_PCT, "L2": DEFAULT_ROLE_BUFFER_PCT,
+                             "L3": DEFAULT_ROLE_BUFFER_PCT, "Architect": 0.0},
             "workload": {}, "patching": None, "activities": []}
+
+
+def _skill_buffers(sk) -> dict:
+    """Per-skill role buffers with safe defaults (migrates older drafts/skills that
+    predate the Architect buffer or have no buffers at all)."""
+    rb = sk.setdefault("role_buffers", {})
+    for lvl in LEVELS:
+        rb.setdefault(lvl, DEFAULT_ROLE_BUFFER_PCT)
+    rb.setdefault("Architect", 0.0)
+    return rb
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -124,22 +136,9 @@ def _render_workload():
     sid = st.selectbox("Skill", list(names), format_func=lambda x: names[x], key="ms_wl_skill")
     sk = next(s for s in skills if s["id"] == sid)
     st.caption("Enter monthly volume, average minutes/ticket, and the L1/L2/L3 split per category "
-               "for this skill. (Per-severity detail, patching and activities come in later phases.)")
+               "for this skill. Per-level **buffers** are configured on the **Effort & FTE** tab. "
+               "(Per-severity detail, patching and activities come in later phases.)")
     wl = sk.setdefault("workload", {})
-
-    # Per-level effort buffer (was a hidden 20% default — now an explicit input per skill,
-    # applied to every category below; drives the role hours on the Effort & FTE tab).
-    rb = sk.setdefault("role_buffers", {lvl: DEFAULT_ROLE_BUFFER_PCT for lvl in LEVELS})
-    st.markdown("<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .1rem'>"
-                "Per-level effort buffer %</div>", unsafe_allow_html=True)
-    st.caption("Extra time added per level for wait/handover/non-productive overhead. Applied to "
-               "this skill's role hours across all categories (set to 0 to price raw effort only).")
-    bc = st.columns(3)
-    for col, lvl in zip(bc, LEVELS):
-        rb[lvl] = col.number_input(f"{lvl} buffer %", min_value=0.0, max_value=100.0, step=1.0,
-                                   value=float(rb.get(lvl, DEFAULT_ROLE_BUFFER_PCT) or 0.0),
-                                   key=f"ms_buf_{sid}_{lvl}")
-    st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
 
     hdr = st.columns([2, 1, 1, 1, 1, 1])
     for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
@@ -165,8 +164,9 @@ def _render_workload():
         l3 = rc[5].number_input(f"{cat_key} l3", min_value=0.0, max_value=100.0, step=1.0,
                                 value=float(row.get("L3_pct", 0) or 0),
                                 key=f"ms_{sid}_{cat_key}_l3", label_visibility="collapsed")
-        wl[cat_key] = {"All": {"count": cnt, "minutes": mins, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3,
-                               "L1_buffer": rb["L1"], "L2_buffer": rb["L2"], "L3_buffer": rb["L3"]}}
+        # Buffers are applied by the engine from the skill's role_buffers (Effort & FTE tab),
+        # so the workload rows carry only the raw volume/split.
+        wl[cat_key] = {"All": {"count": cnt, "minutes": mins, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
         if abs(l1 + l2 + l3 - 100.0) > 0.5 and (l1 + l2 + l3) > 0:
             rc[0].markdown("<span style='color:#E74C3C;font-size:0.72rem'>L1+L2+L3 ≠ 100%</span>",
                            unsafe_allow_html=True)
@@ -194,9 +194,108 @@ def _build_multi_state() -> dict:
     }
 
 
+def _render_buffer_config(skills):
+    """Per-skill × per-level buffer matrix (L1/L2/L3/Architect). Writes sk['role_buffers']."""
+    section_hdr("🎛️ Per-level effort buffer")
+    callout("Buffer % added per level for wait / handover / non-productive overhead — set it "
+            "independently for each skill and support level (Architect included). Use 0 to price "
+            "raw effort. The build-up below shows exactly how each buffer and the contingency "
+            "shape the final staffing.", "info")
+    hc = st.columns([2.6, 1, 1, 1, 1.3])
+    for col, t in zip(hc, ["Skill", "L1 %", "L2 %", "L3 %", "Architect %"]):
+        col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
+                     unsafe_allow_html=True)
+    for sk in skills:
+        sid = sk["id"]
+        rb = _skill_buffers(sk)
+        active = set(sk.get("active_levels", []) or [])
+        rc = st.columns([2.6, 1, 1, 1, 1.3])
+        rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{sk.get('name') or sid}</div>",
+                       unsafe_allow_html=True)
+        for i, lvl in enumerate(LEVELS, start=1):
+            if lvl in active:
+                rb[lvl] = rc[i].number_input(
+                    f"{sid} {lvl} buffer", min_value=0.0, max_value=100.0, step=1.0,
+                    value=float(rb.get(lvl, DEFAULT_ROLE_BUFFER_PCT) or 0.0),
+                    key=f"ms_buf_{sid}_{lvl}", label_visibility="collapsed")
+            else:
+                rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0'>—</div>", unsafe_allow_html=True)
+        if sk.get("has_architect"):
+            rb["Architect"] = rc[4].number_input(
+                f"{sid} Architect buffer", min_value=0.0, max_value=100.0, step=1.0,
+                value=float(rb.get("Architect", 0.0) or 0.0),
+                key=f"ms_buf_{sid}_Architect", label_visibility="collapsed")
+        else:
+            rc[4].markdown("<div style='padding-top:6px;color:#B0B0B0'>—</div>", unsafe_allow_html=True)
+
+
+def _render_skill_buildup(name: str, ps: dict, cont_pct: float):
+    """Raw → Buffered → Final build-up (hours + FTE) with variance, for one skill."""
+    bd = ps["breakdown"]
+    order = [lvl for lvl in ("L1", "L2", "L3", "Architect")
+             if bd.get(lvl, {}).get("raw", 0) > 1e-9 or bd.get(lvl, {}).get("final", 0) > 1e-9]
+    if not order:
+        st.caption("No workload entered for this skill yet.")
+        return
+    raw_t = buf_t = fin_t = 0.0
+    fr_t = fb_t = ff_t = fs_t = 0.0
+    e_rows = ""
+    f_rows = ""
+    for lvl in order:
+        d = bd[lvl]
+        raw_t += d["raw"]; buf_t += d["buffered"]; fin_t += d["final"]
+        fr_t += d["fte_raw"]; fb_t += d["fte_buffered"]; ff_t += d["fte_final"]; fs_t += d["fte_staffed"]
+        e_rows += (f"<tr><td>{lvl}</td><td class='r'>{d['raw']:.1f}</td>"
+                   f"<td class='r'>{d['buffer_pct']:.0f}%</td><td class='r'>{d['buffered']:.1f}</td>"
+                   f"<td class='r'>{cont_pct:.0f}%</td><td class='r'>{d['final']:.1f}</td>"
+                   f"<td class='r' style='color:#1A7F37'>+{d['final'] - d['raw']:.1f}</td></tr>")
+        f_rows += (f"<tr><td>{lvl}</td><td class='r'>{d['fte_raw']:.2f}</td>"
+                   f"<td class='r'>{d['fte_buffered']:.2f}</td><td class='r'>{d['fte_final']:.2f}</td>"
+                   f"<td class='r'><strong>{d['fte_staffed']:.1f}</strong></td></tr>")
+    e_rows += (f"<tr class='total-row'><td><strong>Total</strong></td>"
+               f"<td class='r'><strong>{raw_t:.1f}</strong></td><td></td>"
+               f"<td class='r'><strong>{buf_t:.1f}</strong></td><td></td>"
+               f"<td class='r'><strong>{fin_t:.1f}</strong></td>"
+               f"<td class='r' style='color:#1A7F37'><strong>+{fin_t - raw_t:.1f}</strong></td></tr>")
+    f_rows += (f"<tr class='total-row'><td><strong>Total</strong></td>"
+               f"<td class='r'><strong>{fr_t:.2f}</strong></td><td class='r'><strong>{fb_t:.2f}</strong></td>"
+               f"<td class='r'><strong>{ff_t:.2f}</strong></td><td class='r'><strong>{fs_t:.1f}</strong></td></tr>")
+
+    st.markdown("<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.2rem 0'>Effort (hours)</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Level</th><th class="r">Raw</th><th class="r">Buffer</th><th class="r">Buffered</th>
+        <th class="r">Contingency</th><th class="r">Final</th><th class="r">Δ Raw→Final</th>
+        </tr></thead><tbody>{e_rows}</tbody></table>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.6rem 0 .2rem'>FTE</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Level</th><th class="r">Raw FTE</th><th class="r">Buffered FTE</th>
+        <th class="r">Final FTE</th><th class="r">Staffed FTE</th>
+        </tr></thead><tbody>{f_rows}</tbody></table>""", unsafe_allow_html=True)
+    st.caption("Raw/Buffered/Final FTE are exact (hours ÷ productive hours × coverage). **Staffed FTE** "
+               "rounds each level up to the nearest 0.5 (min 0.5) — the actual headcount. This build-up "
+               "is standalone per skill; resource-sharing pools are applied at the engagement roll-up.")
+
+    def _pct(num, den):
+        return f"{num / den * 100:+.0f}%" if den > 1e-9 else None
+
+    v1, v2, v3 = st.columns(3)
+    v1.metric("Buffer impact", fmt_hours(buf_t - raw_t), delta=_pct(buf_t - raw_t, raw_t),
+              delta_color="off", help="Δ Raw → Buffered (effect of the per-level buffers)")
+    v2.metric("Contingency impact", fmt_hours(fin_t - buf_t), delta=_pct(fin_t - buf_t, buf_t),
+              delta_color="off", help="Δ Buffered → Final (effect of the contingency %)")
+    v3.metric("Combined (Raw→Final)", fmt_hours(fin_t - raw_t), delta=_pct(fin_t - raw_t, raw_t),
+              delta_color="off", help="Total uplift from raw effort to final staffed hours")
+
+
 def _render_dashboard():
     section_hdr("📈 Effort & FTE by Skill")
-    if not st.session_state.get("skills"):
+    skills = st.session_state.get("skills", [])
+    if not skills:
         callout("Add a skill and its workload first.", "info")
         return
     e1, e2, e3 = st.columns(3)
@@ -213,8 +312,15 @@ def _render_dashboard():
         "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
         value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
 
+    _render_buffer_config(skills)
+
+    cont_pct = float(st.session_state.get("contingency_pct", 10.0) or 0.0)
     model = compute_multi_skill_model(_build_multi_state())
-    names = {s["id"]: (s.get("name") or s["id"]) for s in st.session_state.get("skills", [])}
+    names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
+
+    # ── Summary: staffed hours per skill (self-consistent row) ──
+    st.divider()
+    section_hdr("Summary")
     rows = ""
     staffed_total = 0.0
     for sid, ps in model["per_skill"].items():
@@ -234,9 +340,8 @@ def _render_dashboard():
         <th class="r">L3 hrs</th><th class="r">Arch hrs</th><th class="r">Staffed hrs</th>
         <th class="r">Effort (pre-buffer)</th>
         </tr></thead><tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
-    st.caption("**Staffed hrs** = L1+L2+L3+Arch role hours (includes the per-level buffer set on the "
-               "Workload tab) — this is what FTE is built from. **Effort (pre-buffer)** = raw ticket "
-               "effort + contingency, before any per-level buffer.")
+    st.caption("**Staffed hrs** = L1+L2+L3+Arch role hours (buffered + contingency) — what FTE is built "
+               "from. **Effort (pre-buffer)** = raw ticket effort + contingency, before per-level buffer.")
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Staffed effort", fmt_hours(staffed_total), help="Role hours incl. per-level buffer")
@@ -244,6 +349,16 @@ def _render_dashboard():
               help="Raw ticket effort + contingency, before per-level buffer")
     m3.metric("Total FTE", f"{model['total_fte']:.2f}")
     m4.metric("SDM hours", fmt_hours(model["sdm_hours"]))
+
+    # ── Step-by-step build-up per skill ──
+    st.divider()
+    section_hdr("🔍 Step-by-step build-up (Raw → Buffered → Final)")
+    st.caption("For each skill: Raw effort/FTE (no adjustments) → after the configured Buffer → "
+               "Final after Contingency, with the variance each step contributes.")
+    for sid, ps in model["per_skill"].items():
+        with st.expander(f"{names.get(sid, sid)} · {ps['genus_category']}", expanded=len(skills) == 1):
+            _render_skill_buildup(names.get(sid, sid), ps, cont_pct)
+
     callout("💡 Cost & price (InfraOps/CloudOps rate families) arrive in <strong>Phase 3</strong>. "
             "This view shows effort and FTE per skill.", "info")
 

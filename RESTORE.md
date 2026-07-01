@@ -4,7 +4,18 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.37`** — *current stable.* **Multi-skill — per-level effort buffer made explicit +
+- **`v1.38`** — *current stable.* **Multi-skill — buffer moved to Effort & FTE tab (per skill ×
+  per level, incl. Architect) + step-by-step effort/FTE build-up with variance.** The per-level
+  buffer now lives on the **Effort & FTE** tab as a **skill × level matrix** (L1/L2/L3/Architect,
+  each independently editable; the Workload tab is back to raw volume/split only). A new
+  **Raw → Buffered → Final** build-up (per skill, in expanders) shows, for every level: Raw
+  effort/FTE (no adjustments) → after the configured **Buffer** → **Final** after **Contingency**,
+  plus **variance** (buffer impact, contingency impact, combined). Engine: `_skill_role_hours`
+  now applies an **Architect buffer** (default 0, so single-skill parity with `compute_full_model`
+  holds) and returns a per-level `breakdown` (raw/buffered/final hours + per-stage FTE) consumed by
+  `compute_multi_skill_model`. Display/engine-additive only — single mode / Chat untouched. 100
+  tests pass (2 new). Blueprint: `docs/multi-skill-strategy.md`.
+- **`v1.37`** — **Multi-skill — per-level effort buffer made explicit +
   consistent effort dashboard.** The previously hidden 20% per-role buffer is now three editable
   inputs (**L1 / L2 / L3 buffer %**, default 20) on the multi-skill **Workload** tab, applied
   across all categories for that skill. The **Effort & FTE** table now adds up across its own row:
