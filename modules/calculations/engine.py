@@ -959,14 +959,27 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
         resources.append({"key": "engagement:SDM", "category": None, "level": "SDM",
                           "coverage_model": "8×5", "hours": sdm_hours, "skills": []})
 
-    # 3. FTE + cost per resource (min-0.5 on the pooled hours; coverage only on L1/L2)
+    # 3. FTE + cost per resource (min-0.5 on the pooled hours; coverage only on L1/L2).
+    #    Optional realism knobs (default no-op):
+    #      context_switch_pct — extra effort when one resource spans >1 skill (pooled), so
+    #        sharing savings aren't overstated: eff_hours = hours × (1 + pct%·(n_skills−1)).
+    #      enforce_min_shift  — floor coverage-applicable roles on multi-shift windows to one
+    #        continuous seat (= ceil½ of the coverage multiplier), so a 24×7 desk can't be
+    #        "staffed" by a fraction of a person.
+    csw_pct = float(g("context_switch_pct", 0.0) or 0.0)
+    enforce_shift = bool(g("enforce_min_shift", False))
     total_resource_cost = 0.0
     res_out = []
     for r in resources:
         mult = calc_coverage_multiplier(r["coverage_model"] or "8×5", chpd, cdpw)
         applies = r["level"] in COVERAGE_APPLICABLE_ROLES
-        raw = (r["hours"] / productive * (mult if applies else 1.0)) if productive > 0 else 0.0
+        n_sk = len(r.get("skills", []) or [])
+        csw = 1.0 + csw_pct / 100.0 * max(n_sk - 1, 0)
+        eff_hours = r["hours"] * csw
+        raw = (eff_hours / productive * (mult if applies else 1.0)) if productive > 0 else 0.0
         final = max(ceil_half(raw), 0.5) if r["hours"] > 0 else 0.0
+        if enforce_shift and applies and mult > 1.0 and r["hours"] > 0:
+            final = max(final, ceil_half(mult))     # one continuous seat for the window
         fte = raw if fte_key == "raw_fte" else final
         if r["level"] == "SDM":
             rate = float(g("sdm_rate_inr", 0) or 0)

@@ -160,6 +160,38 @@ def test_zero_buffer_makes_raw_equal_buffered():
         assert bd[lvl]["raw"] == pytest.approx(bd[lvl]["buffered"], rel=1e-6), lvl
 
 
+def test_context_switch_penalty_raises_pooled_fte():
+    """A shared resource spanning >1 skill costs more effort when a penalty is set."""
+    base_st = _share_base()
+    base_st["resource_sharing"] = [
+        {"id": "g1", "level": "L3", "skill_ids": ["a", "b"],
+         "genus_category": "InfraOps", "coverage_model": "8×5"}]
+    base = compute_multi_skill_model(base_st)
+    penalised = compute_multi_skill_model({**base_st, "context_switch_pct": 50.0})
+    assert penalised["total_fte"] > base["total_fte"]
+    # Dedicated (unshared) resources are unaffected by the penalty (n_skills == 1).
+    solo = compute_multi_skill_model(_share_base())
+    solo_pen = compute_multi_skill_model({**_share_base(), "context_switch_pct": 50.0})
+    assert solo["total_fte"] == pytest.approx(solo_pen["total_fte"])
+
+
+def test_min_shift_floors_continuous_window_role():
+    """A light 24×7 L2 desk floors to one continuous seat (ceil½ of the 4.2 multiplier)."""
+    sk = {"id": "s1", "name": "NOC", "genus_category": "InfraOps", "active_levels": ["L2"],
+          "has_architect": False, "coverage_model": "24×7", "visible": True, "level_visible": {},
+          "workload": {"incidents": _cat([("High", 5, 60, 0, 100, 0)])},
+          "patching": None, "activities": []}
+    base = {"skills": [sk], "resource_sharing": [], "rates_by_category": {}, "sdm_overhead_pct": 0.0,
+            "contingency_pct": 0.0, "monthly_working_hours": 160.0, "productive_utilisation": 75.0,
+            "target_margin_pct": 0.0, "fte_basis": "rounded"}
+    off = compute_multi_skill_model(base)
+    on = compute_multi_skill_model({**base, "enforce_min_shift": True})
+    l2_off = next(r for r in off["resources"] if r["level"] == "L2")
+    l2_on = next(r for r in on["resources"] if r["level"] == "L2")
+    assert l2_off["final_fte"] < 4.5
+    assert l2_on["final_fte"] >= 4.5     # ceil½(4.2) = 4.5 — one continuous 24×7 seat
+
+
 def test_genus_family_rates_differ():
     st = _multi_1skill_state()
     st["rates_by_category"] = {"InfraOps": {"L1": 700, "L2": 1100, "L3": 1600, "Architect": 2400},

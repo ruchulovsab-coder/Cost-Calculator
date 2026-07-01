@@ -4,7 +4,17 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.45`** — *current stable.* **AI Team Optimizer — feedback & steering.** Two refinements to
+- **`v1.46`** — *current stable.* **AI Team Optimizer — min-per-shift + context-switch penalty.**
+  Two engine realism knobs (both default no-op, so existing numbers/tests are unchanged), set on the
+  Optimize tab's *Realism assumptions* expander and applied engagement-wide via `_build_multi_state`:
+  (1) **`context_switch_pct`** — a shared resource spanning >1 skill costs `×(1+pct·(n−1))` effort,
+  so pooling savings aren't overstated (UI default 10%; only affects pooled resources). (2)
+  **`enforce_min_shift`** — coverage-applicable roles (L1/L2) on multi-shift windows floor to one
+  continuous seat (`ceil½` of the coverage multiplier, e.g. 4.5 FTE for 24×7), so a shift desk can't
+  be "staffed" by a fraction; this makes **cross-skill pooling of 24×7/24×5 L2 desks the biggest
+  win** (seeded demo: base 6.5→19 FTE with shift minimums on, optimizer then recovers ~3 FTE incl.
+  L2). UI default off. 106 tests pass (2 new).
+- **`v1.45`** — **AI Team Optimizer — feedback & steering.** Two refinements to
   the Optimize tab: (1) it **no longer sits silent** — a per-level **Analysis** line reports each
   selected level's outcome (e.g. selecting **L2** now explains *"adjacent skills found, but pooling
   didn't cut FTE within the ceiling — L2 needs shift coverage"* instead of showing nothing), and the

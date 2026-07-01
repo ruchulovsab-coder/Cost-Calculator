@@ -185,6 +185,9 @@ def _build_multi_state() -> dict:
         "sdm_overhead_pct": float(ss.get("sdm_overhead_pct", 5.0) or 0.0),
         "sdm_rate_inr": float(ss.get("ms_sdm_rate_inr", 0.0) or 0.0),
         "exchange_rates": ss.get("exchange_rates", {}) or {},
+        # AI Team Optimizer realism knobs (default no-op); set on the Optimize tab.
+        "context_switch_pct": float(ss.get("ms_context_switch_pct", 0.0) or 0.0),
+        "enforce_min_shift": bool(ss.get("ms_enforce_min_shift", False)),
         "contingency_pct": float(ss.get("contingency_pct", 10.0) or 0.0),
         "monthly_working_hours": float(ss.get("monthly_working_hours", 160.0) or 160.0),
         "productive_utilisation": float(ss.get("productive_utilisation", 75.0) or 75.0),
@@ -655,6 +658,20 @@ def _render_optimize():
         "Constraints for the AI (optional)", value=st.session_state.get("ms_opt_context", ""),
         key="ms_opt_context",
         placeholder="e.g. keep Security dedicated · we already run a 24×7 NOC · minimise key-person risk")
+
+    with st.expander("Realism assumptions (keep savings honest & deliverable)", expanded=False):
+        r1, r2 = st.columns(2)
+        st.session_state["ms_context_switch_pct"] = r1.number_input(
+            "Context-switch penalty %", min_value=0.0, max_value=50.0, step=5.0,
+            value=float(st.session_state.get("ms_context_switch_pct", 10.0) or 0.0), key="ms_csw",
+            help="Extra effort when one shared resource spans multiple skills — so savings aren't overstated.")
+        st.session_state["ms_enforce_min_shift"] = r2.toggle(
+            "Enforce 24×7 / 24×5 shift minimums",
+            value=bool(st.session_state.get("ms_enforce_min_shift", False)), key="ms_minshift",
+            help="Require enough bodies for continuous presence on multi-shift windows (L1/L2). "
+                 "Applies to the whole estimate; makes cross-skill pooling of shift desks more valuable.")
+        st.caption("These apply to the whole estimate (Effort & Cost too). Defaults: 10% penalty, "
+                   "shift minimums off.")
 
     state = _build_multi_state()
     sel_levels = tuple(levels) or ("Architect", "L3")
