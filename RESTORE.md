@@ -4,7 +4,19 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.39`** — *current stable.* **Multi-skill — Effort & FTE page restructured for calculation
+- **`v1.40`** — *current stable.* **Multi-skill — Phase 3: InfraOps/CloudOps rate families →
+  cost & price.** New **4 · Rates & Cost** tab: loads the rate card (reusing the Step-1/7 loader +
+  delivery-location selector + FX), then a **family × band genus-grade mapping** matrix
+  (InfraOps/CloudOps × L1/L2/L3/Architect, + one engagement **SDM** grade). Each cell resolves to
+  an **INR hourly rate** via `resolve_role_rates` (currency-converted). A skill prices off its
+  family's bands; **CloudOps defaults to the same INFRAOPS grades** until a rate card carries
+  `CLOUDOPS` grades (the sample/blob cards currently don't). Resolved `rates_by_category` +
+  `sdm_rate_inr` feed `_build_multi_state` (was `{}`/0), so the engine now returns **per-skill
+  monthly cost, engagement resource/delivery cost, target-margin selling price & gross profit** —
+  all surfaced on the tab. UI-only wiring; **no engine change** (engine already consumed these).
+  Single mode / Chat untouched. 100 tests pass. Next: allocate-mode volumes · per-skill patching/
+  activities · resource-sharing UI · hide→export A/B · multi Excel.
+- **`v1.39`** — **Multi-skill — Effort & FTE page restructured for calculation
   transparency.** The page now reads top-to-bottom: **① engagement inputs → ② Per-Level Effort
   Buffer** (skill × level matrix) **→ ③ Step-by-Step Build-up** (per-skill expanders: Raw → after
   Buffer → Final, hours + FTE + variance) **→ ④ Summary** (`Skill · Family · L1 · L2 · L3 ·

@@ -12,9 +12,9 @@ import uuid
 
 import streamlit as st
 
-from config.settings import COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT
+from config.settings import COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
-from modules.calculations.engine import compute_multi_skill_model
+from modules.calculations.engine import compute_multi_skill_model, resolve_role_rates
 from utils.formatters import fmt_hours
 
 CATEGORIES = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
@@ -181,9 +181,10 @@ def _build_multi_state() -> dict:
     return {
         "skills": ss.get("skills", []),
         "resource_sharing": ss.get("resource_sharing", []),
-        "rates_by_category": {},                 # Phase 3 (InfraOps/CloudOps band rates)
+        "rates_by_category": ss.get("ms_rates_by_category", {}) or {},   # InfraOps/CloudOps band rates (INR)
         "sdm_overhead_pct": float(ss.get("sdm_overhead_pct", 5.0) or 0.0),
-        "sdm_rate_inr": 0.0,
+        "sdm_rate_inr": float(ss.get("ms_sdm_rate_inr", 0.0) or 0.0),
+        "exchange_rates": ss.get("exchange_rates", {}) or {},
         "contingency_pct": float(ss.get("contingency_pct", 10.0) or 0.0),
         "monthly_working_hours": float(ss.get("monthly_working_hours", 160.0) or 160.0),
         "productive_utilisation": float(ss.get("productive_utilisation", 75.0) or 75.0),
@@ -467,8 +468,157 @@ def _render_dashboard():
     st.divider()
     _render_team_summary(model, names)
 
-    callout("💡 Cost & price (InfraOps/CloudOps rate families) arrive in <strong>Phase 3</strong>. "
-            "This view shows effort and FTE per skill.", "info")
+    callout("💡 See the <strong>Rates &amp; Cost</strong> tab for cost &amp; price "
+            "(InfraOps/CloudOps rate families).", "info")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tab 4 — Rates & Cost (InfraOps/CloudOps rate families → cost/price)
+# ──────────────────────────────────────────────────────────────────────────────
+def _inr(v) -> str:
+    return f"₹{float(v or 0):,.0f}"
+
+
+def _default_grade(band, available):
+    """First eligible genus grade for a band that exists in the rate card, else first available."""
+    for g in GRADE_ELIGIBILITY.get(band, []):
+        if g in available:
+            return g
+    return available[0] if available else None
+
+
+def _ensure_fx(filtered):
+    """Collect INR exchange rates for any non-INR rate-card currencies in scope."""
+    fx = dict(st.session_state.get("exchange_rates", {}) or {})
+    fx.setdefault("INR", 1.0)
+    curs = sorted({str(c).upper().strip() for c in filtered["rate currency"].dropna().unique()} - {"INR"})
+    if curs:
+        st.caption("Enter exchange rates for the rate-card currencies (1 unit = ? INR):")
+        cols = st.columns(len(curs))
+        for col, cur in zip(cols, curs):
+            fx[cur] = col.number_input(f"1 {cur} = ? INR", min_value=0.0, step=1.0,
+                                       value=float(fx.get(cur, 0.0) or 0.0), key=f"ms_fx_{cur}")
+    st.session_state["exchange_rates"] = fx
+    return fx
+
+
+def _render_rate_matrix(filtered):
+    """Family × band genus-grade dropdowns (+ SDM). Returns (family_grades, sdm_grade)."""
+    available = filtered["genus"].dropna().astype(str).unique().tolist()
+    if not available:
+        callout("No grades in the rate card for the selected location.", "warning")
+        return {}, None
+    fam_grades = st.session_state.setdefault("ms_family_grades", {})
+    for fam in GENUS:
+        fg = fam_grades.setdefault(fam, {})
+        for band in BD_LEVELS:
+            if fg.get(band) not in available:
+                fg[band] = _default_grade(band, available)
+    if st.session_state.get("ms_sdm_grade") not in available:
+        st.session_state["ms_sdm_grade"] = _default_grade("SDM", available)
+
+    section_hdr("🎓 Rate family → grade mapping")
+    callout("Map each rate family (InfraOps / CloudOps) and band to a genus grade from the rate "
+            "card; the hourly rate (converted to INR) is read from the card. A skill prices off its "
+            "family's bands. <em>CloudOps defaults to the same grades as InfraOps until your rate "
+            "card carries CLOUDOPS grades.</em>", "info")
+    hc = st.columns([1.5, 2, 2, 2, 2])
+    for col, t in zip(hc, ["Family", "L1", "L2", "L3", "Architect"]):
+        col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
+                     unsafe_allow_html=True)
+    for fam in GENUS:
+        rc = st.columns([1.5, 2, 2, 2, 2])
+        rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'><strong>{fam}</strong></div>",
+                       unsafe_allow_html=True)
+        for i, band in enumerate(BD_LEVELS, start=1):
+            cur = fam_grades[fam].get(band)
+            idx = available.index(cur) if cur in available else 0
+            fam_grades[fam][band] = rc[i].selectbox(
+                f"{fam} {band} grade", available, index=idx,
+                key=f"ms_rg_{fam}_{band}", label_visibility="collapsed")
+    sc1, sc2 = st.columns([1.5, 2])
+    sc1.markdown("<div style='padding-top:6px;font-size:0.85rem'><strong>SDM</strong> (engagement)</div>",
+                 unsafe_allow_html=True)
+    sdm_cur = st.session_state.get("ms_sdm_grade")
+    sdm_idx = available.index(sdm_cur) if sdm_cur in available else 0
+    st.session_state["ms_sdm_grade"] = sc2.selectbox(
+        "SDM grade", available, index=sdm_idx, key="ms_rg_SDM", label_visibility="collapsed")
+    return fam_grades, st.session_state["ms_sdm_grade"]
+
+
+def _render_rates_cost():
+    section_hdr("💰 Rates & Cost")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+
+    from modules.inputs.steps_6_7 import render_rate_card_source, render_delivery_location
+    render_rate_card_source()
+    df = st.session_state.get("rate_card_df")
+    if df is None:
+        callout("Load a rate card above to resolve InfraOps/CloudOps band rates and price the estimate.",
+                "warning")
+        return
+    render_delivery_location()
+    filtered = st.session_state.get("_filtered_rate_card")
+    if filtered is None or len(filtered) == 0:
+        callout("No rate-card grades for the selected delivery location.", "warning")
+        return
+
+    fx = _ensure_fx(filtered)
+    country = st.session_state.get("delivery_country")
+    location = st.session_state.get("delivery_location")
+
+    fam_grades, sdm_grade = _render_rate_matrix(filtered)
+    rbc = {fam: resolve_role_rates(df, fam_grades.get(fam, {}), country, location, fx) for fam in GENUS}
+    sdm_rate = resolve_role_rates(df, {"SDM": sdm_grade}, country, location, fx).get("SDM", 0.0)
+    st.session_state["ms_rates_by_category"] = rbc
+    st.session_state["ms_sdm_rate_inr"] = sdm_rate
+
+    # Resolved hourly rates (INR) read-back
+    rate_rows = ""
+    for fam in GENUS:
+        cells = "".join(f"<td class='r'>{_inr(rbc[fam].get(b, 0))}</td>" for b in BD_LEVELS)
+        rate_rows += f"<tr><td><strong>{fam}</strong></td>{cells}</tr>"
+    rate_rows += (f"<tr><td><strong>SDM</strong></td><td class='r' colspan='4'>{_inr(sdm_rate)} "
+                  f"<span style='color:#7A8A99'>(engagement)</span></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Family</th>
+        <th class="r">L1 /hr</th><th class="r">L2 /hr</th><th class="r">L3 /hr</th>
+        <th class="r">Architect /hr</th></tr></thead><tbody>{rate_rows}</tbody></table>""",
+        unsafe_allow_html=True)
+
+    st.session_state["target_margin_pct"] = st.number_input(
+        "Target margin %", min_value=0.0, max_value=99.0, step=1.0,
+        value=float(st.session_state.get("target_margin_pct", 20.0) or 0.0), key="ms_margin")
+
+    model = compute_multi_skill_model(_build_multi_state())
+    names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
+
+    # Per-skill monthly cost
+    st.divider()
+    section_hdr("📦 Cost by Skill (monthly)")
+    crows = ""
+    for sid, ps in model["per_skill"].items():
+        crows += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
+                  f"<td class='r'>{_inr(ps.get('cost', 0))}</td></tr>")
+    crows += (f"<tr class='total-row'><td><strong>Resource cost</strong></td><td></td>"
+              f"<td class='r'><strong>{_inr(model['total_resource_cost'])}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>
+        <th class="r">Monthly Cost (INR)</th></tr></thead><tbody>{crows}</tbody></table>""",
+        unsafe_allow_html=True)
+
+    # Engagement cost → price
+    cr, pr = model["cost_result"], model["price_result"]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Resource cost / mo", _inr(cr["resource_cost"]))
+    m2.metric("Delivery cost / mo", _inr(cr["total_delivery_cost"]))
+    m3.metric(f"Selling price / mo ({pr['margin_pct']:.0f}% margin)", _inr(pr["selling_price"]))
+    m4.metric("Gross profit / mo", _inr(pr["gross_profit"]))
+    st.caption("Cost = FTE × monthly hours × band rate (per skill's family), pooled where resource "
+               "sharing applies; SDM priced once. Selling price = delivery cost ÷ (1 − margin).")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -476,14 +626,16 @@ def _render_dashboard():
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
     page_header(0, "Multi-skill Estimate",
-                "Define skills, enter per-skill workload, and review effort & FTE per skill.")
+                "Define skills, enter per-skill workload, review effort & FTE, and price the estimate.")
     if st.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
         st.rerun()
-    t1, t2, t3 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE"])
+    t1, t2, t3, t4 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost"])
     with t1:
         _render_skill_setup()
     with t2:
         _render_workload()
     with t3:
         _render_dashboard()
+    with t4:
+        _render_rates_cost()
