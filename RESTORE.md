@@ -4,7 +4,15 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.50`** — *current stable.* **Multi-skill — Patching/Activities can use any role (L1/L2/L3/
+- **`v1.51`** — *current stable.* **Multi-skill — Excel export (Phase 2 deliverable).** New
+  `modules/outputs/multi_excel_export.py::generate_multi_excel_report(state=None)` builds an 8-sheet
+  workbook from the multi-skill engine (state-driven, so unit-testable; values written straight from
+  `compute_multi_skill_model`, so it equals the engine): **Executive Summary · Skills · Effort
+  Build-up · Team (FTE) · Rates · Optimization · Workload Detail · Inputs**. Reuses the single-mode
+  exporter's styling helpers. The multi app header gains **📊 Prepare Excel export → ⬇️ Download
+  .xlsx** (two-step so it only builds on demand). `_build_multi_state` now also carries delivery
+  country/location. 111 tests pass (3 new). Next: RFP narrative, then hide→A/B versions.
+- **`v1.50`** — **Multi-skill — Patching/Activities can use any role (L1/L2/L3/
   Architect).** The "Handled by" (patching) and Additional-Activities role columns now always offer
   the full **L1/L2/L3/Architect** set — non-ticket work can land on any role regardless of which
   levels handle the skill's tickets (patching defaults to L2 when present). Engine fix: a level is

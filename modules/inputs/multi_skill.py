@@ -331,6 +331,8 @@ def _build_multi_state() -> dict:
         "monthly_working_hours": float(ss.get("monthly_working_hours", 160.0) or 160.0),
         "productive_utilisation": float(ss.get("productive_utilisation", 75.0) or 75.0),
         "fte_basis": ss.get("fte_basis", "rounded"),
+        "delivery_country": ss.get("delivery_country", "India"),
+        "delivery_location": ss.get("delivery_location"),
         "custom_hours_per_day": ss.get("custom_hours_per_day", 8),
         "custom_days_per_week": ss.get("custom_days_per_week", 5),
         "additional_costs": [], "sla_provision_included": "No", "sla_provision_pct": 0.0,
@@ -912,9 +914,21 @@ def _render_optimize():
 def render_multi_skill_app():
     page_header(0, "Multi-skill Estimate",
                 "Define skills, enter per-skill workload, review effort & FTE, price it, and optimise the team.")
-    if st.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
+    hc1, hc2 = st.columns([1.4, 1.4])
+    if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
         st.rerun()
+    if st.session_state.get("skills"):
+        if hc2.button("📊 Prepare Excel export", key="ms_xlsx_prep", type="secondary"):
+            from modules.outputs.multi_excel_export import generate_multi_excel_report
+            with st.spinner("Building workbook…"):
+                st.session_state["_ms_xlsx"] = generate_multi_excel_report()
+        if st.session_state.get("_ms_xlsx"):
+            from datetime import date
+            hc2.download_button("⬇️ Download .xlsx", data=st.session_state["_ms_xlsx"],
+                                file_name=f"multi_skill_estimate_{date.today():%Y%m%d}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="ms_xlsx_dl")
     t1, t2, t3, t4, t5 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
                                   "4 · Rates & Cost", "5 · Optimize (AI)"])
     with t1:
