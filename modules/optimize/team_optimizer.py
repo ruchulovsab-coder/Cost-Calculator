@@ -1,0 +1,189 @@
+"""
+AI Team Optimizer — core (pure, deterministic; unit-tested).
+
+Given a multi-skill estimate, propose how to shrink the team by SHARING senior
+resources (Architect / L3, and L2 to a degree) across technically-adjacent skills,
+WITHOUT compromising coverage. The engine already knows how to pool — this module
+decides *what* to pool and quantifies the effect by re-running the engine:
+
+    AI/heuristics propose the sharing structure  →  engine computes the numbers.
+
+Rules (v1):
+  • Adjacency from config.SKILL_ADJACENCY_GROUPS (skill name → canonical token).
+  • Pool only within one genus family (InfraOps / CloudOps).
+  • Shareable levels: Architect, L3 (freely — no coverage multiplier), L2 (only when
+    it still saves; L2 carries a coverage multiplier so cross-window pooling rarely
+    helps). L1 is never pooled.
+  • Coverage of a pool = the widest window among its members (coverage never drops).
+  • Only suggest when it saves FTE AND the pooled resource's utilisation ≤ ceiling.
+
+The optional AI layer (ai_narrative) only *explains/prioritises* — it never changes
+the numbers, so results stay recalc-verifiable.
+"""
+from typing import Any, Dict, List, Optional
+
+from config.settings import (
+    SKILL_CANONICAL_KEYWORDS, SKILL_ADJACENCY_GROUPS, OPTIMIZER_UTIL_CEILING_PCT,
+    COVERAGE_MODELS,
+)
+from modules.calculations.engine import compute_multi_skill_model
+
+SHAREABLE_LEVELS = ("Architect", "L3", "L2")   # L1 never
+
+
+def canonical_skill(name: str) -> Optional[str]:
+    """Map a free-text skill name to a canonical token via keyword match (else None)."""
+    s = (name or "").lower()
+    for token, kws in SKILL_CANONICAL_KEYWORDS.items():
+        if token in s or any(kw in s for kw in kws):
+            return token
+    return None
+
+
+def _adjacent(a: str, b: str) -> bool:
+    ca, cb = canonical_skill(a), canonical_skill(b)
+    if not ca or not cb:
+        return False
+    if ca == cb:
+        return True
+    return any({ca, cb} <= grp for grp in SKILL_ADJACENCY_GROUPS)
+
+
+def _clusters(skill_ids: List[str], names: Dict[str, str]) -> List[List[str]]:
+    """Connected components of adjacent skills (only components of size ≥ 2)."""
+    parent = {sid: sid for sid in skill_ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(skill_ids):
+        for b in skill_ids[i + 1:]:
+            if _adjacent(names[a], names[b]):
+                parent[find(a)] = find(b)
+    groups: Dict[str, List[str]] = {}
+    for sid in skill_ids:
+        groups.setdefault(find(sid), []).append(sid)
+    return [g for g in groups.values() if len(g) >= 2]
+
+
+def _widest_coverage(models: List[str]) -> str:
+    """The coverage model with the most weekly hours (so a pool never under-covers)."""
+    best, best_h = "8×5", -1.0
+    for m in models:
+        h = (COVERAGE_MODELS.get(m, {}) or {}).get("weekly_hours") or 0
+        if h > best_h:
+            best, best_h = m, h
+    return best
+
+
+def _rationale(level, names, cov, fte_saved, cost_saved, key_person) -> str:
+    who = " + ".join(names)
+    core = (f"{who} are technically adjacent, so one {level} pool (covering {cov}) can serve "
+            f"all of them — saving {fte_saved:.1f} FTE"
+            + (f" (~₹{cost_saved:,.0f}/mo)" if cost_saved > 0 else "") + ".")
+    if key_person:
+        core += " ⚠ Single shared resource — watch key-person risk / leave cover."
+    return core
+
+
+def optimize_team(state: Dict[str, Any],
+                  ceiling_pct: float = OPTIMIZER_UTIL_CEILING_PCT,
+                  share_levels=SHAREABLE_LEVELS) -> Dict[str, Any]:
+    """Return {'baseline': model, 'suggestions': [...]} without applying anything.
+    Each suggestion is an independent, non-overlapping pooling opportunity."""
+    base_state = {**state, "resource_sharing": []}
+    baseline = compute_multi_skill_model(base_state)
+    skills = [s for s in (state.get("skills", []) or []) if s.get("visible", True)]
+    by_id = {s["id"]: s for s in skills}
+    names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
+
+    suggestions: List[Dict[str, Any]] = []
+    for level in share_levels:
+        eligible = [sid for sid, ps in baseline["per_skill"].items()
+                    if ps["role_hours"].get(level, 0.0) > 1e-9 and sid in by_id]
+        by_family: Dict[str, List[str]] = {}
+        for sid in eligible:
+            by_family.setdefault(by_id[sid].get("genus_category"), []).append(sid)
+        for fam, sids in by_family.items():
+            for cluster in _clusters(sids, names):
+                cov = _widest_coverage([by_id[s].get("coverage_model", "8×5") for s in cluster])
+                gid = f"opt_{level}_{'_'.join(cluster)}"
+                grp = {"id": gid, "level": level, "skill_ids": list(cluster),
+                       "genus_category": fam, "coverage_model": cov}
+                cand = compute_multi_skill_model({**state, "resource_sharing": [grp]})
+                fte_saved = baseline["total_fte"] - cand["total_fte"]
+                if fte_saved <= 1e-9:
+                    continue
+                pooled = next((r for r in cand["resources"] if r.get("key") == f"group:{gid}"), None)
+                if not pooled or pooled["final_fte"] <= 0:
+                    continue
+                fill = pooled["raw_fte"] / pooled["final_fte"] * 100.0
+                if fill > ceiling_pct + 1e-9:
+                    continue  # too loaded — would risk coverage/quality
+                cost_saved = baseline["total_resource_cost"] - cand["total_resource_cost"]
+                fte_before = sum(baseline["per_skill"][s]["breakdown"][level]["fte_staffed"]
+                                 for s in cluster)
+                key_person = pooled["final_fte"] < 1.0 and len(cluster) >= 2
+                suggestions.append({
+                    "id": gid, "level": level, "skill_ids": list(cluster),
+                    "skill_names": [names[s] for s in cluster], "genus": fam,
+                    "coverage_model": cov, "group": grp,
+                    "fte_before": fte_before, "fte_after": pooled["final_fte"],
+                    "fte_saved": fte_saved, "cost_saved": max(cost_saved, 0.0),
+                    "fill_pct": fill, "key_person_risk": bool(key_person),
+                    "rationale": _rationale(level, [names[s] for s in cluster], cov,
+                                            fte_saved, max(cost_saved, 0.0), key_person),
+                })
+    suggestions.sort(key=lambda x: (x["fte_saved"], x["cost_saved"]), reverse=True)
+    return {"baseline": baseline, "suggestions": suggestions}
+
+
+def apply_optimization(state: Dict[str, Any], groups: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Recompute the model with the chosen sharing groups applied."""
+    return compute_multi_skill_model({**state, "resource_sharing": list(groups or [])})
+
+
+# ── Optional AI narration (Groq) — explains/prioritises only, never changes maths ──
+def ai_available() -> bool:
+    try:
+        from modules.llm.chat_assist import llm_configured
+        return llm_configured()
+    except Exception:
+        return False
+
+
+def ai_narrative(skill_names: List[str], suggestions: List[Dict[str, Any]],
+                 totals: Dict[str, float]) -> Dict[str, str]:
+    """Ask Groq for a short executive summary of the optimization + any *advisory*
+    cross-skill ideas the deterministic map may have missed. Returns
+    {'summary': str} or {'error': str}. Never alters the computed suggestions."""
+    try:
+        from modules.llm.chat_assist import llm_configured, model_id
+        if not llm_configured():
+            return {"error": "AI narration isn't configured (GROQ_API_KEY not set)."}
+        import os
+        from groq import Groq
+        lines = "; ".join(
+            f"{'+'.join(s['skill_names'])} @ {s['level']} → save {s['fte_saved']:.1f} FTE"
+            for s in suggestions) or "no pooling opportunities found"
+        prompt = (
+            "You are an AMS staffing optimization advisor. Skills in this engagement: "
+            f"{', '.join(skill_names)}. A deterministic optimizer proposed these resource-sharing "
+            f"moves (Architect/L3/L2 pooled across adjacent skills): {lines}. Baseline team = "
+            f"{totals.get('fte_before', 0):.1f} FTE; optimized = {totals.get('fte_after', 0):.1f} FTE. "
+            "In 3-4 sentences, give an executive rationale a delivery lead can trust: why these "
+            "pairings make sense, the coverage/key-person caveat, and (advisory only) any adjacent "
+            "skills that could also share seniors. Be concrete and concise. Plain text, no markdown."
+        )
+        client = Groq(api_key=os.environ["GROQ_API_KEY"].strip())
+        resp = client.chat.completions.create(
+            model=model_id(),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3, max_tokens=400,
+        )
+        return {"summary": (resp.choices[0].message.content or "").strip()}
+    except Exception as e:
+        return {"error": f"AI request failed: {e}"}

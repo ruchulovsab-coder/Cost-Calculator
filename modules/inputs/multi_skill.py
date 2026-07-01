@@ -12,7 +12,8 @@ import uuid
 
 import streamlit as st
 
-from config.settings import COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY
+from config.settings import (COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELIGIBILITY,
+                             OPTIMIZER_UTIL_CEILING_PCT)
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
 from modules.calculations.engine import compute_multi_skill_model, resolve_role_rates
 from utils.formatters import fmt_hours
@@ -622,15 +623,127 @@ def _render_rates_cost():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab 5 — AI Team Optimizer (cross-skill resource sharing)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_optimize():
+    section_hdr("🤖 AI Team Optimizer")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    callout("Finds where <strong>technically-adjacent skills can share senior resources</strong> "
+            "(Architect / L3, and L2 to a degree) to shrink the team — <strong>without dropping "
+            "coverage</strong> (a shared pool always covers the widest window). The engine computes "
+            "every number; you approve each move.", "info")
+
+    from modules.optimize.team_optimizer import (optimize_team, apply_optimization,
+                                                 ai_available, ai_narrative)
+
+    c1, c2 = st.columns([1.2, 2])
+    ceiling = c1.number_input("Utilisation ceiling %", min_value=50.0, max_value=100.0, step=5.0,
+                              value=float(st.session_state.get("ms_opt_ceiling",
+                                                               OPTIMIZER_UTIL_CEILING_PCT) or 85.0),
+                              key="ms_opt_ceiling", help="Don't pool past this load — protects coverage")
+    levels = c2.multiselect("Levels to optimise", ["Architect", "L3", "L2"],
+                            default=st.session_state.get("ms_opt_levels", ["Architect", "L3"]),
+                            key="ms_opt_levels", help="L1 is never shared (front-line, per-skill)")
+
+    state = _build_multi_state()
+    res = optimize_team(state, ceiling_pct=ceiling, share_levels=tuple(levels) or ("Architect", "L3"))
+    baseline, suggestions = res["baseline"], res["suggestions"]
+
+    if not suggestions:
+        callout("No safe cross-skill pooling found for the current skills — either the skills aren't "
+                "adjacent, or there's no spare capacity to share without exceeding the ceiling.", "warning")
+        st.metric("Current team", f"{baseline['total_fte']:.1f} FTE")
+        return
+
+    st.markdown("#### Suggested resource sharing")
+    accepted_ids = st.session_state.get("ms_opt_accepted")
+    if accepted_ids is None:
+        accepted_ids = {s["id"] for s in suggestions}     # default: all accepted
+    accepted_groups = []
+    new_accepted = set()
+    for s in suggestions:
+        with st.container(border=True):
+            h1, h2 = st.columns([4, 1])
+            on = h2.checkbox("Apply", value=(s["id"] in accepted_ids), key=f"ms_optchk_{s['id']}")
+            if on:
+                new_accepted.add(s["id"]); accepted_groups.append(s["group"])
+            risk = (" · <span style='color:#B8860B'>⚠ key-person risk</span>"
+                    if s["key_person_risk"] else "")
+            h1.markdown(f"**{' + '.join(s['skill_names'])}** → share **{s['level']}** "
+                        f"<span style='color:#7A8A99'>({s['coverage_model']}, {s['fill_pct']:.0f}% "
+                        f"utilised){risk}</span>", unsafe_allow_html=True)
+            h1.caption(s["rationale"])
+            mc = st.columns(3)
+            mc[0].metric("FTE saved", f"{s['fte_saved']:.1f}")
+            mc[1].metric("Cost saved / mo", _inr(s["cost_saved"]) if s["cost_saved"] > 0 else "—")
+            mc[2].metric("Pool size", f"{s['fte_after']:.1f} FTE",
+                         help=f"{s['fte_before']:.1f} FTE dedicated → {s['fte_after']:.1f} shared")
+    st.session_state["ms_opt_accepted"] = new_accepted
+
+    optimized = apply_optimization(state, accepted_groups)
+    fte_b, fte_a = baseline["total_fte"], optimized["total_fte"]
+    cost_b, cost_a = baseline["total_resource_cost"], optimized["total_resource_cost"]
+    price_b = baseline["price_result"]["selling_price"]
+    price_a = optimized["price_result"]["selling_price"]
+    saved_pct = ((fte_b - fte_a) / fte_b * 100.0) if fte_b > 1e-9 else 0.0
+
+    st.divider()
+    section_hdr("📉 Before vs After")
+    rows = (
+        f"<tr><td>Total FTE</td><td class='r'>{fte_b:.1f}</td><td class='r'><strong>{fte_a:.1f}</strong></td>"
+        f"<td class='r' style='color:#1A7F37'>−{fte_b - fte_a:.1f} ({saved_pct:.0f}%)</td></tr>"
+        f"<tr><td>Resource cost / mo</td><td class='r'>{_inr(cost_b)}</td><td class='r'><strong>{_inr(cost_a)}</strong></td>"
+        f"<td class='r' style='color:#1A7F37'>−{_inr(cost_b - cost_a)}</td></tr>"
+        f"<tr><td>Selling price / mo</td><td class='r'>{_inr(price_b)}</td><td class='r'><strong>{_inr(price_a)}</strong></td>"
+        f"<td class='r' style='color:#1A7F37'>−{_inr(price_b - price_a)}</td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Metric</th><th class="r">Siloed</th>
+        <th class="r">Optimised</th><th class="r">Saving</th></tr></thead><tbody>{rows}</tbody></table>""",
+        unsafe_allow_html=True)
+
+    a1, a2 = st.columns([1, 1])
+    if a1.button("✅ Apply sharing to the estimate", key="ms_opt_apply", type="primary",
+                 disabled=not accepted_groups):
+        st.session_state["resource_sharing"] = accepted_groups
+        st.success(f"Applied {len(accepted_groups)} sharing group(s) — the Effort & Cost tabs now "
+                   "reflect the optimised team.")
+    if a2.button("↩ Clear applied sharing", key="ms_opt_clear",
+                 disabled=not st.session_state.get("resource_sharing")):
+        st.session_state["resource_sharing"] = []
+        st.info("Cleared — back to the siloed team.")
+    st.caption("Applying writes the pools into the engagement so Effort & Cost reflect them. The "
+               "per-skill FTE build-up on the Effort tab stays standalone (shows each skill before "
+               "pooling); the engagement totals here are the pooled figures.")
+
+    if ai_available():
+        if st.button("✨ Explain with AI", key="ms_opt_ai"):
+            with st.spinner("Asking the AI advisor…"):
+                out = ai_narrative([s.get("name") or s["id"] for s in skills], suggestions,
+                                   {"fte_before": fte_b, "fte_after": fte_a})
+            if out.get("summary"):
+                st.session_state["ms_opt_ai_text"] = out["summary"]
+            else:
+                st.warning(out.get("error", "AI narration unavailable."))
+        if st.session_state.get("ms_opt_ai_text"):
+            callout(st.session_state["ms_opt_ai_text"], "info")
+    else:
+        st.caption("💡 Set GROQ_API_KEY to enable an AI-written executive rationale for these moves.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
     page_header(0, "Multi-skill Estimate",
-                "Define skills, enter per-skill workload, review effort & FTE, and price the estimate.")
+                "Define skills, enter per-skill workload, review effort & FTE, price it, and optimise the team.")
     if st.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
         st.rerun()
-    t1, t2, t3, t4 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost"])
+    t1, t2, t3, t4, t5 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
+                                  "4 · Rates & Cost", "5 · Optimize (AI)"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -639,3 +752,5 @@ def render_multi_skill_app():
         _render_dashboard()
     with t4:
         _render_rates_cost()
+    with t5:
+        _render_optimize()

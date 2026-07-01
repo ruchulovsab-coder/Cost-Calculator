@@ -60,6 +60,35 @@ GRADE_ELIGIBILITY = {
     "SDM":       ["4.1-DELIVERY-ITIL"],
 }
 
+# ── Skill adjacency (AI Team Optimizer) ───────────────────────────────────────
+# Which senior resources can be shared across technically-adjacent skills. A skill's
+# free-text name is matched to a canonical token by keyword; tokens in the same
+# adjacency set can pool Architect / L3 (and, within one coverage window, L2). L1 is
+# never pooled. Editable centrally — extend as new skills appear.
+SKILL_CANONICAL_KEYWORDS = {
+    "cloud":      ["cloud", "aws", "azure", "gcp"],
+    "devops":     ["devops", "sre", "ci/cd", "cicd", "pipeline", "platform"],
+    "vmware":     ["vmware", "virtual", "vsphere", "esxi", "hypervisor"],
+    "windows":    ["windows", "wintel", "active directory", "m365"],
+    "linux":      ["linux", "unix", "rhel", "ubuntu", "centos"],
+    "network":    ["network", "cisco", "routing", "lan", "wan", "sd-wan"],
+    "security":   ["security", "infosec", "soc", "firewall", "siem"],
+    "monitoring": ["monitor", "noc", "observability"],
+    "database":   ["database", "dba", "sql", "oracle", "postgres"],
+    "storage":    ["storage", "backup", "san", "nas"],
+}
+# Sets of canonical tokens whose resources are cross-utilizable (seeded from the
+# stated overlaps; the AI layer may narrate/extend these as advisory only).
+SKILL_ADJACENCY_GROUPS = [
+    {"cloud", "devops"},
+    {"vmware", "windows"},
+    {"network", "security"},
+    {"storage", "database"},
+]
+# Combined utilisation ceiling for a pooled resource — above this we don't pool
+# (protects coverage/quality: no over-loading a shared person).
+OPTIMIZER_UTIL_CEILING_PCT = 85.0
+
 # ── Coverage models ───────────────────────────────────────────────────────────
 COVERAGE_MODELS = {
     "8×5":   {"hours_per_day": 8,  "days_per_week": 5, "weekly_hours": 40,  "multiplier": 1.00},

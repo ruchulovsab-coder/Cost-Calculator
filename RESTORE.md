@@ -4,7 +4,21 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.43`** — *current stable.* **⚠️ TEMPORARY demo-seed — realistic low volumes.** Reduced the
+- **`v1.44`** — *current stable.* **AI Team Optimizer (v1 core).** New multi-skill tab **5 ·
+  Optimize (AI)** that recommends sharing senior resources across **technically-adjacent skills**
+  (Architect / L3 freely, L2 to a degree; **L1 never**) to shrink the team **without dropping
+  coverage** (a pool always covers the widest window). Deterministic core in
+  `modules/optimize/team_optimizer.py`: a skill-adjacency map (`config.SKILL_ADJACENCY_GROUPS`,
+  matched from skill names) + genus-family scoping + a **utilisation ceiling** (default 85%) find
+  poolable clusters; the **engine recomputes** every number (AI proposes structure, engine owns the
+  maths → recalc-verifiable). Each suggestion shows **FTE saved · cost saved · pool utilisation ·
+  key-person risk** with per-move **accept/reject**, a **Before vs After** panel (FTE/cost/price),
+  and an **Apply to estimate** button (writes `resource_sharing`; reversible). Optional **Groq**
+  narration ("✨ Explain with AI") — advisory only, graceful when `GROQ_API_KEY` is unset. Engine
+  unchanged (reuses existing `resource_sharing` pooling). 104 tests pass (4 new). Remaining phases:
+  optimisation dial (Conservative/Balanced/Aggressive), min-per-shift for 24×7, context-switch
+  penalty, cross-family sharing, RFP narrative.
+- **`v1.43`** — **⚠️ TEMPORARY demo-seed — realistic low volumes.** Reduced the
   seeded ticket counts across all skills per requested caps: **service requests < 20, incidents
   6–9, change requests 5–7** (Monitoring stays alerts-only, 100). Cloud Ops 18/8/6, DevOps
   15(SR)/9(inc)/7(chg), Linux 12/6/5. Gated by `DEMO_SEED_DATA`; **revert before production**.
