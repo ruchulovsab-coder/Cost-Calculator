@@ -4,7 +4,18 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.40`** — *current stable.* **Multi-skill — Phase 3: InfraOps/CloudOps rate families →
+- **`v1.41`** — *current stable.* **⚠️ TEMPORARY testing aid — sample-data seeding.** On startup,
+  `modules/demo_seed.py::seed_demo_data()` (gated by `config.settings.DEMO_SEED_DATA`) pre-fills a
+  representative **multi-skill AMS scenario** into **empty** session fields so testers skip manual
+  entry after each deploy: 4 skills — **Monitoring** (InfraOps, L1, 24×7), **Cloud Operations**
+  (CloudOps, L2/L3, 16×5, 25% architect), **DevOps** (CloudOps, L2/L3, 24×7, 25% arch), **Linux
+  Administration** (InfraOps, L2/L3, 24×7, 25% arch) — each with realistic workload (level splits
+  sum to 100%), plus `delivery_location="Noida"`. Seeds empty fields only (never overwrites user
+  input), once per session, and does **not** change the estimation mode (user still picks
+  Single/Multi). **MUST BE REVERTED BEFORE PRODUCTION** — set `DEMO_SEED_DATA = False`, or delete
+  the flag + `modules/demo_seed.py` + the call in `main.py`. No behaviour change to the engine or
+  single/Chat modes. 100 tests pass.
+- **`v1.40`** — **Multi-skill — Phase 3: InfraOps/CloudOps rate families →
   cost & price.** New **4 · Rates & Cost** tab: loads the rate card (reusing the Step-1/7 loader +
   delivery-location selector + FX), then a **family × band genus-grade mapping** matrix
   (InfraOps/CloudOps × L1/L2/L3/Architect, + one engagement **SDM** grade). Each cell resolves to

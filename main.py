@@ -98,6 +98,12 @@ if os.path.exists(_sb_bg):
 from modules.state.session_manager import init_session_state
 init_session_state()
 
+# TEMPORARY (TODO: remove before production) — pre-fill a representative multi-skill
+# AMS scenario into empty fields for testing. Gated by config.settings.DEMO_SEED_DATA.
+# See modules/demo_seed.py + the "demo-seed-temporary" memory note.
+from modules.demo_seed import seed_demo_data
+seed_demo_data()
+
 
 # ── Deep link: approval review  (?p=<slug>&v=<version>&t=<token>) ────────────────
 def _maybe_load_review():

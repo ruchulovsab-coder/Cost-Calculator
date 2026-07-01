@@ -4,6 +4,16 @@ Add new roles, grades, coverage models, currencies, or workload defaults here.
 No code changes needed anywhere else.
 """
 
+# ── TEMPORARY: sample-data seeding for testing ────────────────────────────────
+# TODO(REMOVE BEFORE PRODUCTION RELEASE): when True, modules/demo_seed.py pre-fills
+# a representative multi-skill AMS scenario into empty session fields so testers
+# don't re-enter data after every deployment. Seeds empty fields only (never
+# overwrites user input) and does not change the estimation mode.
+#   Quick disable : set DEMO_SEED_DATA = False
+#   Full revert   : delete this flag + modules/demo_seed.py + the call in main.py
+# Tracked in the "demo-seed-temporary" memory note.
+DEMO_SEED_DATA = True
+
 # ── Branding ──────────────────────────────────────────────────────────────────
 APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Tool"
 APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
