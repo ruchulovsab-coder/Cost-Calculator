@@ -84,6 +84,7 @@ SKILL_ADJACENCY_GROUPS = [
     {"vmware", "windows"},
     {"network", "security"},
     {"storage", "database"},
+    {"devops", "linux"},   # real overlap; also bridges CloudOps↔InfraOps for cross-family pooling
 ]
 # Combined utilisation ceiling for a pooled resource — above this we don't pool
 # (protects coverage/quality: no over-loading a shared person).

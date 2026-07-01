@@ -360,49 +360,51 @@ def _render_overall_comparison(model):
               help="Total uplift from raw effort to final")
 
 
-def _fte_matrix(model, names, stage_key, staffed=False):
-    """One FTE matrix (rows = skills, cols = L1/L2/L3/Architect + Total). `stage_key` is a
-    breakdown key: 'fte_raw' (exact) or 'fte_staffed'/'fte_final' (final). Returns (html, col_totals, grand)."""
+def _fte_matrix(model, names, kind):
+    """One FTE matrix (rows = skills, cols = L1/L2/L3/Architect + Total). `kind`:
+      'raw'   → exact pre-pool requirement (breakdown fte_raw);
+      'final' → delivered team, pooled-aware (per_skill fte_by_level, hours-share of pools).
+    Returns (rows_html, col_totals, grand)."""
     rows = ""
     col_tot = {lvl: 0.0 for lvl in BD_LEVELS}
     grand = 0.0
     for sid, ps in model["per_skill"].items():
-        bd = ps["breakdown"]
         cells = ""
         row_tot = 0.0
         for lvl in BD_LEVELS:
-            v = bd[lvl][stage_key]
+            v = ps["breakdown"][lvl]["fte_raw"] if kind == "raw" else ps["fte_by_level"][lvl]
             col_tot[lvl] += v
             row_tot += v
-            cells += f"<td class='r'>{v:.2f}</td>" if not staffed else f"<td class='r'>{v:.1f}</td>"
+            cells += f"<td class='r'>{v:.2f}</td>"
         grand += row_tot
-        rt = f"{row_tot:.2f}" if not staffed else f"{row_tot:.1f}"
-        rows += f"<tr><td>{names.get(sid, sid)}</td>{cells}<td class='r'><strong>{rt}</strong></td></tr>"
+        rows += f"<tr><td>{names.get(sid, sid)}</td>{cells}<td class='r'><strong>{row_tot:.2f}</strong></td></tr>"
     return rows, col_tot, grand
 
 
 def _render_team_summary(model, names):
     """Raw vs Final FTE by skill × level, with SDM and grand totals (§6)."""
     section_hdr("👥 Overall Team Summary")
-    st.caption("Team composition before and after adjustments. **Raw FTE** is exact "
-               "(hours ÷ productive × coverage). **Final FTE** is the staffed headcount — each cell "
-               "rounded up to the nearest 0.5 (min 0.5). SDM is one engagement resource.")
+    st.caption("Team composition before vs after adjustments. **Raw FTE** = exact pre-pooling "
+               "requirement (hours ÷ productive × coverage). **Final FTE** = the delivered team "
+               "(buffered + contingency, and **pooled** where resource sharing is applied), "
+               "attributed to each skill by its hours-share — cells are fractional; the **grand "
+               "total is the real headcount and equals the engagement Total FTE**. SDM is one "
+               "engagement resource.")
 
     sdm = next((r for r in model["resources"] if r["level"] == "SDM"), None)
     sdm_raw = float(sdm["raw_fte"]) if sdm else 0.0
-    sdm_final = float(sdm["final_fte"]) if sdm else 0.0
+    sdm_final = float(sdm["fte"]) if sdm else 0.0
 
-    def _table(title, stage_key, staffed):
-        rows, col_tot, grand = _fte_matrix(model, names, stage_key, staffed=staffed)
-        fmt = (lambda v: f"{v:.1f}") if staffed else (lambda v: f"{v:.2f}")
-        gtot = grand + (sdm_final if staffed else sdm_raw)
-        if sdm and (sdm_raw > 0 or sdm_final > 0):
+    def _table(title, kind, sdm_val):
+        rows, col_tot, grand = _fte_matrix(model, names, kind)
+        gtot = grand + sdm_val
+        if sdm and sdm_val > 0:
             rows += (f"<tr><td>SDM <span style='color:#7A8A99'>(engagement)</span></td>"
                      f"<td class='r'>—</td><td class='r'>—</td><td class='r'>—</td><td class='r'>—</td>"
-                     f"<td class='r'><strong>{fmt(sdm_final if staffed else sdm_raw)}</strong></td></tr>")
-        tcells = "".join(f"<td class='r'><strong>{fmt(col_tot[lvl])}</strong></td>" for lvl in BD_LEVELS)
+                     f"<td class='r'><strong>{sdm_val:.2f}</strong></td></tr>")
+        tcells = "".join(f"<td class='r'><strong>{col_tot[lvl]:.2f}</strong></td>" for lvl in BD_LEVELS)
         rows += (f"<tr class='total-row'><td><strong>Grand total</strong></td>{tcells}"
-                 f"<td class='r'><strong>{fmt(gtot)}</strong></td></tr>")
+                 f"<td class='r'><strong>{gtot:.2f}</strong></td></tr>")
         st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .2rem'>{title}</div>",
                     unsafe_allow_html=True)
         st.markdown(
@@ -412,15 +414,13 @@ def _render_team_summary(model, names):
             unsafe_allow_html=True)
         return gtot
 
-    raw_grand = _table("Raw FTE (exact)", "fte_raw", staffed=False)
-    fin_grand = _table("Final FTE (staffed headcount)", "fte_staffed", staffed=True)
-    fin_exact = sum(ps["breakdown"][lvl]["fte_final"] for ps in model["per_skill"].values()
-                    for lvl in BD_LEVELS) + sdm_raw  # sdm has no buffer stage → same as raw
+    raw_grand = _table("Raw FTE (exact, pre-pooling)", "raw", sdm_raw)
+    fin_grand = _table("Final FTE (delivered team, pooled-aware)", "final", sdm_final)
 
-    g1, g2, g3 = st.columns(3)
+    g1, g2 = st.columns(2)
     g1.metric("Total Raw FTE", f"{raw_grand:.2f}")
-    g2.metric("Total Final FTE (exact)", f"{fin_exact:.2f}")
-    g3.metric("Total Final FTE (headcount)", f"{fin_grand:.1f}")
+    g2.metric("Total Final FTE (headcount)", f"{fin_grand:.1f}",
+              help="Equals the engagement Total FTE (pooling applied where configured)")
 
 
 def _render_dashboard():
@@ -654,6 +654,11 @@ def _render_optimize():
                             default=st.session_state.get("ms_opt_levels", ["Architect", "L3"]),
                             key="ms_opt_levels", help="L1 is never shared (front-line, per-skill)")
     ceiling = OBJECTIVES[obj]
+    cross_family = st.checkbox(
+        "Allow cross-family sharing — a senior Architect/L3 spanning InfraOps ↔ CloudOps",
+        value=bool(st.session_state.get("ms_opt_crossfam", False)), key="ms_opt_crossfam",
+        help="Off by default: pools stay within one rate family. On: adjacent skills can share a "
+             "senior across families (priced at the higher family's rate). L2 always stays in-family.")
     context = st.text_input(
         "Constraints for the AI (optional)", value=st.session_state.get("ms_opt_context", ""),
         key="ms_opt_context",
@@ -676,7 +681,8 @@ def _render_optimize():
     state = _build_multi_state()
     sel_levels = tuple(levels) or ("Architect", "L3")
     with st.spinner("Analysing sharing opportunities…"):
-        res = optimize_team(state, ceiling_pct=ceiling, share_levels=sel_levels)
+        res = optimize_team(state, ceiling_pct=ceiling, share_levels=sel_levels,
+                            cross_family=cross_family)
     baseline, suggestions, notes = res["baseline"], res["suggestions"], res["level_notes"]
 
     # Per-level analysis — never sit silent (esp. when a level like L2 yields nothing).
@@ -714,9 +720,11 @@ def _render_optimize():
                 new_accepted.add(s["id"]); accepted_groups.append(s["group"])
             risk = (" · <span style='color:#B8860B'>⚠ key-person risk</span>"
                     if s["key_person_risk"] else "")
+            xf = (" · <span style='color:#1A5F6A;font-weight:600'>cross-family</span>"
+                  if s.get("cross_family") else "")
             h1.markdown(f"**{' + '.join(s['skill_names'])}** → share **{s['level']}** "
                         f"<span style='color:#7A8A99'>({s['coverage_model']}, {s['fill_pct']:.0f}% "
-                        f"utilised){risk}</span>", unsafe_allow_html=True)
+                        f"utilised){risk}{xf}</span>", unsafe_allow_html=True)
             h1.caption(s["rationale"])
             mc = st.columns(3)
             mc[0].metric("FTE saved", f"{s['fte_saved']:.1f}")

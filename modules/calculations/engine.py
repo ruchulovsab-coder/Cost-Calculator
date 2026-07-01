@@ -990,13 +990,20 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
         res_out.append({**r, "raw_fte": raw, "final_fte": final, "fte": fte,
                         "rate_inr": rate, "cost": cost})
 
-    # 4. Attribute pooled cost back to skills (proportional by hours) for per-skill visibility
+    # 4. Attribute pooled cost AND FTE back to skills (proportional by hours) for per-skill
+    #    visibility. fte_by_level is pooled-aware — for a shared resource each skill gets its
+    #    hours-share of the (rounded) pool FTE, so summing per_skill fte_by_level across skills
+    #    (+ SDM) reconciles exactly to total_fte even when resource sharing is applied.
     for sid in per_skill:
         per_skill[sid]["cost"] = 0.0
+        per_skill[sid]["fte_by_level"] = {lvl: 0.0 for lvl in _MS_LEVELS}
     for r in res_out:
         th = sum(h for _, h in r["skills"])
         for sid, h in r["skills"]:
-            per_skill[sid]["cost"] += r["cost"] * (h / th if th > 0 else 0.0)
+            share = (h / th) if th > 0 else 0.0
+            per_skill[sid]["cost"] += r["cost"] * share
+            if r["level"] in per_skill[sid]["fte_by_level"]:
+                per_skill[sid]["fte_by_level"][r["level"]] += r["fte"] * share
 
     # 5. Engagement costing → price
     additional = sum(c.get("cost", 0.0) for c in (g("additional_costs", []) or []))

@@ -4,7 +4,17 @@ This repository is tagged at each stable release. A git tag is an immutable poin
 to that exact snapshot, so you can always return to it no matter what changes later.
 
 ## Stable versions (latest first)
-- **`v1.46`** — *current stable.* **AI Team Optimizer — min-per-shift + context-switch penalty.**
+- **`v1.47`** — *current stable.* **AI Team Optimizer — cross-family sharing + FTE reconciliation.**
+  (1) **Cross-family sharing** (opt-in checkbox, default off): Architect/L3 may pool across rate
+  families (InfraOps ↔ CloudOps) for adjacent skills, priced at the higher family's band; L2 always
+  stays in-family. Added a `devops↔linux` adjacency (real overlap; bridges the families). Suggestions
+  carry a **cross-family** badge. (2) **FTE reconciliation**: the engine now attributes pooled FTE
+  back to each skill by hours-share (`per_skill[sid]["fte_by_level"]`), so the **Overall Team
+  Summary's Final matrix is pooled-aware and its grand total equals the engagement Total FTE even
+  when sharing is applied** (removes the earlier "standalone" caveat). Engine defaults unchanged
+  (no-op without sharing). 108 tests pass (2 new). Optimizer core complete; remaining: RFP narrative
+  + multi Excel export.
+- **`v1.46`** — **AI Team Optimizer — min-per-shift + context-switch penalty.**
   Two engine realism knobs (both default no-op, so existing numbers/tests are unchanged), set on the
   Optimize tab's *Realism assumptions* expander and applied engagement-wide via `_build_multi_state`:
   (1) **`context_switch_pct`** — a shared resource spanning >1 skill costs `×(1+pct·(n−1))` effort,

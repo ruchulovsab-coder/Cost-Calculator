@@ -50,6 +50,37 @@ def test_adjacent_skills_pool_and_save():
     assert applied["total_fte"] < res["baseline"]["total_fte"]
 
 
+def test_cross_family_pools_only_when_enabled():
+    # DevOps (CloudOps) + Linux (InfraOps) are adjacent (devops↔linux) but different families.
+    skills = [
+        _skill("s1", "DevOps", "CloudOps", ["L2", "L3"], "24×7", 25, 10),
+        _skill("s2", "Linux Administration", "InfraOps", ["L2", "L3"], "24×7", 25, 10),
+    ]
+    within = optimize_team(_state(skills), cross_family=False)
+    assert within["suggestions"] == []                      # different families → no pooling
+    cross = optimize_team(_state(skills), cross_family=True)
+    assert any(s["cross_family"] for s in cross["suggestions"])
+    assert all(s["level"] in ("Architect", "L3") for s in cross["suggestions"])  # L2 stays in-family
+
+
+def test_fte_by_level_reconciles_to_total_fte():
+    from modules.calculations.engine import compute_multi_skill_model
+    skills = [
+        _skill("s1", "Cloud Operations", "CloudOps", ["L2", "L3"], "24×7", 25, 10),
+        _skill("s2", "DevOps", "CloudOps", ["L2", "L3"], "24×7", 25, 10),
+    ]
+    st = _state(skills)
+    st["resource_sharing"] = [
+        {"id": "g1", "level": "L3", "skill_ids": ["s1", "s2"],
+         "genus_category": "CloudOps", "coverage_model": "24×7"}]
+    m = compute_multi_skill_model(st)
+    sdm = next((r for r in m["resources"] if r["level"] == "SDM"), None)
+    sdm_fte = sdm["fte"] if sdm else 0.0
+    grand = sum(ps["fte_by_level"][lvl] for ps in m["per_skill"].values()
+                for lvl in ("L1", "L2", "L3", "Architect")) + sdm_fte
+    assert grand == pytest.approx(m["total_fte"], rel=1e-9)
+
+
 def test_non_adjacent_skills_not_pooled():
     # Linux (InfraOps) and Cloud (CloudOps) are neither adjacent nor same family.
     skills = [

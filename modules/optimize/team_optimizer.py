@@ -79,9 +79,27 @@ def _widest_coverage(models: List[str]) -> str:
     return best
 
 
-def _rationale(level, names, cov, fte_saved, cost_saved, key_person) -> str:
+def _pool_family(cluster, level, by_id, rates_by_cat) -> str:
+    """Rate family for a (possibly cross-family) pool: the members' family if uniform,
+    else the family with the higher band rate at this level (conservative costing)."""
+    fams = {by_id[s].get("genus_category") for s in cluster}
+    if len(fams) == 1:
+        return next(iter(fams))
+    best, best_rate = None, -1.0
+    for f in fams:
+        rate = float((rates_by_cat.get(f, {}) or {}).get(level, 0) or 0)
+        if rate > best_rate:
+            best, best_rate = f, rate
+    if best is not None and best_rate > 0:
+        return best
+    from collections import Counter
+    return Counter(by_id[s].get("genus_category") for s in cluster).most_common(1)[0][0]
+
+
+def _rationale(level, names, cov, fte_saved, cost_saved, key_person, cross_family=False) -> str:
     who = " + ".join(names)
-    core = (f"{who} are technically adjacent, so one {level} pool (covering {cov}) can serve "
+    bridge = " (a senior spanning both rate families)" if cross_family else ""
+    core = (f"{who} are technically adjacent, so one {level} pool{bridge} (covering {cov}) can serve "
             f"all of them — saving {fte_saved:.1f} FTE"
             + (f" (~₹{cost_saved:,.0f}/mo)" if cost_saved > 0 else "") + ".")
     if key_person:
@@ -91,11 +109,15 @@ def _rationale(level, names, cov, fte_saved, cost_saved, key_person) -> str:
 
 def optimize_team(state: Dict[str, Any],
                   ceiling_pct: float = OPTIMIZER_UTIL_CEILING_PCT,
-                  share_levels=SHAREABLE_LEVELS) -> Dict[str, Any]:
-    """Return {'baseline': model, 'suggestions': [...]} without applying anything.
-    Each suggestion is an independent, non-overlapping pooling opportunity."""
+                  share_levels=SHAREABLE_LEVELS,
+                  cross_family: bool = False) -> Dict[str, Any]:
+    """Return {'baseline': model, 'suggestions': [...], 'level_notes': {...}} without applying.
+    Each suggestion is an independent, non-overlapping pooling opportunity. When cross_family
+    is True, Architect/L3 may pool across rate families (InfraOps ↔ CloudOps) — the pool is
+    priced at the higher-rate family; L2 always stays within one family (shift/coverage work)."""
     base_state = {**state, "resource_sharing": []}
     baseline = compute_multi_skill_model(base_state)
+    rates_by_cat = state.get("rates_by_category", {}) or {}
     skills = [s for s in (state.get("skills", []) or []) if s.get("visible", True)]
     by_id = {s["id"]: s for s in skills}
     names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
@@ -105,17 +127,23 @@ def optimize_team(state: Dict[str, Any],
     for level in share_levels:
         eligible = [sid for sid, ps in baseline["per_skill"].items()
                     if ps["role_hours"].get(level, 0.0) > 1e-9 and sid in by_id]
-        by_family: Dict[str, List[str]] = {}
-        for sid in eligible:
-            by_family.setdefault(by_id[sid].get("genus_category"), []).append(sid)
+        cross_ok = cross_family and level in ("Architect", "L3")
+        if cross_ok:
+            partitions = {"*": eligible}                     # one bucket, families ignored
+        else:
+            partitions = {}
+            for sid in eligible:
+                partitions.setdefault(by_id[sid].get("genus_category"), []).append(sid)
         clusters_found = suggested = rejected_ceiling = rejected_nosave = 0
-        for fam, sids in by_family.items():
+        for _key, sids in partitions.items():
             for cluster in _clusters(sids, names):
                 clusters_found += 1
+                pool_fam = _pool_family(cluster, level, by_id, rates_by_cat)
+                is_cross = len({by_id[s].get("genus_category") for s in cluster}) > 1
                 cov = _widest_coverage([by_id[s].get("coverage_model", "8×5") for s in cluster])
                 gid = f"opt_{level}_{'_'.join(cluster)}"
                 grp = {"id": gid, "level": level, "skill_ids": list(cluster),
-                       "genus_category": fam, "coverage_model": cov}
+                       "genus_category": pool_fam, "coverage_model": cov}
                 cand = compute_multi_skill_model({**state, "resource_sharing": [grp]})
                 fte_saved = baseline["total_fte"] - cand["total_fte"]
                 pooled = next((r for r in cand["resources"] if r.get("key") == f"group:{gid}"), None)
@@ -133,13 +161,13 @@ def optimize_team(state: Dict[str, Any],
                 key_person = pooled["final_fte"] < 1.0 and len(cluster) >= 2
                 suggestions.append({
                     "id": gid, "level": level, "skill_ids": list(cluster),
-                    "skill_names": [names[s] for s in cluster], "genus": fam,
-                    "coverage_model": cov, "group": grp,
+                    "skill_names": [names[s] for s in cluster], "genus": pool_fam,
+                    "coverage_model": cov, "group": grp, "cross_family": is_cross,
                     "fte_before": fte_before, "fte_after": pooled["final_fte"],
                     "fte_saved": fte_saved, "cost_saved": max(cost_saved, 0.0),
                     "fill_pct": fill, "key_person_risk": bool(key_person),
                     "rationale": _rationale(level, [names[s] for s in cluster], cov,
-                                            fte_saved, max(cost_saved, 0.0), key_person),
+                                            fte_saved, max(cost_saved, 0.0), key_person, is_cross),
                 })
         level_notes[level] = {"eligible": len(eligible), "clusters": clusters_found,
                               "suggested": suggested, "rejected_ceiling": rejected_ceiling,
