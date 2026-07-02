@@ -269,6 +269,29 @@ def _inputs(wb, state):
         _drow(ws, i, [k, v, u], fmts=[None, fmt.get(u), None])
 
 
+def _raw_vs_rounded(wb, state):
+    ws = wb.create_sheet("Raw vs Rounded")
+    _title(ws, "Raw vs Rounded — two estimate versions")
+    raw = compute_multi_skill_model({**state, "fte_basis": "raw"})
+    rnd = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    chosen = "Raw" if state.get("fte_basis") == "raw" else "Rounded"
+    ws.cell(4, 1, f"Reported / priced basis: {chosen}.  Raw = exact fractional demand (theoretical "
+                  "minimum; assumes perfect pooling).  Rounded = delivered team (each skill × level "
+                  "rounded up to 0.5, minimum 0.5).")
+    _hrow(ws, 6, ["Metric", "Raw (theoretical)", "Rounded (delivered)", "Δ (Rounded − Raw)"],
+          [30, 20, 20, 20])
+    cr_r, cr_f, pr_r, pr_f = raw["cost_result"], rnd["cost_result"], raw["price_result"], rnd["price_result"]
+    rows = [
+        ("Total FTE", raw["total_fte"], rnd["total_fte"], F_RAW),
+        ("Resource cost / mo", raw["total_resource_cost"], rnd["total_resource_cost"], F_INR),
+        ("Delivery cost / mo", cr_r["total_delivery_cost"], cr_f["total_delivery_cost"], F_INR),
+        ("Selling price / mo", pr_r["selling_price"], pr_f["selling_price"], F_INR),
+        ("Gross profit / mo", pr_r["gross_profit"], pr_f["gross_profit"], F_INR),
+    ]
+    for i, (m, rv, fv, f) in enumerate(rows, 7):
+        _drow(ws, i, [m, rv, fv, fv - rv], fmts=[None, f, f, f])
+
+
 def generate_multi_excel_report(state=None) -> bytes:
     """Build the multi-skill workbook and return .xlsx bytes. `state` defaults to the
     live `build_multi_model_state()`; pass a dict to render without the UI (tests)."""
@@ -291,6 +314,7 @@ def generate_multi_excel_report(state=None) -> bytes:
     _buildup(wb, model, names)
     _team(wb, model, names)
     _rates(wb, state)
+    _raw_vs_rounded(wb, state)
     _optimization(wb, baseline, model, opt, names)
     _workload(wb, state, names)
     _inputs(wb, state)
