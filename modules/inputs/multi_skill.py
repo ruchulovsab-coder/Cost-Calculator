@@ -121,6 +121,11 @@ def _render_skill_setup():
                 "Arch %", min_value=0.0, max_value=50.0, step=0.5,
                 value=float(sk.get("architect_pct", 5.0) or 0.0), key=f"ms_archpct_{sid}",
                 disabled=not sk.get("has_architect"))
+            # Deterministic architect recommendation from the skill's archetype (advisory).
+            from modules.recommend import recommend_architect
+            _apct, _awhy = recommend_architect(sk)
+            st.caption(f"💡 Recommended Architect ≈ **{_apct}%** — {_awhy}. "
+                       f"{'Enable Architect and set this if it fits.' if not sk.get('has_architect') else 'Adjust the value above if needed.'}")
     if to_remove:
         st.session_state["skills"] = [s for s in skills if s["id"] not in to_remove]
         st.rerun()
@@ -148,14 +153,15 @@ def _render_skill_tickets(sk, sid):
     """Classification-driven workload: enter a monthly total per category, then review the
     classification mix (share %), handling time (AHT), and the recommended L1/L2/L3 routing —
     all pre-filled from industry defaults and editable. Per-class count = total × share%."""
-    from config.settings import (MS_CLASSIFICATIONS, MS_DEFAULT_DIST, MS_DEFAULT_AHT,
-                                 MS_DEFAULT_ROUTING)
+    from config.settings import MS_CLASSIFICATIONS, MS_DEFAULT_DIST, MS_DEFAULT_AHT
     from modules.state.multi_state import ensure_ms_workload
+    from modules.recommend import recommend_routing
     ensure_ms_workload(sk)
     active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
     st.caption("Enter the monthly **total** per category; the classification mix, handling time "
-               "and recommended L1/L2/L3 routing are pre-filled from industry defaults — adjust any "
-               "of them. Inactive levels show “—”. Informational alerts default to 0 effort.")
+               "and the **recommended L1/L2/L3 routing** are pre-filled — higher priority escalates "
+               "to L2/L3, routine work stays on L1, folded onto this skill's active levels. Everything "
+               "is editable. Inactive levels show “—”; Informational alerts default to 0 effort.")
     wl = sk.setdefault("workload", {})
     for cat_key, cat_label in CATEGORIES:
         classes = MS_CLASSIFICATIONS[cat_key]
@@ -173,7 +179,8 @@ def _render_skill_tickets(sk, sid):
                 cur = rows.get(c, {}) or {}
                 cur_share = (cur.get("count", 0) or 0) / cur_total * 100.0 if cur_total > 0 \
                     else MS_DEFAULT_DIST[cat_key].get(c, 0)
-                dr = MS_DEFAULT_ROUTING[cat_key].get(c, (100, 0, 0))
+                rl1, rl2, rl3, _why = recommend_routing(cat_key, c, sk.get("active_levels"))
+                dr = (rl1, rl2, rl3)   # recommended split, folded onto active levels
                 rc = st.columns([1.8, 1.1, 1.1, 1, 1, 1])
                 rc[0].markdown(f"<div style='padding-top:6px;font-size:0.82rem'>{c}</div>",
                                unsafe_allow_html=True)

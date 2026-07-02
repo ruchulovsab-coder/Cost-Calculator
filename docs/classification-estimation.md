@@ -45,11 +45,14 @@ classes) · `modules/inputs/multi_skill.py::_render_skill_tickets` (total + clas
 `modules/outputs/multi_excel_export.py` (Workload sheet adds a Classification column).
 
 ## Status & roadmap
-- **Step 1 (this):** classification input + per-class AHT + **default** routing (recommended pyramid
-  as deterministic seed) + Informational=0 + safe migration.
-- **Step 2 (next):** context-aware **routing recommender** (vary by support window / AHT band) with an
-  explainability line; **Architect recommender** (skill archetype + complexity); "reset to recommended".
-- **Step 3:** estimate-level **Lock** (read-only toggle).
-- **Deferred:** generic recommendation framework (rule-of-three); "enter total → auto-distribute" is
-  already the input model here.
+- ✅ **Step 1:** classification input + per-class AHT + default routing seed + Informational=0 + safe migration.
+- ✅ **Step 2:** `modules/recommend.py` (deterministic, tested) — `recommend_routing(cat, cls, active_levels)`
+  folds the recommended pyramid onto the skill's **active levels** (so the seed sums to 100 across active
+  levels and matches the engine) + rationale; `recommend_architect(skill)` suggests Architect % from the
+  skill archetype (keywords → %, family fallback) shown as a "💡 Recommended" caption on the Skills tab.
+  Wired into the Workload routing seed. Advisory only; user overrides; engine uses approved values.
+- **Step 3 (next):** estimate-level **Lock** (read-only toggle); optional "reset to recommended" button.
+- **Then:** multi-component **patching** (network/firewall/DB/platform, not just servers — see
+  [[project-multi-skill-estimation]] parked note).
+- **Deferred:** generic recommendation framework (rule-of-three).
 Deterministic throughout; LLM reserved for optional narration only.
