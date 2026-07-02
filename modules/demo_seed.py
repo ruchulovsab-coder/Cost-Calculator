@@ -106,16 +106,14 @@ def demo_fill_skill(sk: dict) -> dict:
     """TEMPORARY testing aid — pre-fill a newly-added skill's workload with representative
     volumes across its active levels, so testers skip manual entry for each new skill while
     DEMO_SEED_DATA is on. Gated by the flag; only fills when the skill has no workload yet
-    (never overwrites). Volumes honour the caps: SR<20, incidents 6–9, changes 5–7. Revert
-    with the flag (see module header)."""
+    (never overwrites). Volumes honour the caps: SR<20, incidents 6–9, changes 5–7. No
+    alerts here: monitoring alerts are the central Monitoring skill's landing zone for the
+    whole estate, so other skills only get SR / incidents / changes. Revert with the flag."""
     if not DEMO_SEED_DATA or sk.get("workload"):
         return sk
-    levels = sk.get("active_levels") or ["L1", "L2", "L3"]
-    l1, l2, l3 = _split_for(levels)
-    wl = {}
-    if "L1" in levels:   # alerts are an L1 front-line function
-        wl["alerts"] = {"All": {"count": 100, "minutes": 10, "L1_pct": 100, "L2_pct": 0, "L3_pct": 0}}
-    for cat, (c, m) in (("service_requests", (15, 30)), ("incidents", (8, 60)), ("changes", (6, 60))):
-        wl[cat] = {"All": {"count": c, "minutes": m, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
-    sk["workload"] = wl
+    l1, l2, l3 = _split_for(sk.get("active_levels") or ["L1", "L2", "L3"])
+    sk["workload"] = {
+        cat: {"All": {"count": c, "minutes": m, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
+        for cat, (c, m) in (("service_requests", (15, 30)), ("incidents", (8, 60)), ("changes", (6, 60)))
+    }
     return sk
