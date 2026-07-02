@@ -226,6 +226,22 @@ There are two live, independent deployments driven by one workflow:
   production; anything else (i.e. `testing`) → `<name>-test`. Both share the same Container
   Apps environment + ACR, but are separate apps with their own URLs and scale independently
   (both scale-to-zero, so idle staging costs ≈ nothing).
+- **⚠️ One-time OIDC credential (required, else login fails on `testing`):** federated identity
+  credentials are per-branch. The initial setup only added `github-main`, so pushes on `testing`
+  fail Azure login with `AADSTS700213: No matching federated identity record`. Add a second
+  credential on the `github-cost-calculator-oidc` app registration for the `testing` branch:
+  ```bash
+  cat > fic-testing.json <<'EOF'
+  { "name": "github-testing",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:ruchulovsab-coder/Cost-Calculator:ref:refs/heads/testing",
+    "audiences": ["api://AzureADTokenExchange"] }
+  EOF
+  az ad app federated-credential create --id "$AZURE_CLIENT_ID" --parameters fic-testing.json
+  ```
+  Or Portal: Entra ID → App registrations → `github-cost-calculator-oidc` → Certificates &
+  secrets → Federated credentials → Add (GitHub Actions, Branch = `testing`). No new role
+  assignment needed — the existing resource-group `Contributor` grant already covers it.
 - **Isolation:** staging gets its own `APP_BASE_URL` (its own FQDN, so approval/orphan links
   point to staging, never prod) and its estimates container is suffixed `-test`, so test
   drafts/estimates/approvals never mix with production data.
