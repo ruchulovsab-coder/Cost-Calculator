@@ -1018,6 +1018,54 @@ def _render_multi_summary_metrics(model):
     m4.metric(f"Selling price / mo ({pr.get('margin_pct', 0):.0f}%)", _inr(pr.get("selling_price", 0)))
 
 
+def _render_management_summary(state):
+    """Executive per-skill table for management visibility: L1/L2/L3/Architect effort (hrs)
+    and delivered FTE, coverage per skill, plus per-skill Raw and Rounded FTE totals, with
+    SDM and grand totals. Uses the rounded-basis model (fte_by_level = delivered team;
+    breakdown.fte_raw = exact demand)."""
+    section_hdr("📋 Management Summary")
+    st.caption("Per skill: L1/L2/L3/Architect effort (hrs · delivered FTE) and coverage, with both "
+               "**Raw** (exact) and **Rounded** (delivered) FTE. SDM is one engagement resource.")
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    names = {s["id"]: (s.get("name") or s["id"]) for s in st.session_state.get("skills", [])}
+
+    def _cell(hrs, fte):
+        return f"{hrs:.0f}h · {fte:.2f}" if (hrs > 1e-9 or fte > 1e-9) else "—"
+
+    tot_hrs = {lvl: 0.0 for lvl in BD_LEVELS}
+    tot_raw = tot_rnd = 0.0
+    body = ""
+    for sid, ps in model["per_skill"].items():
+        rh, fbl, bd = ps["role_hours"], ps["fte_by_level"], ps["breakdown"]
+        raw_t = sum(bd[l]["fte_raw"] for l in BD_LEVELS)
+        rnd_t = sum(fbl[l] for l in BD_LEVELS)
+        cells = "".join(f"<td class='r'>{_cell(rh.get(l, 0.0), fbl.get(l, 0.0))}</td>" for l in BD_LEVELS)
+        for l in BD_LEVELS:
+            tot_hrs[l] += rh.get(l, 0.0)
+        tot_raw += raw_t; tot_rnd += rnd_t
+        body += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
+                 f"<td>{ps['coverage_model']}</td>{cells}"
+                 f"<td class='r'>{raw_t:.2f}</td><td class='r'><strong>{rnd_t:.1f}</strong></td></tr>")
+    sdm = next((r for r in model["resources"] if r["level"] == "SDM"), None)
+    if sdm and (float(sdm.get("fte", 0) or 0) or float(sdm.get("raw_fte", 0) or 0)):
+        sdm_hrs = float(model.get("sdm_hours", 0) or 0)
+        body += (f"<tr><td>SDM <span style='color:#7A8A99'>(engagement)</span></td><td>—</td><td>—</td>"
+                 f"<td class='r' colspan='4'>{sdm_hrs:.0f}h</td>"
+                 f"<td class='r'>{float(sdm['raw_fte']):.2f}</td>"
+                 f"<td class='r'><strong>{float(sdm['fte']):.1f}</strong></td></tr>")
+        tot_raw += float(sdm["raw_fte"]); tot_rnd += float(sdm["fte"])
+    tcells = "".join(f"<td class='r'><strong>{tot_hrs[l]:.0f}h</strong></td>" for l in BD_LEVELS)
+    body += (f"<tr class='total-row'><td><strong>Total</strong></td><td></td><td></td>{tcells}"
+             f"<td class='r'><strong>{tot_raw:.2f}</strong></td>"
+             f"<td class='r'><strong>{tot_rnd:.1f}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Skill</th><th>Family</th><th>Coverage</th>
+        <th class="r">L1 (hrs·FTE)</th><th class="r">L2</th><th class="r">L3</th><th class="r">Architect</th>
+        <th class="r">Raw FTE</th><th class="r">Rounded FTE</th></tr></thead><tbody>{body}</tbody></table>""",
+        unsafe_allow_html=True)
+
+
 def _render_excel_export():
     st.caption("Download the full working model as an Excel workbook — the numbers equal the engine.")
     if st.button("📊 Prepare Excel export", key="ms_ax_xlsx_prep", type="secondary"):
@@ -1047,6 +1095,10 @@ def _render_approve_export():
     _render_multi_summary_metrics(compute_multi_skill_model(state))
     st.divider()
 
+    # Management summary — per-skill effort/FTE by level, coverage, Raw & Rounded FTE.
+    _render_management_summary(state)
+    st.divider()
+
     # Raw vs Rounded comparison (folded in here from the former standalone tab).
     _render_raw_vs_rounded()
     st.divider()
@@ -1074,7 +1126,10 @@ def render_multi_approve_export(review: bool = False):
     if ref:
         st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
     if st.session_state.get("skills"):
-        _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+        state = _build_multi_state()
+        _render_multi_summary_metrics(compute_multi_skill_model(state))
+        st.divider()
+        _render_management_summary(state)
         st.divider()
         _render_raw_vs_rounded()
         st.divider()
