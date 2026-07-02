@@ -29,3 +29,8 @@ Thumbs.db
 # Generated reports / scratch
 *.tmp
 ~$*.xlsx
+
+# Real rate cards live in Azure Blob Storage (loaded at runtime), never in the repo.
+# Keep the local copy out of git so real rate data can't be committed by accident.
+# (sample_rate_card.xlsx is the tracked, non-sensitive sample fixture.)
+genus_rate_card.xlsx
