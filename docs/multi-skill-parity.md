@@ -21,8 +21,8 @@ estimate **lifecycle**. This doc tracks closing that gap to full parity with sin
 - **P1 — naming + autosave/draft/resume** (fixes data-loss). ← *shipped v1.52*
 - **P2 — orphan recovery** (mostly free once P1 writes real drafts). ← *shipped v1.53*
 - **P3 — end-of-journey dashboard** (approval/compare/downloads; reuse `approval.py`). What-if deferred.
-  - **P3a — Approve & Export tab** (approval + email + Excel download). ← *implemented*
-  - **P3b — Saved versions + Compare** (mode-aware `model_from_inputs` done; needs a multi entry point).
+  - **P3a — Approve & Export tab** (approval + email + Excel download). ← *shipped v1.54*
+  - **P3b — Saved versions + Compare** (new **tab 7 · Versions & Compare**). ← *implemented (on `testing`)*
 - **P4 — RFP narrative / A-B exports** (deferred behind the lifecycle).
 
 ## P1 design decisions
@@ -100,6 +100,16 @@ The single-mode approval/versioning couples to the model at a few points, made m
 - **Reviewer routing:** a reviewer opening a multi estimate's token link would hit single-mode Step 10
   (can't render multi inputs). `main.py` now intercepts `_review + estimation_mode=="multi"` →
   `render_multi_approve_export(review=True)` (read-only summary + approval panel). Single reviews unchanged.
+
+## P3b design decisions (Versions & Compare)
+New **tab 7 · Versions & Compare** in the multi flow (multi has no sidebar). Two sections:
+- **Open a saved version** — project → version dropdown → Load (reuses `list_estimates`/`load_estimate`
+  + `load_scenario`/`mark_saved_baseline`; all mode-agnostic). Save already lives on tab 6.
+- **Compare** — multiselect 2+ saved versions → each recomputed via the (mode-aware, P3a) `model_from_inputs`
+  → `_render_multi_comparison` side-by-side table. Rows use only keys **common to single AND multi models**
+  (total_fte, cost_result.resource_cost/total_delivery_cost, price_result.margin_pct/selling_price, plus a
+  Skills count from `per_skill`), so a mixed selection still compares cleanly. Engine untouched.
+Source is cloud-saved versions (team system-of-record); in-session snapshots / JSON upload deferred.
 
 ## Constraints
 Engine stays pure + recalc-verifiable (Excel must stay 100%); single mode + Chat untouched;
