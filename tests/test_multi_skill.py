@@ -200,3 +200,46 @@ def test_genus_family_rates_differ():
     cloud_state = copy.deepcopy(st); cloud_state["skills"][0]["genus_category"] = "CloudOps"
     cloud = compute_multi_skill_model(cloud_state)
     assert cloud["total_resource_cost"] > infra["total_resource_cost"]
+
+
+def _active_levels_state(active):
+    """One skill whose stored split routes 50/30/20 to L1/L2/L3 regardless of which
+    levels are actually active — the state a de-activated level (or demo pre-fill) leaves."""
+    return {
+        "skills": [{
+            "id": "m", "name": "Monitoring", "genus_category": "InfraOps",
+            "active_levels": list(active), "has_architect": False, "architect_pct": 0.0,
+            "coverage_model": "24×7", "visible": True, "level_visible": {},
+            "role_buffers": {"L1": 20, "L2": 20, "L3": 20, "Architect": 0},
+            "workload": {"service_requests": {"All": {"count": 100, "minutes": 30,
+                                                      "L1_pct": 50, "L2_pct": 30, "L3_pct": 20}}},
+            "patching": None, "activities": [],
+        }],
+        "resource_sharing": [],
+        "rates_by_category": {"InfraOps": {"L1": 700, "L2": 1100, "L3": 1600, "Architect": 2400}},
+        "sdm_overhead_pct": 5.0, "sdm_rate_inr": 2200,
+        "contingency_pct": 10.0, "monthly_working_hours": 160.0, "productive_utilisation": 75.0,
+        "additional_costs": [], "sla_provision_included": "No", "sla_provision_pct": 0.0,
+        "target_margin_pct": 20.0, "fte_basis": "rounded",
+    }
+
+
+def test_active_levels_restrict_ticket_routing():
+    """Tickets land ONLY on a skill's active levels; a stale split referencing an inactive
+    level is renormalized away, and total effort is preserved (it's split-independent)."""
+    full = compute_multi_skill_model(_active_levels_state(["L1", "L2", "L3"]))
+    l1l2 = compute_multi_skill_model(_active_levels_state(["L1", "L2"]))
+    only1 = compute_multi_skill_model(_active_levels_state(["L1"]))
+
+    total = full["engagement_total_effort"]
+    assert l1l2["engagement_total_effort"] == pytest.approx(total, rel=1e-9)
+    assert only1["engagement_total_effort"] == pytest.approx(total, rel=1e-9)
+
+    bd = l1l2["per_skill"]["m"]["breakdown"]
+    assert bd["L3"]["final"] == pytest.approx(0.0)
+    assert bd["L1"]["final"] > 0 and bd["L2"]["final"] > 0
+
+    bd1 = only1["per_skill"]["m"]["breakdown"]
+    assert bd1["L2"]["final"] == pytest.approx(0.0)
+    assert bd1["L3"]["final"] == pytest.approx(0.0)
+    assert bd1["L1"]["final"] > 0

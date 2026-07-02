@@ -145,8 +145,10 @@ def _skill_dist_roles(sk) -> list:
 
 
 def _render_skill_tickets(sk, sid):
-    st.caption("Monthly volume, average minutes/ticket, and the L1/L2/L3 split per category. "
-               "Per-level **buffers** are on the **Effort & FTE** tab.")
+    active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
+    st.caption("Monthly volume, average minutes/ticket, and the split across this skill's "
+               "active levels. Inactive levels (set on the Skills tab) show “—” and take no "
+               "ticket work. Per-level **buffers** are on the **Effort & FTE** tab.")
     wl = sk.setdefault("workload", {})
     hdr = st.columns([2, 1, 1, 1, 1, 1])
     for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
@@ -163,18 +165,24 @@ def _render_skill_tickets(sk, sid):
         mins = rc[2].number_input(f"{cat_key} min", min_value=0.0, step=1.0,
                                   value=float(row.get("minutes", 0) or 0),
                                   key=f"ms_{sid}_{cat_key}_min", label_visibility="collapsed")
-        l1 = rc[3].number_input(f"{cat_key} l1", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L1_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l1", label_visibility="collapsed")
-        l2 = rc[4].number_input(f"{cat_key} l2", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L2_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l2", label_visibility="collapsed")
-        l3 = rc[5].number_input(f"{cat_key} l3", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L3_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l3", label_visibility="collapsed")
-        wl[cat_key] = {"All": {"count": cnt, "minutes": mins, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
-        if abs(l1 + l2 + l3 - 100.0) > 0.5 and (l1 + l2 + l3) > 0:
-            rc[0].markdown("<span style='color:#E74C3C;font-size:0.72rem'>L1+L2+L3 ≠ 100%</span>",
+        # Only active levels take ticket work; inactive levels show “—” and store 0, so the
+        # split can never route effort to a level this skill doesn't use (matches the engine).
+        pct = {}
+        for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
+            if lvl in active:
+                pct[lvl] = rc[i].number_input(
+                    f"{cat_key} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
+                    value=float(row.get(f"{lvl}_pct", 0) or 0),
+                    key=f"ms_{sid}_{cat_key}_{lvl.lower()}", label_visibility="collapsed")
+            else:
+                rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+                               unsafe_allow_html=True)
+                pct[lvl] = 0.0
+        wl[cat_key] = {"All": {"count": cnt, "minutes": mins,
+                               "L1_pct": pct["L1"], "L2_pct": pct["L2"], "L3_pct": pct["L3"]}}
+        tot = sum(pct[l] for l in active)
+        if active and abs(tot - 100.0) > 0.5 and tot > 0:
+            rc[0].markdown(f"<span style='color:#E74C3C;font-size:0.72rem'>{'+'.join(active)} ≠ 100%</span>",
                            unsafe_allow_html=True)
 
 
