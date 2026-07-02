@@ -199,22 +199,22 @@ def _workload(wb, state, names):
     row = 5
     # Tickets
     ws.cell(row, 1, "Tickets").font = openpyxl.styles.Font(name="Calibri", bold=True, color=NAVY, size=11)
-    _hrow(ws, row + 1, ["Skill", "Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"],
-          [22, 18, 10, 11, 8, 8, 8])
-    tf = [None, None, F_INR, F_NUM1, F_PCT, F_PCT, F_PCT]
+    _hrow(ws, row + 1, ["Skill", "Category", "Classification", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"],
+          [22, 18, 14, 10, 11, 8, 8, 8])
+    tf = [None, None, None, F_INR, F_NUM1, F_PCT, F_PCT, F_PCT]
     r = row + 2
     cats = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
             ("incidents", "Incidents"), ("changes", "Change Requests")]
     for sk in skills:
         wl = sk.get("workload", {}) or {}
         for ck, cl in cats:
-            rw = (wl.get(ck, {}) or {}).get("All", {})
-            if not rw or (rw.get("count", 0) or 0) <= 0:
-                continue
-            _drow(ws, r, [sk.get("name"), cl, int(rw.get("count", 0) or 0), float(rw.get("minutes", 0) or 0),
-                          float(rw.get("L1_pct", 0) or 0), float(rw.get("L2_pct", 0) or 0),
-                          float(rw.get("L3_pct", 0) or 0)], fmts=tf)
-            r += 1
+            for cls, rw in (wl.get(ck, {}) or {}).items():
+                if not rw or (rw.get("count", 0) or 0) <= 0:
+                    continue
+                _drow(ws, r, [sk.get("name"), cl, cls, int(rw.get("count", 0) or 0),
+                              float(rw.get("minutes", 0) or 0), float(rw.get("L1_pct", 0) or 0),
+                              float(rw.get("L2_pct", 0) or 0), float(rw.get("L3_pct", 0) or 0)], fmts=tf)
+                r += 1
     # Patching
     r += 1
     ws.cell(r, 1, "Patching").font = openpyxl.styles.Font(name="Calibri", bold=True, color=NAVY, size=11)

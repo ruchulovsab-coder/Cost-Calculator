@@ -224,6 +224,37 @@ def _active_levels_state(active):
     }
 
 
+def test_classification_migration_is_neutral():
+    """Legacy single-bucket ('All') workload migrates to the per-classification model
+    with identical total effort and per-level hours (safe, numerically neutral)."""
+    from modules.state.multi_state import ensure_ms_workload, skill_volumes
+    legacy_wl = {"incidents": {"All": {"count": 100, "minutes": 60,
+                                       "L1_pct": 50, "L2_pct": 30, "L3_pct": 20}}}
+
+    def _state(wl):
+        return {"skills": [{"id": "s1", "name": "S", "genus_category": "InfraOps",
+                            "active_levels": ["L1", "L2", "L3"], "has_architect": False,
+                            "architect_pct": 0.0, "role_buffers": {"L1": 20, "L2": 20, "L3": 20, "Architect": 0},
+                            "coverage_model": "8×5", "workload": copy.deepcopy(wl),
+                            "patching": None, "activities": []}],
+                "resource_sharing": [], "rates_by_category": {"InfraOps": {"L1": 500, "L2": 800, "L3": 1200, "Architect": 2000}},
+                "sdm_overhead_pct": 5.0, "sdm_rate_inr": 2500, "monthly_working_hours": 160.0,
+                "productive_utilisation": 75.0, "contingency_pct": 10.0, "fte_basis": "rounded",
+                "delivery_country": "India", "target_margin_pct": 20.0}
+
+    before = compute_multi_skill_model(_state(legacy_wl))
+    sk = {"active_levels": ["L1", "L2", "L3"], "workload": copy.deepcopy(legacy_wl)}
+    ensure_ms_workload(sk)
+    # distributed to P1..P4, summing back to the original total
+    assert sum(r["count"] for r in sk["workload"]["incidents"].values()) == 100
+    assert skill_volumes(sk)["incidents"] == 100.0
+    after = compute_multi_skill_model(_state(sk["workload"]))
+    assert after["engagement_total_effort"] == pytest.approx(before["engagement_total_effort"], rel=1e-9)
+    for lvl in ("L1", "L2", "L3"):
+        assert after["per_skill"]["s1"]["role_hours"][lvl] == pytest.approx(
+            before["per_skill"]["s1"]["role_hours"][lvl], rel=1e-6)
+
+
 def test_active_levels_restrict_ticket_routing():
     """Tickets land ONLY on a skill's active levels; a stale split referencing an inactive
     level is renormalized away, and total effort is preserved (it's split-independent)."""

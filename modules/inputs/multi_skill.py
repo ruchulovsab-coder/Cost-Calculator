@@ -145,45 +145,63 @@ def _skill_dist_roles(sk) -> list:
 
 
 def _render_skill_tickets(sk, sid):
+    """Classification-driven workload: enter a monthly total per category, then review the
+    classification mix (share %), handling time (AHT), and the recommended L1/L2/L3 routing —
+    all pre-filled from industry defaults and editable. Per-class count = total × share%."""
+    from config.settings import (MS_CLASSIFICATIONS, MS_DEFAULT_DIST, MS_DEFAULT_AHT,
+                                 MS_DEFAULT_ROUTING)
+    from modules.state.multi_state import ensure_ms_workload
+    ensure_ms_workload(sk)
     active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
-    st.caption("Monthly volume, average minutes/ticket, and the split across this skill's "
-               "active levels. Inactive levels (set on the Skills tab) show “—” and take no "
-               "ticket work. Per-level **buffers** are on the **Effort & FTE** tab.")
+    st.caption("Enter the monthly **total** per category; the classification mix, handling time "
+               "and recommended L1/L2/L3 routing are pre-filled from industry defaults — adjust any "
+               "of them. Inactive levels show “—”. Informational alerts default to 0 effort.")
     wl = sk.setdefault("workload", {})
-    hdr = st.columns([2, 1, 1, 1, 1, 1])
-    for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
-        col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
-                     unsafe_allow_html=True)
     for cat_key, cat_label in CATEGORIES:
-        row = (wl.get(cat_key, {}) or {}).get("All", {})
-        rc = st.columns([2, 1, 1, 1, 1, 1])
-        rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{cat_label}</div>",
-                       unsafe_allow_html=True)
-        cnt = rc[1].number_input(f"{cat_key} count", min_value=0, step=10,
-                                 value=int(row.get("count", 0) or 0),
-                                 key=f"ms_{sid}_{cat_key}_count", label_visibility="collapsed")
-        mins = rc[2].number_input(f"{cat_key} min", min_value=0.0, step=1.0,
-                                  value=float(row.get("minutes", 0) or 0),
-                                  key=f"ms_{sid}_{cat_key}_min", label_visibility="collapsed")
-        # Only active levels take ticket work; inactive levels show “—” and store 0, so the
-        # split can never route effort to a level this skill doesn't use (matches the engine).
-        pct = {}
-        for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
-            if lvl in active:
-                pct[lvl] = rc[i].number_input(
-                    f"{cat_key} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
-                    value=float(row.get(f"{lvl}_pct", 0) or 0),
-                    key=f"ms_{sid}_{cat_key}_{lvl.lower()}", label_visibility="collapsed")
-            else:
-                rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+        classes = MS_CLASSIFICATIONS[cat_key]
+        rows = wl.setdefault(cat_key, {})
+        cur_total = int(sum((rows.get(c, {}) or {}).get("count", 0) or 0 for c in classes))
+        with st.expander(f"{cat_label} — {cur_total}/mo", expanded=False):
+            total = st.number_input(f"Total {cat_label} / month", min_value=0, step=10,
+                                    value=cur_total, key=f"ms_{sid}_{cat_key}_total")
+            hdr = st.columns([1.8, 1.1, 1.1, 1, 1, 1])
+            for col, t in zip(hdr, ["Classification", "Share %", "AHT (min)", "L1 %", "L2 %", "L3 %"]):
+                col.markdown(f"<div style='font-size:0.72rem;color:#1A5F6A;font-weight:600'>{t}</div>",
+                             unsafe_allow_html=True)
+            new_rows, shares = {}, {}
+            for c in classes:
+                cur = rows.get(c, {}) or {}
+                cur_share = (cur.get("count", 0) or 0) / cur_total * 100.0 if cur_total > 0 \
+                    else MS_DEFAULT_DIST[cat_key].get(c, 0)
+                dr = MS_DEFAULT_ROUTING[cat_key].get(c, (100, 0, 0))
+                rc = st.columns([1.8, 1.1, 1.1, 1, 1, 1])
+                rc[0].markdown(f"<div style='padding-top:6px;font-size:0.82rem'>{c}</div>",
                                unsafe_allow_html=True)
-                pct[lvl] = 0.0
-        wl[cat_key] = {"All": {"count": cnt, "minutes": mins,
-                               "L1_pct": pct["L1"], "L2_pct": pct["L2"], "L3_pct": pct["L3"]}}
-        tot = sum(pct[l] for l in active)
-        if active and abs(tot - 100.0) > 0.5 and tot > 0:
-            rc[0].markdown(f"<span style='color:#E74C3C;font-size:0.72rem'>{'+'.join(active)} ≠ 100%</span>",
-                           unsafe_allow_html=True)
+                sh = rc[1].number_input(f"{c} share", min_value=0.0, max_value=100.0, step=1.0,
+                                        value=float(round(cur_share, 1)),
+                                        key=f"ms_{sid}_{cat_key}_{c}_sh", label_visibility="collapsed")
+                aht = rc[2].number_input(f"{c} aht", min_value=0.0, step=1.0,
+                                         value=float(cur.get("minutes", MS_DEFAULT_AHT[cat_key].get(c, 0)) or 0),
+                                         key=f"ms_{sid}_{cat_key}_{c}_aht", label_visibility="collapsed")
+                split = {}
+                for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
+                    if lvl in active:
+                        split[lvl] = rc[i].number_input(
+                            f"{c} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
+                            value=float(cur.get(f"{lvl}_pct", dr[i - 3]) or 0),
+                            key=f"ms_{sid}_{cat_key}_{c}_{lvl.lower()}", label_visibility="collapsed")
+                    else:
+                        rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+                                       unsafe_allow_html=True)
+                        split[lvl] = 0.0
+                shares[c] = sh
+                new_rows[c] = {"count": round(total * sh / 100.0), "minutes": aht,
+                               "L1_pct": split["L1"], "L2_pct": split["L2"], "L3_pct": split["L3"]}
+            wl[cat_key] = new_rows
+            ssum = sum(shares.values())
+            if abs(ssum - 100.0) > 0.5 and ssum > 0:
+                st.markdown(f"<span style='color:#E74C3C;font-size:0.74rem'>Classification shares "
+                            f"sum to {ssum:.0f}% — should be 100%.</span>", unsafe_allow_html=True)
 
 
 def _render_skill_patching(sk, sid):
