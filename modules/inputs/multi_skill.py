@@ -650,6 +650,18 @@ def _render_dashboard():
         "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
         value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
 
+    # Headline estimation basis — drives cost, price, approval and export. Both bases are
+    # always compared on the "Raw vs Rounded" tab; this picks which one is the reported figure.
+    _basis = st.radio(
+        "Estimation basis (drives cost, price, approval & export)",
+        ["Rounded (delivered team)", "Raw (theoretical minimum)"],
+        index=1 if st.session_state.get("fte_basis") == "raw" else 0, horizontal=True,
+        key="ms_fte_basis_radio",
+        help="Rounded = each skill × level rounded up to 0.5 (min 0.5) — the team you actually staff. "
+             "Raw = exact fractional demand (assumes perfect sharing/pooling). Compare both on the "
+             "Raw vs Rounded tab.")
+    st.session_state["fte_basis"] = "raw" if _basis.startswith("Raw") else "rounded"
+
     # §2 Per-level effort buffer
     _render_buffer_config(skills)
 
@@ -1149,6 +1161,49 @@ def _render_multi_comparison(models: dict):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab 8 — Raw vs Rounded (two estimate versions, reported independently)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_raw_vs_rounded():
+    section_hdr("⚖️ Raw vs Rounded")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    state = _build_multi_state()
+    raw = compute_multi_skill_model({**state, "fte_basis": "raw"})
+    rnd = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    chosen = "Raw" if state.get("fte_basis") == "raw" else "Rounded"
+    callout(f"Two views of the same estimate, reported independently. <strong>Raw</strong> = exact "
+            f"fractional demand (theoretical minimum; assumes perfect sharing/pooling). "
+            f"<strong>Rounded</strong> = the delivered team (each skill × level rounded up to 0.5, min "
+            f"0.5). Pricing, approval &amp; export currently use <strong>{chosen}</strong> — switch it on "
+            f"the Effort &amp; FTE tab.", "info")
+
+    def _r(lbl, rv, fv, fmt):
+        d = fv - rv
+        return (f"<tr><td>{lbl}</td><td class='r'>{fmt(rv)}</td><td class='r'>{fmt(fv)}</td>"
+                f"<td class='r' style='color:#7A8A99'>{'+' if d >= 0 else ''}{fmt(d)}</td></tr>")
+    fte = lambda v: f"{v:.2f}"
+    cr_r, cr_f, pr_r, pr_f = raw["cost_result"], rnd["cost_result"], raw["price_result"], rnd["price_result"]
+    body = (
+        _r("Total FTE", raw["total_fte"], rnd["total_fte"], fte)
+        + _r("Resource cost / mo", raw["total_resource_cost"], rnd["total_resource_cost"], _inr)
+        + _r("Delivery cost / mo", cr_r["total_delivery_cost"], cr_f["total_delivery_cost"], _inr)
+        + _r("Selling price / mo", pr_r["selling_price"], pr_f["selling_price"], _inr)
+        + _r("Gross profit / mo", pr_r["gross_profit"], pr_f["gross_profit"], _inr))
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Metric</th>
+        <th class="r">Raw (theoretical)</th><th class="r">Rounded (delivered)</th>
+        <th class="r">Δ (Rounded − Raw)</th></tr></thead><tbody>{body}</tbody></table>""",
+        unsafe_allow_html=True)
+    gap = rnd["total_fte"] - raw["total_fte"]
+    if raw["total_fte"] > 0 and gap > 0.05:
+        st.caption(f"Rounding adds **{gap:.1f} FTE ({gap / raw['total_fte'] * 100:.0f}%)** and "
+                   f"**{_inr(rnd['total_resource_cost'] - raw['total_resource_cost'])}/mo** resource cost — "
+                   "the price of indivisible people. Pool L2/L3/Architect on the Optimize tab to reduce it.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
@@ -1182,9 +1237,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
-                                          "4 · Rates & Cost", "5 · Optimize (AI)",
-                                          "6 · Approve & Export", "7 · Versions & Compare"])
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
+        ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
+         "6 · Approve & Export", "7 · Versions & Compare", "8 · Raw vs Rounded"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -1199,3 +1254,5 @@ def render_multi_skill_app():
         _render_approve_export()
     with t7:
         _render_versions_compare()
+    with t8:
+        _render_raw_vs_rounded()
