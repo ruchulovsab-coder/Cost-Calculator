@@ -125,7 +125,12 @@ def _render_skill_setup():
         st.session_state["skills"] = [s for s in skills if s["id"] not in to_remove]
         st.rerun()
     if st.button("➕ Add skill", key="ms_add_skill", type="secondary"):
-        skills.append(_blank_skill(f"Skill {len(skills) + 1}"))
+        new = _blank_skill(f"Skill {len(skills) + 1}")
+        # TEMPORARY (DEMO_SEED_DATA): pre-fill new skills with representative workload so
+        # testers skip manual entry per skill. No-op when the flag is off. Revert with it.
+        from modules.demo_seed import demo_fill_skill
+        demo_fill_skill(new)
+        skills.append(new)
         st.rerun()
 
 

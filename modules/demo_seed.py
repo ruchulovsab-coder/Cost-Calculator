@@ -89,3 +89,33 @@ def seed_demo_data():
     # Rates & Cost tab resolves grades → INR out of the box. Only sets if still unset.
     ss.setdefault("delivery_location", "Noida")
     ss["_demo_seeded"] = True
+
+
+def _split_for(levels) -> tuple:
+    """Representative L1/L2/L3 split (sums to 100) spread across a skill's ACTIVE levels
+    so every level a skill uses gets some ticket work."""
+    active = [l for l in ("L1", "L2", "L3") if l in (levels or [])] or ["L2"]
+    weights = {"L1": 0.5, "L2": 0.3, "L3": 0.2}
+    tot = sum(weights[l] for l in active)
+    split = {l: round(weights[l] / tot * 100) for l in active}
+    split[active[0]] += 100 - sum(split.values())   # absorb rounding into the first level
+    return split.get("L1", 0), split.get("L2", 0), split.get("L3", 0)
+
+
+def demo_fill_skill(sk: dict) -> dict:
+    """TEMPORARY testing aid — pre-fill a newly-added skill's workload with representative
+    volumes across its active levels, so testers skip manual entry for each new skill while
+    DEMO_SEED_DATA is on. Gated by the flag; only fills when the skill has no workload yet
+    (never overwrites). Volumes honour the caps: SR<20, incidents 6–9, changes 5–7. Revert
+    with the flag (see module header)."""
+    if not DEMO_SEED_DATA or sk.get("workload"):
+        return sk
+    levels = sk.get("active_levels") or ["L1", "L2", "L3"]
+    l1, l2, l3 = _split_for(levels)
+    wl = {}
+    if "L1" in levels:   # alerts are an L1 front-line function
+        wl["alerts"] = {"All": {"count": 100, "minutes": 10, "L1_pct": 100, "L2_pct": 0, "L3_pct": 0}}
+    for cat, (c, m) in (("service_requests", (15, 30)), ("incidents", (8, 60)), ("changes", (6, 60))):
+        wl[cat] = {"All": {"count": c, "minutes": m, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
+    sk["workload"] = wl
+    return sk
