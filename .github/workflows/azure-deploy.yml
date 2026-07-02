@@ -7,7 +7,7 @@ name: Deploy to Azure Container Apps
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, testing ]   # main -> production; testing -> isolated staging site
   workflow_dispatch:
 
 permissions:
@@ -91,6 +91,16 @@ jobs:
           set -euo pipefail
           az extension add --name containerapp --upgrade --only-show-errors
 
+          # Branch → target app. main = production (CONTAINERAPP_NAME); any other branch
+          # (i.e. testing) = an isolated staging site "<name>-test": its own URL and its
+          # own estimates container, so development never touches production data/links.
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            APP_NAME="$CONTAINERAPP_NAME"
+          else
+            APP_NAME="${CONTAINERAPP_NAME}-test"
+          fi
+          echo "Branch '${GITHUB_REF_NAME}' -> Container App '$APP_NAME'"
+
           # Globally-unique but stable ACR name derived from the subscription id
           ACR="acr$(echo "$AZURE_SUBSCRIPTION_ID" | tr -d '-' | cut -c1-12)"
           IMAGE_TAG="${GITHUB_SHA::12}"
@@ -111,18 +121,18 @@ jobs:
           docker build -t "$LOGIN_SERVER/cost-calculator:$IMAGE_TAG" .
           docker push "$LOGIN_SERVER/cost-calculator:$IMAGE_TAG"
 
-          # Container Apps environment (create if missing)
+          # Container Apps environment (shared by prod + staging; create if missing)
           az containerapp env show -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1 || \
             az containerapp env create -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" -l "$LOCATION" --only-show-errors >/dev/null
 
-          # Create or update the app
-          if az containerapp show -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1; then
-            az containerapp registry set -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
+          # Create or update the app (prod or staging, per $APP_NAME)
+          if az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1; then
+            az containerapp registry set -n "$APP_NAME" -g "$RESOURCE_GROUP" \
               --server "$LOGIN_SERVER" --username "$ACR_USER" --password "$ACR_PASS" --only-show-errors
-            az containerapp update -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
+            az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" \
               --image "$LOGIN_SERVER/cost-calculator:$IMAGE_TAG" --only-show-errors
           else
-            az containerapp create -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
+            az containerapp create -n "$APP_NAME" -g "$RESOURCE_GROUP" \
               --environment "$CONTAINERAPP_ENV" \
               --image "$LOGIN_SERVER/cost-calculator:$IMAGE_TAG" \
               --registry-server "$LOGIN_SERVER" \
@@ -132,30 +142,44 @@ jobs:
               --min-replicas 0 --max-replicas 1 --only-show-errors
           fi
 
-          az containerapp ingress sticky-sessions set -n "$CONTAINERAPP_NAME" \
+          az containerapp ingress sticky-sessions set -n "$APP_NAME" \
             -g "$RESOURCE_GROUP" --affinity sticky --only-show-errors || true
 
           # Enable system-assigned managed identity (idempotent) — used to read the
           # rate card from Blob Storage. Grant it 'Storage Blob Data Reader' once
           # (see DEPLOY.md); that role assignment requires Owner and is done manually.
-          az containerapp identity assign -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
+          # NOTE: a newly-created staging app gets a NEW identity with no blob roles yet,
+          # so its cloud drafts/rate-card degrade gracefully until granted (see DEPLOY.md).
+          az containerapp identity assign -n "$APP_NAME" -g "$RESOURCE_GROUP" \
             --system-assigned --only-show-errors || true
+
+          # This app's own public URL (for approval/orphan links). Staging must reference
+          # ITSELF — never production — and use an isolated estimates container.
+          FQDN=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            EFFECTIVE_BASE_URL="${APP_BASE_URL:-}"
+            EFFECTIVE_ESTIMATES_CONTAINER="${ESTIMATES_CONTAINER:-}"
+          else
+            EFFECTIVE_BASE_URL="https://$FQDN"
+            if [ -n "${ESTIMATES_CONTAINER:-}" ]; then EFFECTIVE_ESTIMATES_CONTAINER="${ESTIMATES_CONTAINER}-test"; else EFFECTIVE_ESTIMATES_CONTAINER=""; fi
+          fi
 
           # Apply Blob config (rate card + estimates store) from repo Variables, if provided.
           ENVPAIRS=()
           [ -n "${RATECARD_ACCOUNT_URL:-}" ] && ENVPAIRS+=("RATECARD_ACCOUNT_URL=$RATECARD_ACCOUNT_URL" "RATECARD_CONTAINER=$RATECARD_CONTAINER" "RATECARD_BLOB=$RATECARD_BLOB")
-          [ -n "${ESTIMATES_ACCOUNT_URL:-}" ] && ENVPAIRS+=("ESTIMATES_ACCOUNT_URL=$ESTIMATES_ACCOUNT_URL" "ESTIMATES_CONTAINER=$ESTIMATES_CONTAINER")
-          [ -n "${APP_BASE_URL:-}" ] && ENVPAIRS+=("APP_BASE_URL=$APP_BASE_URL")
+          [ -n "${ESTIMATES_ACCOUNT_URL:-}" ] && ENVPAIRS+=("ESTIMATES_ACCOUNT_URL=$ESTIMATES_ACCOUNT_URL" "ESTIMATES_CONTAINER=$EFFECTIVE_ESTIMATES_CONTAINER")
+          [ -n "${EFFECTIVE_BASE_URL:-}" ] && ENVPAIRS+=("APP_BASE_URL=$EFFECTIVE_BASE_URL")
           [ -n "${ACS_SENDER:-}" ] && ENVPAIRS+=("ACS_SENDER=$ACS_SENDER")
           [ -n "${ACS_ENDPOINT:-}" ] && ENVPAIRS+=("ACS_ENDPOINT=$ACS_ENDPOINT")
           [ -n "${ACS_CONNECTION_STRING:-}" ] && ENVPAIRS+=("ACS_CONNECTION_STRING=$ACS_CONNECTION_STRING")
           [ -n "${GROQ_API_KEY:-}" ] && ENVPAIRS+=("GROQ_API_KEY=$GROQ_API_KEY")
           [ -n "${GROQ_MODEL:-}" ] && ENVPAIRS+=("GROQ_MODEL=$GROQ_MODEL")
           if [ ${#ENVPAIRS[@]} -gt 0 ]; then
-            az containerapp update -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --only-show-errors \
+            az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --only-show-errors \
               --set-env-vars "${ENVPAIRS[@]}"
           fi
 
           echo "============================================"
-          echo "App URL: https://$(az containerapp show -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)"
+          echo "Deployed branch '${GITHUB_REF_NAME}' to app '$APP_NAME'"
+          echo "App URL: https://$FQDN"
           echo "============================================"

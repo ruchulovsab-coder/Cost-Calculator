@@ -802,6 +802,27 @@ def _skill_role_hours(
             rows[label] = r
         cats[c] = rows
 
+    # Tickets are handled ONLY by the skill's active levels. Renormalize each category's
+    # L1/L2/L3 split onto the active ticket levels — zero the inactive ones and scale the
+    # rest to 100%. The category total is split-independent (count×minutes), so this
+    # preserves total effort while making active_levels authoritative for routing; it also
+    # self-corrects saved skills whose split still references levels later de-activated.
+    # (Non-ticket work — patching / activities / architect — can still land on any role.)
+    active_ticket = [l for l in ("L1", "L2", "L3") if l in (skill.get("active_levels") or [])]
+    if active_ticket:
+        for c in cat_keys:
+            for r in cats[c].values():
+                orig = {l: float(r.get(f"{l}_pct", 0.0) or 0.0) for l in ("L1", "L2", "L3")}
+                s = sum(orig[l] for l in active_ticket)
+                for l in ("L1", "L2", "L3"):
+                    if l not in active_ticket:
+                        r[f"{l}_pct"] = 0.0
+                    elif s > 0:
+                        r[f"{l}_pct"] = orig[l] / s * 100.0
+                    else:
+                        # split was 0 on every active level → put all work on the first
+                        r[f"{l}_pct"] = 100.0 if l == active_ticket[0] else 0.0
+
     ticket_rh = calc_all_ticket_role_hours(cats["alerts"], cats["service_requests"],
                                            cats["incidents"], cats["changes"])   # buffered
     ticket_total = sum(calc_category_hours(cats[c])[1] for c in cat_keys)

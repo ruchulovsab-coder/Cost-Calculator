@@ -145,8 +145,10 @@ def _skill_dist_roles(sk) -> list:
 
 
 def _render_skill_tickets(sk, sid):
-    st.caption("Monthly volume, average minutes/ticket, and the L1/L2/L3 split per category. "
-               "Per-level **buffers** are on the **Effort & FTE** tab.")
+    active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
+    st.caption("Monthly volume, average minutes/ticket, and the split across this skill's "
+               "active levels. Inactive levels (set on the Skills tab) show “—” and take no "
+               "ticket work. Per-level **buffers** are on the **Effort & FTE** tab.")
     wl = sk.setdefault("workload", {})
     hdr = st.columns([2, 1, 1, 1, 1, 1])
     for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
@@ -163,18 +165,24 @@ def _render_skill_tickets(sk, sid):
         mins = rc[2].number_input(f"{cat_key} min", min_value=0.0, step=1.0,
                                   value=float(row.get("minutes", 0) or 0),
                                   key=f"ms_{sid}_{cat_key}_min", label_visibility="collapsed")
-        l1 = rc[3].number_input(f"{cat_key} l1", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L1_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l1", label_visibility="collapsed")
-        l2 = rc[4].number_input(f"{cat_key} l2", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L2_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l2", label_visibility="collapsed")
-        l3 = rc[5].number_input(f"{cat_key} l3", min_value=0.0, max_value=100.0, step=1.0,
-                                value=float(row.get("L3_pct", 0) or 0),
-                                key=f"ms_{sid}_{cat_key}_l3", label_visibility="collapsed")
-        wl[cat_key] = {"All": {"count": cnt, "minutes": mins, "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}}
-        if abs(l1 + l2 + l3 - 100.0) > 0.5 and (l1 + l2 + l3) > 0:
-            rc[0].markdown("<span style='color:#E74C3C;font-size:0.72rem'>L1+L2+L3 ≠ 100%</span>",
+        # Only active levels take ticket work; inactive levels show “—” and store 0, so the
+        # split can never route effort to a level this skill doesn't use (matches the engine).
+        pct = {}
+        for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
+            if lvl in active:
+                pct[lvl] = rc[i].number_input(
+                    f"{cat_key} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
+                    value=float(row.get(f"{lvl}_pct", 0) or 0),
+                    key=f"ms_{sid}_{cat_key}_{lvl.lower()}", label_visibility="collapsed")
+            else:
+                rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+                               unsafe_allow_html=True)
+                pct[lvl] = 0.0
+        wl[cat_key] = {"All": {"count": cnt, "minutes": mins,
+                               "L1_pct": pct["L1"], "L2_pct": pct["L2"], "L3_pct": pct["L3"]}}
+        tot = sum(pct[l] for l in active)
+        if active and abs(tot - 100.0) > 0.5 and tot > 0:
+            rc[0].markdown(f"<span style='color:#E74C3C;font-size:0.72rem'>{'+'.join(active)} ≠ 100%</span>",
                            unsafe_allow_html=True)
 
 
@@ -940,6 +948,112 @@ def render_multi_approve_export(review: bool = False):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab 7 — Versions & Compare (parity with single-mode Saved Calculations + Compare)
+# ──────────────────────────────────────────────────────────────────────────────
+def _fmt_version(it) -> str:
+    ts = (it.get("saved_at") or "")
+    if "T" in ts:
+        d, _, t = ts.partition("T")
+        ts = f"{d} {t.replace('-', ':')[:5]} UTC"
+    return f"v{it['version']} · {ts}"
+
+
+def _render_versions_compare():
+    section_hdr("🗂️ Versions & Compare")
+    from modules.state.estimate_store import store_configured
+    if not store_configured():
+        callout("Cloud storage isn't configured in this environment, so saved versions aren't "
+                "available here. On the deployed app this lists your saved estimates.", "info")
+        return
+    from modules.state.estimate_store import list_estimates, load_estimate
+    from modules.state.session_manager import load_scenario, mark_saved_baseline, model_from_inputs
+
+    try:
+        items = list_estimates()
+    except Exception as e:
+        callout(f"Couldn't list saved versions: {type(e).__name__}: {e}", "warning")
+        return
+    if not items:
+        callout("No saved versions yet. Save one from the **Approve & Export** tab, then reopen "
+                "or compare versions here.", "info")
+        return
+
+    # ── Open a saved version ─────────────────────────────────────
+    st.markdown("**📂 Open a saved version** — loads it back into this estimate")
+    projects = sorted({(it["project"] or it["slug"]) for it in items})
+    o1, o2, o3 = st.columns([2, 2, 1.1])
+    sel_proj = o1.selectbox("Project", projects, key="ms_ver_proj")
+    versions = sorted([it for it in items if (it["project"] or it["slug"]) == sel_proj],
+                      key=lambda x: x["version"], reverse=True)
+    sel = o2.selectbox("Version (newest first)", versions, format_func=_fmt_version, key="ms_ver_ver")
+    o3.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    if o3.button("📥 Load", key="ms_ver_load", use_container_width=True, type="primary"):
+        try:
+            data = load_estimate(sel["blob"])
+            load_scenario({"inputs": data.get("inputs", {})})
+            st.session_state["_current_estimate_ref"] = {
+                "slug": sel["slug"], "version": sel["version"],
+                "project": (data.get("meta", {}) or {}).get("project", sel["project"]),
+                "blob": sel["blob"]}
+            mark_saved_baseline()
+            st.success(f"Loaded {sel_proj} v{sel['version']}.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Load failed: {e}")
+
+    st.divider()
+    # ── Compare versions ─────────────────────────────────────────
+    st.markdown("**📊 Compare versions** — pick 2 or more to see them side by side")
+    labels = {f"{(it['project'] or it['slug'])} · v{it['version']}": it for it in items}
+    chosen = st.multiselect("Versions to compare", list(labels), key="ms_cmp_pick",
+                            help="Each is recomputed from its stored inputs, so numbers match the engine.")
+    if len(chosen) < 2:
+        st.caption("Select at least 2 saved versions to compare.")
+        return
+    models = {}
+    with st.spinner("Recomputing selected versions…"):
+        for lbl in chosen:
+            try:
+                data = load_estimate(labels[lbl]["blob"])
+                models[lbl] = model_from_inputs(data.get("inputs", {}))
+            except Exception:
+                pass
+    if len(models) < 2:
+        callout("Couldn't recompute enough of the selected versions to compare.", "warning")
+        return
+    _render_multi_comparison(models)
+
+
+def _render_multi_comparison(models: dict):
+    """Side-by-side headline metrics for the selected versions. Uses only keys common to
+    both single and multi models, so a mixed selection still compares cleanly."""
+    lbls = list(models.keys())
+
+    def _skills(m):
+        ps = m.get("per_skill")
+        return str(len(ps)) if isinstance(ps, dict) and ps else "—"
+
+    rows = [
+        ("Skills",              _skills),
+        ("Total FTE",           lambda m: f"{float(m.get('total_fte', 0) or 0):.1f}"),
+        ("Resource cost / mo",  lambda m: _inr((m.get("cost_result") or {}).get("resource_cost", 0))),
+        ("Delivery cost / mo",  lambda m: _inr((m.get("cost_result") or {}).get("total_delivery_cost", 0))),
+        ("Margin",              lambda m: f"{float((m.get('price_result') or {}).get('margin_pct', 0) or 0):.0f}%"),
+        ("Selling price / mo",  lambda m: _inr((m.get("price_result") or {}).get("selling_price", 0))),
+    ]
+    head = "".join(f"<th class='r'>{l}</th>" for l in lbls)
+    body = ""
+    for name, fn in rows:
+        cells = "".join(f"<td class='r'>{fn(models[l])}</td>" for l in lbls)
+        body += f"<tr><td>{name}</td>{cells}</tr>"
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Metric</th>{head}</tr></thead>
+        <tbody>{body}</tbody></table>""", unsafe_allow_html=True)
+    st.caption("Each version is recomputed from its stored inputs (engine-recalculated), so the "
+               "comparison stays consistent with the live model.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
@@ -973,9 +1087,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
-                                      "4 · Rates & Cost", "5 · Optimize (AI)",
-                                      "6 · Approve & Export"])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
+                                          "4 · Rates & Cost", "5 · Optimize (AI)",
+                                          "6 · Approve & Export", "7 · Versions & Compare"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -988,3 +1102,5 @@ def render_multi_skill_app():
         _render_optimize()
     with t6:
         _render_approve_export()
+    with t7:
+        _render_versions_compare()

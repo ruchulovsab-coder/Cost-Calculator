@@ -213,6 +213,48 @@ an email.
 
 ---
 
+## Staging site (the `testing` branch)
+
+There are two live, independent deployments driven by one workflow:
+
+| Branch | Container App | Purpose |
+|--------|---------------|---------|
+| `main` | `nagarro-ops-estimator` | **Production** — unchanged behaviour |
+| `testing` | `nagarro-ops-estimator-test` | **Staging** — all new development |
+
+- **How it works:** the deploy job derives its target from the pushed branch. `main` →
+  production; anything else (i.e. `testing`) → `<name>-test`. Both share the same Container
+  Apps environment + ACR, but are separate apps with their own URLs and scale independently
+  (both scale-to-zero, so idle staging costs ≈ nothing).
+- **⚠️ One-time OIDC credential (required, else login fails on `testing`):** federated identity
+  credentials are per-branch. The initial setup only added `github-main`, so pushes on `testing`
+  fail Azure login with `AADSTS700213: No matching federated identity record`. Add a second
+  credential on the `github-cost-calculator-oidc` app registration for the `testing` branch:
+  ```bash
+  cat > fic-testing.json <<'EOF'
+  { "name": "github-testing",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:ruchulovsab-coder/Cost-Calculator:ref:refs/heads/testing",
+    "audiences": ["api://AzureADTokenExchange"] }
+  EOF
+  az ad app federated-credential create --id "$AZURE_CLIENT_ID" --parameters fic-testing.json
+  ```
+  Or Portal: Entra ID → App registrations → `github-cost-calculator-oidc` → Certificates &
+  secrets → Federated credentials → Add (GitHub Actions, Branch = `testing`). No new role
+  assignment needed — the existing resource-group `Contributor` grant already covers it.
+- **Isolation:** staging gets its own `APP_BASE_URL` (its own FQDN, so approval/orphan links
+  point to staging, never prod) and its estimates container is suffixed `-test`, so test
+  drafts/estimates/approvals never mix with production data.
+- **First staging deploy caveat:** the new app's system-assigned identity has **no Storage
+  Blob role yet** (that grant needs Owner and is manual — see step 5 above). Until granted,
+  staging's cloud drafts + rate-card-from-blob degrade gracefully (disabled); the app still
+  runs. Grant `Storage Blob Data Reader`/`Contributor` to the `-test` app's identity to enable
+  them, and create the `<container>-test` blob container.
+- **Promote to production:** merge `testing` → `main` and push — production redeploys.
+- **Dev loop:** push to `testing` → staging redeploys; validate on the `-test` URL first.
+
+---
+
 ## Notes / tuning
 
 - **Cold start:** first request after idle takes a few seconds (scale-from-zero). Set
