@@ -6,9 +6,10 @@ rationale. The engine always uses the user-approved values, never the recommenda
 directly. Reproducible (same inputs → same output) so estimates stay defensible.
 See docs/classification-estimation.md.
 """
-from config.settings import MS_DEFAULT_ROUTING
+from config.settings import MS_DEFAULT_ROUTING, MS_CLASSIFICATIONS
 
 _LEVELS = ("L1", "L2", "L3")
+_CAT_KEYS = ("alerts", "service_requests", "incidents", "changes")
 
 
 def recommend_routing(cat: str, cls: str, active_levels) -> tuple:
@@ -47,6 +48,39 @@ _ARCH_RULES = [
     (("network", "firewall", "router", "switch", "lan", "wan", "load balanc"), 12),
 ]
 _ARCH_DEFAULT = 10
+
+
+def recommend_skill_pyramid(skill: dict):
+    """Aggregate recommended L1/L2/L3 % for a whole skill: for each classification take the
+    recommended routing (folded onto active levels) and weight it by that classification's
+    effort (count × AHT), so a P1-heavy skill leans L3 and a request-heavy skill leans L1.
+    Returns ({'L1','L2','L3'} summing to 100 across active levels, data_driven: bool). When
+    no volume is entered yet, falls back to an unweighted average so the guidance still
+    shows. Returns (None, False) only if there are no active ticket levels."""
+    active = skill.get("active_levels") or []
+    wl = skill.get("workload", {}) or {}
+    acc = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+    tot = 0.0
+    for cat in _CAT_KEYS:
+        for cls, row in (wl.get(cat, {}) or {}).items():
+            eff = float(row.get("count", 0) or 0) * float(row.get("minutes", 0) or 0)
+            if eff <= 0:
+                continue
+            l1, l2, l3, _ = recommend_routing(cat, cls, active)
+            acc["L1"] += l1 * eff; acc["L2"] += l2 * eff; acc["L3"] += l3 * eff
+            tot += eff
+    data_driven = tot > 0
+    if not data_driven:                      # no volume yet → unweighted taxonomy average
+        for cat in _CAT_KEYS:
+            for cls in MS_CLASSIFICATIONS.get(cat, []):
+                l1, l2, l3, _ = recommend_routing(cat, cls, active)
+                acc["L1"] += l1; acc["L2"] += l2; acc["L3"] += l3; tot += 1
+    if tot <= 0:
+        return None, False
+    pyr = {k: round(v / tot) for k, v in acc.items()}
+    act = [l for l in _LEVELS if l in active] or list(_LEVELS)
+    pyr[max(act, key=lambda l: pyr[l])] += 100 - (pyr["L1"] + pyr["L2"] + pyr["L3"])  # → exactly 100
+    return pyr, data_driven
 
 
 def recommend_architect(skill: dict) -> tuple:

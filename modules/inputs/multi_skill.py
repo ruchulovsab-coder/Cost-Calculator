@@ -333,6 +333,25 @@ def _render_skill_activities(sk, sid):
     st.info(f"**Total additional activity effort: {total:.1f} hrs/month**")
 
 
+def _render_pyramid_hint(sk):
+    """Per-skill 'Recommended support pyramid' summary — effort-weighted L1/L2/L3 (+Architect)
+    from this skill's classification mix, folded onto its active levels. Advisory, no gating."""
+    from modules.recommend import recommend_skill_pyramid, recommend_architect
+    pyr, data_driven = recommend_skill_pyramid(sk)
+    if not pyr:
+        return
+    active = sk.get("active_levels") or []
+    parts = "  ·  ".join(f"<strong>{l} {pyr[l]}%</strong>" for l in ("L1", "L2", "L3") if l in active)
+    arch = f"  (+ Architect ~{recommend_architect(sk)[0]}%)" if "L3" in active else ""
+    basis = "from this skill's workload mix" if data_driven \
+        else "archetype indication — enter volumes below to refine"
+    st.markdown(
+        f"<div style='background:#EAF4F4;border-left:3px solid #1A5F6A;padding:6px 11px;"
+        f"border-radius:4px;font-size:0.85rem;margin:2px 0 10px'>💡 <strong>Recommended support "
+        f"pyramid</strong> <span style='color:#5A6B6B'>({basis})</span>: {parts}{arch}</div>",
+        unsafe_allow_html=True)
+
+
 def _render_workload():
     section_hdr("📊 Per-skill Workload")
     skills = st.session_state.get("skills", [])
@@ -342,6 +361,9 @@ def _render_workload():
     names = {s["id"]: s.get("name") or s["id"] for s in skills}
     sid = st.selectbox("Skill", list(names), format_func=lambda x: names[x], key="ms_wl_skill")
     sk = next(s for s in skills if s["id"] == sid)
+    from modules.state.multi_state import ensure_ms_workload
+    ensure_ms_workload(sk)
+    _render_pyramid_hint(sk)
     with st.expander("🎫 Tickets", expanded=True):
         _render_skill_tickets(sk, sid)
     with st.expander("🖥️ Patching", expanded=False):

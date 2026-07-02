@@ -1,5 +1,5 @@
 """Tests for the deterministic recommendation helpers (modules/recommend.py)."""
-from modules.recommend import recommend_routing, recommend_architect
+from modules.recommend import recommend_routing, recommend_architect, recommend_skill_pyramid
 
 
 def test_routing_all_levels_matches_base():
@@ -43,3 +43,28 @@ def test_architect_falls_back_to_family():
 def test_architect_returns_rationale():
     pct, why = recommend_architect({"name": "SOC"})
     assert isinstance(pct, int) and why
+
+
+def test_skill_pyramid_data_driven_sums_100_on_active():
+    # P1-heavy incident skill on L1/L2/L3 should lean L3 and sum to 100
+    sk = {"active_levels": ["L1", "L2", "L3"],
+          "workload": {"incidents": {"P1": {"count": 100, "minutes": 180, "L1_pct": 0, "L2_pct": 0, "L3_pct": 0}}}}
+    pyr, data_driven = recommend_skill_pyramid(sk)
+    assert data_driven is True
+    assert pyr["L1"] + pyr["L2"] + pyr["L3"] == 100
+    assert pyr["L3"] >= pyr["L1"]                      # P1 escalates upward
+
+
+def test_skill_pyramid_folds_onto_active_levels():
+    sk = {"active_levels": ["L1", "L2"],
+          "workload": {"incidents": {"P1": {"count": 10, "minutes": 180, "L1_pct": 0, "L2_pct": 0, "L3_pct": 0}}}}
+    pyr, _ = recommend_skill_pyramid(sk)
+    assert pyr["L3"] == 0
+    assert pyr["L1"] + pyr["L2"] == 100
+
+
+def test_skill_pyramid_falls_back_without_volume():
+    sk = {"active_levels": ["L1", "L2", "L3"], "workload": {}}
+    pyr, data_driven = recommend_skill_pyramid(sk)
+    assert data_driven is False
+    assert pyr and pyr["L1"] + pyr["L2"] + pyr["L3"] == 100
