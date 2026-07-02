@@ -18,8 +18,8 @@ estimate **lifecycle**. This doc tracks closing that gap to full parity with sin
 
 ## Phases
 
-- **P1 — naming + autosave/draft/resume** (this pass; fixes data-loss). ← *implemented*
-- **P2 — orphan recovery** (mostly free once P1 writes real drafts).
+- **P1 — naming + autosave/draft/resume** (fixes data-loss). ← *shipped v1.52*
+- **P2 — orphan recovery** (mostly free once P1 writes real drafts). ← *implemented*
 - **P3 — end-of-journey dashboard** (approval/what-if/compare/downloads; reuse `dashboard.py`/`approval.py`).
 - **P4 — RFP narrative / A-B exports** (deferred behind the lifecycle).
 
@@ -60,6 +60,23 @@ owned correctly and surface in the resume modal. Autosave no-ops until a name ex
 ### Resume routing (already correct once P1 lands)
 `estimation_mode` is in initial state → restored by `load_scenario`; `_resume_draft_now` sets
 `_ms_mode_resolved=True`, so a resumed multi draft routes straight to `render_multi_skill_app()`.
+
+## P2 design decisions (orphan recovery)
+The orphan pipeline (`draft_store`, `orphan_review`, `orphan_admin`) is **entirely metadata-driven**
+(slug/project/prepared_by/age) — it never computes a model — so detection, listing, the review-email
+flow, and the recipient token-delete page (`?orphan=`, bypasses via `_token_mode`) already cover
+multi drafts once P1 wrote them into the same `__drafts__/` store. Orphans arise only from the 30-day
+lazy stale clock (no explicit `orphan_draft` caller); that too is mode-agnostic.
+
+**One real gap:** multi mode `st.stop()`s before the sidebar renders, and the "🧹 Clean up drafts"
+entry point lived only in the sidebar → a multi preparer couldn't reach it. Fix:
+- `main.py`: factored the full-page orphan-admin view into `_render_orphan_admin_page(back_key)`
+  (single-mode sidebar site unchanged); added a `_show_orphan_admin` check inside the multi block so
+  the page renders before the multi app stops.
+- `multi_skill.py`: header now shows "🧹 Clean up drafts (N)" (via `orphan_count_cached()`) when N>0,
+  setting `_show_orphan_admin` + rerun. "← Back to estimate" returns to multi (estimation_mode intact).
+
+Note: multi still lacks the *rest* of the sidebar (Compare, saved versions, Reset) — that's P3 scope.
 
 ## Constraints
 Engine stays pure + recalc-verifiable (Excel must stay 100%); single mode + Chat untouched;

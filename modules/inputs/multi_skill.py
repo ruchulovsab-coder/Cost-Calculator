@@ -927,7 +927,7 @@ def render_multi_skill_app():
     else:
         st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — autosaves as you go.")
 
-    hc1, hc2 = st.columns([1.4, 1.4])
+    hc1, hc2, hc3 = st.columns([1.4, 1.4, 1.4])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
         st.rerun()
@@ -942,6 +942,17 @@ def render_multi_skill_app():
                                 file_name=f"multi_skill_estimate_{date.today():%Y%m%d}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key="ms_xlsx_dl")
+    # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
+    # renders in multi, so surface it here when there are abandoned drafts to clean up.
+    try:
+        from modules.outputs.orphan_admin import orphan_count_cached
+        _orphans = orphan_count_cached()
+    except Exception:
+        _orphans = 0
+    if _orphans and hc3.button(f"🧹 Clean up drafts ({_orphans})", key="ms_orphan_admin",
+                               type="secondary"):
+        st.session_state["_show_orphan_admin"] = True
+        st.rerun()
     t1, t2, t3, t4, t5 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
                                   "4 · Rates & Cost", "5 · Optimize (AI)"])
     with t1:

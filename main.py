@@ -255,6 +255,18 @@ def _resume_draft_now(slug: str):
     st.rerun()
 
 
+def _render_orphan_admin_page(back_key: str = "orph_back"):
+    """Full-page orphan clean-up view. Shared by the single-mode sidebar entry and the
+    multi-skill header entry (multi has no sidebar). Ends the run via st.stop()."""
+    from modules.outputs.orphan_admin import render_orphan_admin
+    render_orphan_admin()
+    st.divider()
+    if st.button("← Back to estimate", key=back_key, type="secondary"):
+        st.session_state.pop("_show_orphan_admin", None)
+        st.rerun()
+    st.stop()
+
+
 # ── Identity gate: a valid Nagarro email unlocks the app ─────────────────────────
 # Token-link visitors (approval reviewer / orphan-deletion recipient) are identified
 # by their token, not an email, so they bypass the gate.
@@ -288,6 +300,10 @@ if not _token_mode:
         render_mode_chooser()
         st.stop()
     if st.session_state.get("estimation_mode") == "multi":
+        # Multi has no sidebar (it st.stops before it), so the orphan clean-up page is
+        # reached from a header button that sets this flag. Render it here.
+        if st.session_state.get("_show_orphan_admin"):
+            _render_orphan_admin_page("orph_back_ms")
         render_multi_skill_app()
         _autosave_draft()   # tabbed page has no nav hook — autosave after render
         st.stop()
@@ -389,13 +405,7 @@ if st.session_state.get("_orphan_review"):
     st.stop()
 
 if st.session_state.get("_show_orphan_admin"):
-    from modules.outputs.orphan_admin import render_orphan_admin
-    render_orphan_admin()
-    st.divider()
-    if st.button("← Back to estimate", key="orph_back", type="secondary"):
-        st.session_state.pop("_show_orphan_admin", None)
-        st.rerun()
-    st.stop()
+    _render_orphan_admin_page("orph_back")
 
 
 @st.dialog("Reset this page?")
