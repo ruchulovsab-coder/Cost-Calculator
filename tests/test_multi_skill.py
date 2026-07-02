@@ -241,6 +241,29 @@ def test_architect_requires_l3():
     assert state2["skills"][0]["has_architect"] is True
 
 
+def test_activities_distribute_only_on_staffed_roles():
+    """An additional activity whose split points at L3/Architect on an L1/L2-only skill has
+    its hours folded onto the staffed roles — no effort leaks to L3 or Architect."""
+    st = {"skills": [{"id": "s1", "name": "S", "genus_category": "InfraOps",
+                      "active_levels": ["L1", "L2"], "has_architect": False, "architect_pct": 0.0,
+                      "role_buffers": {"L1": 0, "L2": 0, "L3": 0, "Architect": 0}, "coverage_model": "8×5",
+                      "workload": {"incidents": {"P3": {"count": 10, "minutes": 60,
+                                                        "L1_pct": 50, "L2_pct": 50, "L3_pct": 0}}},
+                      "patching": None,
+                      "activities": [{"name": "RCA", "hours": 40.0, "auto": False,
+                                      "dist": {"L2": 20, "L3": 50, "Architect": 30}}]}],
+          "resource_sharing": [], "rates_by_category": {"InfraOps": {"L1": 500, "L2": 800, "L3": 1200, "Architect": 2000}},
+          "sdm_overhead_pct": 0.0, "sdm_rate_inr": 0, "monthly_working_hours": 160.0,
+          "productive_utilisation": 75.0, "contingency_pct": 0.0, "fte_basis": "raw",
+          "delivery_country": "India", "target_margin_pct": 0.0}
+    m = compute_multi_skill_model(st)
+    rh = m["per_skill"]["s1"]["role_hours"]
+    assert rh["L3"] == pytest.approx(0.0)
+    assert rh["Architect"] == pytest.approx(0.0)
+    assert rh["L2"] == pytest.approx(45.0)                 # ticket 5h + all 40h activity folded to L2
+    assert m["engagement_total_effort"] == pytest.approx(50.0)   # 10 ticket + 40 activity, preserved
+
+
 def test_classification_migration_is_neutral():
     """Legacy single-bucket ('All') workload migrates to the per-classification model
     with identical total effort and per-level hours (safe, numerically neutral)."""

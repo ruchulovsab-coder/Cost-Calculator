@@ -162,10 +162,14 @@ def _render_skill_setup():
 # Tab 2 — Per-skill workload (direct entry; one aggregate row per category)
 # ──────────────────────────────────────────────────────────────────────────────
 def _skill_dist_roles(sk) -> list:
-    """Roles that patching / additional activities can be assigned to — always the full
-    L1/L2/L3/Architect set (non-ticket work can land on any role, independent of which
-    levels handle this skill's tickets). The engine counts any level that gets work."""
-    return list(BD_LEVELS)
+    """Roles that patching / additional activities can be assigned to — the skill's ACTIVE
+    levels plus Architect when it has one (Architect requires L3). Non-ticket work is
+    distributed only across the levels this skill actually staffs; the engine renormalises
+    each activity's split onto these roles to match."""
+    roles = [l for l in LEVELS if l in (sk.get("active_levels") or [])]
+    if sk.get("has_architect"):
+        roles.append("Architect")
+    return roles or ["L1"]
 
 
 def _render_skill_tickets(sk, sid):
@@ -301,11 +305,17 @@ def _render_skill_activities(sk, sid):
                                      value=float(act.get("hours", 0) or 0),
                                      key=f"ms_{sid}_act_hrs_{i}", label_visibility="collapsed")
         d = act.get("dist", {}) or {}
+        # Fold the stored split onto this skill's staffed roles so the shown values sum to
+        # 100 across the active levels (+Architect) — matches how the engine distributes it.
+        _dsum = sum(float(d.get(r, 0) or 0) for r in roles)
+        d_disp = ({r: float(d.get(r, 0) or 0) / _dsum * 100.0 for r in roles} if _dsum > 0
+                  else {roles[0]: 100.0})
         new_dist = {}
         for j, r in enumerate(roles):
             new_dist[r] = rc[3 + j].number_input(
                 f"a {r} {sid}{i}", min_value=0.0, max_value=100.0, step=5.0,
-                value=float(d.get(r, 0) or 0), key=f"ms_{sid}_act_{r}_{i}", label_visibility="collapsed")
+                value=float(round(d_disp.get(r, 0.0), 1)), key=f"ms_{sid}_act_{r}_{i}",
+                label_visibility="collapsed")
         if rc[-1].button("🗑️", key=f"ms_{sid}_act_del_{i}", help="Remove"):
             to_remove.append(i)
         act.update({"name": nm.strip() or "Custom Activity", "hours": float(hrs or 0),
