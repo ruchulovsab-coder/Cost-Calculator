@@ -10,6 +10,13 @@ on:
     branches: [ main, testing ]   # main -> production; testing -> isolated staging site
   workflow_dispatch:
 
+# Serialize deploys per branch: two pushes in quick succession must not run their Azure
+# deploy steps at the same time on the same Container App (Azure rejects overlapping
+# operations with a conflict → exit 1). Newer push supersedes an in-progress one.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   id-token: write   # required to request the OIDC token
   contents: read
