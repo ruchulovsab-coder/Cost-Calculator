@@ -712,6 +712,14 @@ def _default_grade(band, available, family="InfraOps"):
     for g in grade_eligibility(band, family):
         if g in available:
             return g
+    if family == "CloudOps":
+        # Tolerant fallback: any card grade sharing this band's number AND a cloud family,
+        # so naming variations (2.1-CLOUD-INFRASTRUCTURE / 2.1 CLOUD-INFRA / etc.) resolve.
+        prefixes = tuple(g.split("-", 1)[0] for g in grade_eligibility(band, "InfraOps"))
+        for g in available:
+            gs = str(g).upper()
+            if "CLOUD" in gs and gs.startswith(prefixes):
+                return g
     return available[0] if available else None
 
 
@@ -740,7 +748,11 @@ def _render_rate_matrix(filtered):
     for fam in GENUS:
         fg = fam_grades.setdefault(fam, {})
         for band in BD_LEVELS:
-            if fg.get(band) not in available:
+            cur = fg.get(band)
+            # (Re)default when the cell is unset/invalid, OR when a CloudOps cell still points
+            # at an INFRAOPS grade (a stale fallback from before cloud grades were mapped).
+            stale_cloud = fam == "CloudOps" and cur and "INFRAOPS" in str(cur).upper()
+            if cur not in available or stale_cloud:
                 fg[band] = _default_grade(band, available, fam)
     if st.session_state.get("ms_sdm_grade") not in available:
         st.session_state["ms_sdm_grade"] = _default_grade("SDM", available)
