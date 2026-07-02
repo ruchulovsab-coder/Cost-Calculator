@@ -3,8 +3,41 @@
 This repository is tagged at each stable release. A git tag is an immutable pointer
 to that exact snapshot, so you can always return to it no matter what changes later.
 
+## Way of working (dev & release flow)
+- **Two live environments.** Branch **`testing`** auto-deploys to **staging**
+  (`nagarro-ops-estimator-test`); branch **`main`** deploys **production**
+  (`nagarro-ops-estimator`). All new work happens on `testing`, is validated on the staging
+  URL, then **promoted to production** by merging `testing` → `main` and pushing (which
+  auto-deploys). `main` and `testing` are kept content-identical after each promotion.
+- **Every release is an annotated tag** (`vX.Y`) = a restore point.
+- **Restore:** `git checkout main` → `git reset --hard vX.Y` (or safer `git revert`) → `git push`.
+  A tag push alone does **not** deploy — only a branch push does.
+- The real **rate card** (`genus_rate_card.xlsx`) lives in Azure Blob and auto-loads at runtime
+  (repo Variable `RATECARD_BLOB`); it is **not** stored in git.
+
 ## Stable versions (latest first)
-- **`v1.51`** — *current stable.* **Multi-skill — Excel export (Phase 2 deliverable).** New
+- **`v1.57`** — *current stable (production).* **Multi-skill classification-driven estimation +
+  CloudOps grades + Raw/Rounded transparency.** Workload is classification-driven (incidents P1–P4,
+  alerts incl. Informational=0 effort, ITIL change types) with per-class AHT + recommended L1/L2/L3
+  routing (deterministic defaults, editable); `modules/recommend.py` routing/architect/pyramid
+  recommenders; `active_levels` authoritative for ticket routing; Architect gated on L3; activity
+  hours distribute only across staffed roles; CloudOps prices off `*-CLOUD-INFRASTRUCTURE` genus
+  grades (`config.grade_eligibility`); Raw/Rounded dual reporting + Management Summary FTE build-up
+  (Raw → +Buffer&Cont → Rounded) on Approve & Export + Excel. `modules/state/multi_state.py`
+  extracted (pure). 126 tests. (Promoted from `testing`.)
+- **`v1.56`** — **Lifecycle parity P3b (Versions & Compare) + active-levels ticket-routing fix +
+  demo-seed no-alerts + staging CI.** Multi Tab 7 opens saved versions & compares 2+ side-by-side
+  (mode-aware `model_from_inputs`); the ticket L1/L2/L3 split renormalizes onto a skill's active
+  levels (fixes L2/L3 effort leaking onto L1-only skills); per-branch deploy concurrency.
+- **`v1.55`** — **Demo-seed pre-fills newly added skills** (temporary testing aid; added skills get
+  SR/incidents/changes, no alerts — alerts belong to the central Monitoring skill).
+- **`v1.54`** — **Lifecycle parity P3a — Approve & Export tab** (approval + email + downloads +
+  reviewer routing). `run_model()` mode-aware; `modules/state/multi_state.py` introduced.
+- **`v1.53`** — **Lifecycle parity P2 — orphan recovery access in multi** (metadata-only pipeline;
+  header "Clean up drafts" entry since multi has no sidebar).
+- **`v1.52`** — **Lifecycle parity P1 — Customer/RFP name + autosave/draft/resume** (6 `ms_*` keys
+  into initial state so serialize/restore round-trip; autosave-on-rerun with signature guard).
+- **`v1.51`** — **Multi-skill — Excel export (Phase 2 deliverable).** New
   `modules/outputs/multi_excel_export.py::generate_multi_excel_report(state=None)` builds an 8-sheet
   workbook from the multi-skill engine (state-driven, so unit-testable; values written straight from
   `compute_multi_skill_model`, so it equals the engine): **Executive Summary · Skills · Effort
@@ -679,6 +712,14 @@ git push origin v1.35
 
 git tag -a v1.36 -m "Stable Version 1.36 — multi-skill Phase 2 (mode chooser + skill setup + per-skill workload + effort/FTE)"
 git push origin v1.36
+
+# v1.37–v1.57 also exist and are pushed. Recent lifecycle + classification releases:
+git tag -a v1.52 -m "v1.52: multi-skill parity P1 — Customer/RFP name + autosave/draft/resume"; git push origin v1.52
+git tag -a v1.53 -m "v1.53: multi-skill parity P2 — orphan recovery access in multi mode"; git push origin v1.53
+git tag -a v1.54 -m "v1.54: multi-skill parity P3a — Approve & Export tab"; git push origin v1.54
+git tag -a v1.55 -m "v1.55: demo-seed — pre-fill newly added skills (TEMPORARY testing aid)"; git push origin v1.55
+git tag -a v1.56 -m "v1.56: parity P3b + active-levels fix + staging + demo-seed no-alerts"; git push origin v1.56
+git tag -a v1.57 -m "v1.57: classification-driven estimation + CloudOps grades + Raw/Rounded transparency"; git push origin v1.57
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
