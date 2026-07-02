@@ -409,17 +409,35 @@ def _compute_cached(state: dict) -> dict:
 
 
 def run_model() -> dict:
-    """Compute the full model from the current session. Result is read-only —
-    do not mutate the returned dict (it may be a shared cached object)."""
+    """Compute the model from the current session. Mode-aware: multi-skill estimates
+    run the (skill × level) engine; single mode runs the classic pipeline. Result is
+    read-only — do not mutate the returned dict (it may be a shared cached object)."""
+    if st.session_state.get("estimation_mode") == "multi":
+        from modules.calculations.engine import compute_multi_skill_model
+        from modules.state.multi_state import build_multi_model_state
+        return compute_multi_skill_model(build_multi_model_state())
     return _compute_cached(build_model_state())
 
 
 # ── Change detection (divergence from the last saved version) ────────────────────
+# Extra model-affecting keys for multi-skill estimates (folded into the fingerprint
+# only in multi mode, so single-mode divergence detection is unchanged).
+_MULTI_MODEL_KEYS = [
+    "estimation_mode", "skills", "resource_sharing", "sdm_overhead_pct",
+    "ms_family_grades", "ms_sdm_grade", "ms_rates_by_category", "ms_sdm_rate_inr",
+    "ms_context_switch_pct", "ms_enforce_min_shift",
+]
+
+
 def inputs_fingerprint() -> str:
     """Stable hash of the inputs that affect the computed estimate (_MODEL_KEYS only,
     so navigation/UI-only state never registers as a change). Used to tell when the
-    live estimate has changed since it was last saved or loaded."""
+    live estimate has changed since it was last saved or loaded. In multi mode the
+    (skill × level) inputs are folded in so multi edits register as divergence too."""
     snap = {k: st.session_state.get(k) for k in _MODEL_KEYS}
+    if st.session_state.get("estimation_mode") == "multi":
+        for k in _MULTI_MODEL_KEYS:
+            snap[k] = st.session_state.get(k)
     return hashlib.sha256(
         json.dumps(snap, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
@@ -541,10 +559,15 @@ def save_scenario_to_session(name: str, description: str) -> dict:
 
 
 def model_from_inputs(inputs: dict) -> dict:
-    """Recompute the full model from a scenario's stored inputs (used by the
-    comparison view). Rebuilds role rates from the stored rate card + location."""
+    """Recompute the model from a scenario's stored inputs (used by the comparison
+    view). Mode-aware: multi-skill scenarios run the (skill × level) engine; single
+    mode rebuilds role rates from the stored rate card + location."""
     import pandas as pd
     from modules.calculations.engine import compute_full_model, resolve_role_rates
+    if inputs.get("estimation_mode") == "multi":
+        from modules.calculations.engine import compute_multi_skill_model
+        from modules.state.multi_state import build_multi_model_state_from
+        return compute_multi_skill_model(build_multi_model_state_from(inputs))
     state = dict(inputs)
     df = inputs.get("rate_card_df")
     if isinstance(df, list):

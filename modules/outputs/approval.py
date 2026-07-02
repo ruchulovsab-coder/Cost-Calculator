@@ -23,13 +23,19 @@ def _email_artifacts(ref):
     summary = build_estimate_summary(model)
     body_html = dashboard_summary_html(model)
     attachments = []
+    is_multi = st.session_state.get("estimation_mode") == "multi"
     try:
-        from modules.outputs.excel_model import generate_excel_model
         proj = (ref.get("project") or "estimate").replace(" ", "_")
+        if is_multi:
+            from modules.outputs.multi_excel_export import generate_multi_excel_report
+            xbytes = generate_multi_excel_report()
+        else:
+            from modules.outputs.excel_model import generate_excel_model
+            xbytes = generate_excel_model()
         attachments.append({
             "name": f"{proj}_v{ref.get('version')}_model.xlsx",
             "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "bytes": generate_excel_model(),
+            "bytes": xbytes,
         })
     except Exception:
         pass

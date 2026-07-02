@@ -309,6 +309,15 @@ if not _token_mode:
         st.stop()
 
 
+# Reviewer opened a MULTI-skill estimate via the tokened link (bypasses the manual
+# block above): the single-mode Step 10 dashboard can't render multi inputs, so show a
+# multi-aware review view. Single-mode reviews fall through to the step renderer.
+if st.session_state.get("_review") and st.session_state.get("estimation_mode") == "multi":
+    from modules.inputs.multi_skill import render_multi_approve_export
+    render_multi_approve_export(review=True)
+    st.stop()
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     _logo = os.path.join(os.path.dirname(__file__), "assets", "nagarro_logo.png")

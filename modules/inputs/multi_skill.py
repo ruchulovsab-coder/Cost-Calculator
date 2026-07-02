@@ -17,6 +17,9 @@ from config.settings import (COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELI
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
 from modules.calculations.engine import (compute_multi_skill_model, resolve_role_rates,
                                          calc_patching_effort, derive_activity_hours)
+from modules.state.multi_state import (build_multi_model_state as _build_multi_state,
+                                       refresh_auto_activities as _refresh_auto_activities,
+                                       skill_volumes as _skill_volumes)
 from utils.formatters import fmt_hours
 
 CATEGORIES = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
@@ -134,13 +137,6 @@ def _skill_dist_roles(sk) -> list:
     L1/L2/L3/Architect set (non-ticket work can land on any role, independent of which
     levels handle this skill's tickets). The engine counts any level that gets work."""
     return list(BD_LEVELS)
-
-
-def _skill_volumes(sk) -> dict:
-    """This skill's monthly ticket counts, for auto-deriving activity effort."""
-    wl = sk.get("workload", {}) or {}
-    return {c: float((wl.get(c, {}) or {}).get("All", {}).get("count", 0) or 0)
-            for c in ("alerts", "service_requests", "incidents", "changes")}
 
 
 def _render_skill_tickets(sk, sid):
@@ -299,47 +295,9 @@ def _render_workload():
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Tab 3 — Engagement inputs + Effort/FTE dashboard
+# (state builder + auto-activity refresh live in modules/state/multi_state.py so
+#  non-UI code — run_model, approval email, Excel — can compute the multi model)
 # ──────────────────────────────────────────────────────────────────────────────
-def _refresh_auto_activities():
-    """Recompute 'auto' activity hours from each skill's current volumes/servers, so the
-    numbers stay correct on tabs other than Workload (parity with single-mode refresh)."""
-    for sk in st.session_state.get("skills", []) or []:
-        acts = sk.get("activities") or []
-        if not acts:
-            continue
-        servers = int((sk.get("patching") or {}).get("num_servers", 0) or 0)
-        vols = _skill_volumes(sk)
-        for a in acts:
-            if a.get("auto") and a.get("name") in ACTIVITY_FORMULAS:
-                a["hours"] = derive_activity_hours(a["name"], servers, vols)
-
-
-def _build_multi_state() -> dict:
-    _refresh_auto_activities()
-    ss = st.session_state
-    return {
-        "skills": ss.get("skills", []),
-        "resource_sharing": ss.get("resource_sharing", []),
-        "rates_by_category": ss.get("ms_rates_by_category", {}) or {},   # InfraOps/CloudOps band rates (INR)
-        "sdm_overhead_pct": float(ss.get("sdm_overhead_pct", 5.0) or 0.0),
-        "sdm_rate_inr": float(ss.get("ms_sdm_rate_inr", 0.0) or 0.0),
-        "exchange_rates": ss.get("exchange_rates", {}) or {},
-        # AI Team Optimizer realism knobs (default no-op); set on the Optimize tab.
-        "context_switch_pct": float(ss.get("ms_context_switch_pct", 0.0) or 0.0),
-        "enforce_min_shift": bool(ss.get("ms_enforce_min_shift", False)),
-        "contingency_pct": float(ss.get("contingency_pct", 10.0) or 0.0),
-        "monthly_working_hours": float(ss.get("monthly_working_hours", 160.0) or 160.0),
-        "productive_utilisation": float(ss.get("productive_utilisation", 75.0) or 75.0),
-        "fte_basis": ss.get("fte_basis", "rounded"),
-        "delivery_country": ss.get("delivery_country", "India"),
-        "delivery_location": ss.get("delivery_location"),
-        "custom_hours_per_day": ss.get("custom_hours_per_day", 8),
-        "custom_days_per_week": ss.get("custom_days_per_week", 5),
-        "additional_costs": [], "sla_provision_included": "No", "sla_provision_pct": 0.0,
-        "target_margin_pct": float(ss.get("target_margin_pct", 20.0) or 0.0),
-    }
-
-
 def _render_buffer_config(skills):
     """Per-skill × per-level buffer matrix (L1/L2/L3/Architect). Writes sk['role_buffers']."""
     section_hdr("🎛️ Per-level effort buffer")
@@ -909,6 +867,74 @@ def _render_optimize():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab 6 — Approve & Export (end-of-journey lifecycle; parity with single Step 10)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_multi_summary_metrics(model):
+    """Headline metrics row shared by the preparer tab and the reviewer view."""
+    cr, pr = model["cost_result"], model["price_result"]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total FTE", f"{model.get('total_fte', 0):.1f}")
+    m2.metric("Resource cost / mo", _inr(model.get("total_resource_cost", 0)))
+    m3.metric("Delivery cost / mo", _inr(cr.get("total_delivery_cost", 0)))
+    m4.metric(f"Selling price / mo ({pr.get('margin_pct', 0):.0f}%)", _inr(pr.get("selling_price", 0)))
+
+
+def _render_excel_export():
+    st.caption("Download the full working model as an Excel workbook — the numbers equal the engine.")
+    if st.button("📊 Prepare Excel export", key="ms_ax_xlsx_prep", type="secondary"):
+        from modules.outputs.multi_excel_export import generate_multi_excel_report
+        with st.spinner("Building workbook…"):
+            st.session_state["_ms_xlsx"] = generate_multi_excel_report()
+    if st.session_state.get("_ms_xlsx"):
+        from datetime import date
+        st.download_button("⬇️ Download .xlsx", data=st.session_state["_ms_xlsx"],
+                           file_name=f"multi_skill_estimate_{date.today():%Y%m%d}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="ms_ax_xlsx_dl")
+
+
+def _render_approve_export():
+    section_hdr("✅ Approve & Export")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    if not (st.session_state.get("project_name") or "").strip():
+        callout("Name this estimate (Customer / RFP) at the top of the page before saving a "
+                "version or requesting approval.", "warning")
+    _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+    st.divider()
+
+    from modules.outputs.approval import render_approval_panel, change_state
+    # Post-approval divergence banner + lock (parity with single-mode Step 10).
+    cs = change_state()
+    if cs["diverged"]:
+        callout("🔴 This approved estimate has changed. Save it as a <strong>new version</strong> "
+                "below before exporting or re-requesting approval.", "error")
+    render_approval_panel(locked=cs["diverged"], rec=cs["rec"])
+
+    st.divider()
+    section_hdr("📤 Export")
+    _render_excel_export()
+
+
+def render_multi_approve_export(review: bool = False):
+    """Full-page multi-skill Approve & Export view for a reviewer opening the tokened
+    link (no tabs/sidebar): a read-only summary + the approval panel. The single-mode
+    Step 10 dashboard can't render multi inputs, so multi reviewers land here."""
+    page_header(0, "Multi-skill Estimate — Approve & Export",
+                "Review the estimate summary, then approve or reject it.")
+    ref = st.session_state.get("_current_estimate_ref")
+    if ref:
+        st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
+    if st.session_state.get("skills"):
+        _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+        st.divider()
+    from modules.outputs.approval import render_approval_panel
+    render_approval_panel()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
@@ -927,21 +953,10 @@ def render_multi_skill_app():
     else:
         st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — autosaves as you go.")
 
-    hc1, hc2, hc3 = st.columns([1.4, 1.4, 1.4])
+    hc1, hc2 = st.columns([1.6, 1.6])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
         st.rerun()
-    if st.session_state.get("skills"):
-        if hc2.button("📊 Prepare Excel export", key="ms_xlsx_prep", type="secondary"):
-            from modules.outputs.multi_excel_export import generate_multi_excel_report
-            with st.spinner("Building workbook…"):
-                st.session_state["_ms_xlsx"] = generate_multi_excel_report()
-        if st.session_state.get("_ms_xlsx"):
-            from datetime import date
-            hc2.download_button("⬇️ Download .xlsx", data=st.session_state["_ms_xlsx"],
-                                file_name=f"multi_skill_estimate_{date.today():%Y%m%d}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="ms_xlsx_dl")
     # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
     # renders in multi, so surface it here when there are abandoned drafts to clean up.
     try:
@@ -949,12 +964,13 @@ def render_multi_skill_app():
         _orphans = orphan_count_cached()
     except Exception:
         _orphans = 0
-    if _orphans and hc3.button(f"🧹 Clean up drafts ({_orphans})", key="ms_orphan_admin",
+    if _orphans and hc2.button(f"🧹 Clean up drafts ({_orphans})", key="ms_orphan_admin",
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
-                                  "4 · Rates & Cost", "5 · Optimize (AI)"])
+    t1, t2, t3, t4, t5, t6 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
+                                      "4 · Rates & Cost", "5 · Optimize (AI)",
+                                      "6 · Approve & Export"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -965,3 +981,5 @@ def render_multi_skill_app():
         _render_rates_cost()
     with t5:
         _render_optimize()
+    with t6:
+        _render_approve_export()

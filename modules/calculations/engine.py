@@ -1022,6 +1022,11 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
         "per_skill": per_skill,
         "resources": res_out,
         "engagement_total_effort": engagement_total_effort,
+        # Aliases/keys so shared summary code (build_estimate_summary, the approval
+        # email's dashboard_summary_html) renders multi models like single ones.
+        "total_effort": engagement_total_effort,
+        "reporting_currency": g("reporting_currency", "INR") or "INR",
+        "fte_basis": g("fte_basis", "rounded"),
         "sdm_hours": sdm_hours,
         "total_fte": total_fte,
         "total_resource_cost": total_resource_cost,

@@ -271,10 +271,10 @@ def _inputs(wb, state):
 
 def generate_multi_excel_report(state=None) -> bytes:
     """Build the multi-skill workbook and return .xlsx bytes. `state` defaults to the
-    live `_build_multi_state()`; pass a dict to render without the UI (tests)."""
+    live `build_multi_model_state()`; pass a dict to render without the UI (tests)."""
     if state is None:
-        from modules.inputs.multi_skill import _build_multi_state
-        state = _build_multi_state()
+        from modules.state.multi_state import build_multi_model_state
+        state = build_multi_model_state()
     model = compute_multi_skill_model(state)
     baseline = compute_multi_skill_model({**state, "resource_sharing": []})
     try:

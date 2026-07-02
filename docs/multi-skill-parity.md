@@ -19,8 +19,10 @@ estimate **lifecycle**. This doc tracks closing that gap to full parity with sin
 ## Phases
 
 - **P1 — naming + autosave/draft/resume** (fixes data-loss). ← *shipped v1.52*
-- **P2 — orphan recovery** (mostly free once P1 writes real drafts). ← *implemented*
-- **P3 — end-of-journey dashboard** (approval/what-if/compare/downloads; reuse `dashboard.py`/`approval.py`).
+- **P2 — orphan recovery** (mostly free once P1 writes real drafts). ← *shipped v1.53*
+- **P3 — end-of-journey dashboard** (approval/compare/downloads; reuse `approval.py`). What-if deferred.
+  - **P3a — Approve & Export tab** (approval + email + Excel download). ← *implemented*
+  - **P3b — Saved versions + Compare** (mode-aware `model_from_inputs` done; needs a multi entry point).
 - **P4 — RFP narrative / A-B exports** (deferred behind the lifecycle).
 
 ## P1 design decisions
@@ -77,6 +79,27 @@ entry point lived only in the sidebar → a multi preparer couldn't reach it. Fi
   setting `_show_orphan_admin` + rerun. "← Back to estimate" returns to multi (estimation_mode intact).
 
 Note: multi still lacks the *rest* of the sidebar (Compare, saved versions, Reset) — that's P3 scope.
+
+## P3a design decisions (Approve & Export)
+The single-mode approval/versioning couples to the model at a few points, made mode-aware:
+- **Pure state builder extracted** → `modules/state/multi_state.py` (`build_multi_model_state()` live,
+  `build_multi_model_state_from(inputs)` for compare/recompute). `multi_skill` now alias-imports these;
+  `multi_excel_export` sources state from here too (decoupled from the UI module).
+- **`session_manager.run_model()`** is mode-aware → multi runs `compute_multi_skill_model`. So
+  `save_version`, `build_estimate_summary`, and the approval email all work in multi with no changes.
+- **Multi engine return** gained `total_effort` (= engagement_total_effort), `reporting_currency`,
+  `fte_basis` so shared summary code (`build_estimate_summary`, `dashboard_summary_html`) renders it
+  like a single model — **no separate email template needed**. Additive/recalc-safe.
+- **`inputs_fingerprint()`** folds in `_MULTI_MODEL_KEYS` in multi mode, so post-approval divergence
+  detection fires on multi edits. Single-mode fingerprint unchanged (guarded by `estimation_mode`).
+- **`model_from_inputs()`** mode-aware (Compare path) → multi scenarios recompute via the multi engine.
+- **`approval._email_artifacts`** attaches the multi Excel workbook when `estimation_mode == "multi"`.
+- **UI:** new **"6 · Approve & Export"** tab (`_render_approve_export`): headline metrics + divergence
+  banner + `render_approval_panel` (reused) + Excel download (moved out of the header). Header now just
+  Switch-mode + Clean-up-drafts.
+- **Reviewer routing:** a reviewer opening a multi estimate's token link would hit single-mode Step 10
+  (can't render multi inputs). `main.py` now intercepts `_review + estimation_mode=="multi"` →
+  `render_multi_approve_export(review=True)` (read-only summary + approval panel). Single reviews unchanged.
 
 ## Constraints
 Engine stays pure + recalc-verifiable (Excel must stay 100%); single mode + Chat untouched;
