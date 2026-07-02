@@ -650,17 +650,21 @@ def _render_dashboard():
         "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
         value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
 
-    # Headline estimation basis — drives cost, price, approval and export. Both bases are
-    # always compared on the "Raw vs Rounded" tab; this picks which one is the reported figure.
+    # New multi estimates default to Raw (the chosen basis); loaded estimates keep their saved
+    # basis. Leadership can switch here; both bases are compared on the Approve & Export tab.
+    if not st.session_state.get("_ms_basis_init"):
+        if not st.session_state.get("_current_estimate_ref"):
+            st.session_state["fte_basis"] = "raw"
+        st.session_state["_ms_basis_init"] = True
     _basis = st.radio(
         "Estimation basis (drives cost, price, approval & export)",
-        ["Rounded (delivered team)", "Raw (theoretical minimum)"],
-        index=1 if st.session_state.get("fte_basis") == "raw" else 0, horizontal=True,
+        ["Raw (theoretical minimum)", "Rounded (delivered team)"],
+        index=1 if st.session_state.get("fte_basis") == "rounded" else 0, horizontal=True,
         key="ms_fte_basis_radio",
-        help="Rounded = each skill × level rounded up to 0.5 (min 0.5) — the team you actually staff. "
-             "Raw = exact fractional demand (assumes perfect sharing/pooling). Compare both on the "
-             "Raw vs Rounded tab.")
-    st.session_state["fte_basis"] = "raw" if _basis.startswith("Raw") else "rounded"
+        help="Raw = exact fractional demand (assumes perfect sharing/pooling) — the default. "
+             "Rounded = each skill × level rounded up to 0.5 (min 0.5), the team you actually staff. "
+             "Both are compared on the Approve & Export tab.")
+    st.session_state["fte_basis"] = "rounded" if _basis.startswith("Rounded") else "raw"
 
     # §2 Per-level effort buffer
     _render_buffer_config(skills)
@@ -1022,7 +1026,14 @@ def _render_approve_export():
     if not (st.session_state.get("project_name") or "").strip():
         callout("Name this estimate (Customer / RFP) at the top of the page before saving a "
                 "version or requesting approval.", "warning")
-    _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+    state = _build_multi_state()
+    basis = "Raw (theoretical minimum)" if state.get("fte_basis") == "raw" else "Rounded (delivered team)"
+    st.caption(f"Reported on the **{basis}** basis — change it on the Effort & FTE tab.")
+    _render_multi_summary_metrics(compute_multi_skill_model(state))
+    st.divider()
+
+    # Raw vs Rounded comparison (folded in here from the former standalone tab).
+    _render_raw_vs_rounded()
     st.divider()
 
     from modules.outputs.approval import render_approval_panel, change_state
@@ -1049,6 +1060,8 @@ def render_multi_approve_export(review: bool = False):
         st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
     if st.session_state.get("skills"):
         _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+        st.divider()
+        _render_raw_vs_rounded()
         st.divider()
     from modules.outputs.approval import render_approval_panel
     render_approval_panel()
@@ -1161,7 +1174,7 @@ def _render_multi_comparison(models: dict):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tab 8 — Raw vs Rounded (two estimate versions, reported independently)
+# Raw vs Rounded — two estimate versions, shown as a section inside Approve & Export
 # ──────────────────────────────────────────────────────────────────────────────
 def _render_raw_vs_rounded():
     section_hdr("⚖️ Raw vs Rounded")
@@ -1237,9 +1250,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(
         ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Approve & Export", "7 · Versions & Compare", "8 · Raw vs Rounded"])
+         "6 · Approve & Export", "7 · Versions & Compare"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -1254,5 +1267,3 @@ def render_multi_skill_app():
         _render_approve_export()
     with t7:
         _render_versions_compare()
-    with t8:
-        _render_raw_vs_rounded()
