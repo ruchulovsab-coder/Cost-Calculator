@@ -224,6 +224,90 @@ def _active_levels_state(active):
     }
 
 
+def test_grade_eligibility_by_family():
+    """InfraOps prices off *-INFRAOPS (unchanged); CloudOps off *-CLOUD-INFRASTRUCTURE
+    (same band numbers); SDM stays *-DELIVERY-ITIL for both."""
+    from config.settings import grade_eligibility
+    assert grade_eligibility("L1", "InfraOps") == ["2.1-INFRAOPS", "2.2-INFRAOPS"]
+    assert grade_eligibility("L1", "CloudOps") == ["2.1-CLOUD-INFRASTRUCTURE", "2.2-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("L2", "CloudOps") == ["2.3-CLOUD-INFRASTRUCTURE", "3.1-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("L3", "CloudOps") == ["3.2-CLOUD-INFRASTRUCTURE", "3.3-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("Architect", "CloudOps") == ["4.1-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("SDM", "CloudOps") == ["4.1-DELIVERY-ITIL"]        # shared
+    assert grade_eligibility("L1") == ["2.1-INFRAOPS", "2.2-INFRAOPS"]          # default InfraOps
+
+
+def test_architect_requires_l3():
+    """Architect is a role above L3 — the state builder drops has_architect when L3 is
+    not an active level, so no architect effort/cost leaks in without L3."""
+    from modules.state.multi_state import build_multi_model_state_from
+    sk = {"id": "s1", "name": "Monitoring", "genus_category": "InfraOps",
+          "active_levels": ["L1", "L2"], "has_architect": True, "architect_pct": 25.0,
+          "role_buffers": {"L1": 20, "L2": 20, "L3": 20, "Architect": 0},
+          "workload": {"incidents": {"P3": {"count": 50, "minutes": 30, "L1_pct": 60, "L2_pct": 40, "L3_pct": 0}}},
+          "patching": None, "activities": []}
+    state = build_multi_model_state_from({"estimation_mode": "multi", "skills": [sk]})
+    assert state["skills"][0]["has_architect"] is False
+    # with L3 active, it is preserved
+    sk2 = dict(sk); sk2["active_levels"] = ["L1", "L2", "L3"]; sk2["has_architect"] = True
+    state2 = build_multi_model_state_from({"estimation_mode": "multi", "skills": [sk2]})
+    assert state2["skills"][0]["has_architect"] is True
+
+
+def test_activities_distribute_only_on_staffed_roles():
+    """An additional activity whose split points at L3/Architect on an L1/L2-only skill has
+    its hours folded onto the staffed roles — no effort leaks to L3 or Architect."""
+    st = {"skills": [{"id": "s1", "name": "S", "genus_category": "InfraOps",
+                      "active_levels": ["L1", "L2"], "has_architect": False, "architect_pct": 0.0,
+                      "role_buffers": {"L1": 0, "L2": 0, "L3": 0, "Architect": 0}, "coverage_model": "8×5",
+                      "workload": {"incidents": {"P3": {"count": 10, "minutes": 60,
+                                                        "L1_pct": 50, "L2_pct": 50, "L3_pct": 0}}},
+                      "patching": None,
+                      "activities": [{"name": "RCA", "hours": 40.0, "auto": False,
+                                      "dist": {"L2": 20, "L3": 50, "Architect": 30}}]}],
+          "resource_sharing": [], "rates_by_category": {"InfraOps": {"L1": 500, "L2": 800, "L3": 1200, "Architect": 2000}},
+          "sdm_overhead_pct": 0.0, "sdm_rate_inr": 0, "monthly_working_hours": 160.0,
+          "productive_utilisation": 75.0, "contingency_pct": 0.0, "fte_basis": "raw",
+          "delivery_country": "India", "target_margin_pct": 0.0}
+    m = compute_multi_skill_model(st)
+    rh = m["per_skill"]["s1"]["role_hours"]
+    assert rh["L3"] == pytest.approx(0.0)
+    assert rh["Architect"] == pytest.approx(0.0)
+    assert rh["L2"] == pytest.approx(45.0)                 # ticket 5h + all 40h activity folded to L2
+    assert m["engagement_total_effort"] == pytest.approx(50.0)   # 10 ticket + 40 activity, preserved
+
+
+def test_classification_migration_is_neutral():
+    """Legacy single-bucket ('All') workload migrates to the per-classification model
+    with identical total effort and per-level hours (safe, numerically neutral)."""
+    from modules.state.multi_state import ensure_ms_workload, skill_volumes
+    legacy_wl = {"incidents": {"All": {"count": 100, "minutes": 60,
+                                       "L1_pct": 50, "L2_pct": 30, "L3_pct": 20}}}
+
+    def _state(wl):
+        return {"skills": [{"id": "s1", "name": "S", "genus_category": "InfraOps",
+                            "active_levels": ["L1", "L2", "L3"], "has_architect": False,
+                            "architect_pct": 0.0, "role_buffers": {"L1": 20, "L2": 20, "L3": 20, "Architect": 0},
+                            "coverage_model": "8×5", "workload": copy.deepcopy(wl),
+                            "patching": None, "activities": []}],
+                "resource_sharing": [], "rates_by_category": {"InfraOps": {"L1": 500, "L2": 800, "L3": 1200, "Architect": 2000}},
+                "sdm_overhead_pct": 5.0, "sdm_rate_inr": 2500, "monthly_working_hours": 160.0,
+                "productive_utilisation": 75.0, "contingency_pct": 10.0, "fte_basis": "rounded",
+                "delivery_country": "India", "target_margin_pct": 20.0}
+
+    before = compute_multi_skill_model(_state(legacy_wl))
+    sk = {"active_levels": ["L1", "L2", "L3"], "workload": copy.deepcopy(legacy_wl)}
+    ensure_ms_workload(sk)
+    # distributed to P1..P4, summing back to the original total
+    assert sum(r["count"] for r in sk["workload"]["incidents"].values()) == 100
+    assert skill_volumes(sk)["incidents"] == 100.0
+    after = compute_multi_skill_model(_state(sk["workload"]))
+    assert after["engagement_total_effort"] == pytest.approx(before["engagement_total_effort"], rel=1e-9)
+    for lvl in ("L1", "L2", "L3"):
+        assert after["per_skill"]["s1"]["role_hours"][lvl] == pytest.approx(
+            before["per_skill"]["s1"]["role_hours"][lvl], rel=1e-6)
+
+
 def test_active_levels_restrict_ticket_routing():
     """Tickets land ONLY on a skill's active levels; a stale split referencing an inactive
     level is renormalized away, and total effort is preserved (it's split-independent)."""

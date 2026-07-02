@@ -859,15 +859,32 @@ def _skill_role_hours(
     arch_hours = arch_buffered * cont_m if has_arch else 0.0
     overhead = {"Architect": arch_hours} if has_arch else {}
 
-    role_hours = assemble_role_hours(ticket_rh, overhead, patch_h, patch_role, acts, contingency_pct)
+    # Additional-activity effort is distributed ONLY across the roles this skill staffs — its
+    # active levels plus Architect (Architect requires L3). Each activity's role split is
+    # renormalised onto those roles (an inactive role's share folds into the active ones), so
+    # activity hours never land on a level the skill doesn't use. Mirrors the ticket routing.
+    allowed_roles = [l for l in ("L1", "L2", "L3") if l in (skill.get("active_levels") or [])]
+    if has_arch:
+        allowed_roles.append("Architect")
+
+    def _norm_act_dist(dist):
+        d = {r: float((dist or {}).get(r, 0) or 0) for r in allowed_roles}
+        s = sum(d.values())
+        if s > 0:
+            return {r: d[r] / s * 100.0 for r in allowed_roles}
+        return {allowed_roles[0]: 100.0} if allowed_roles else {}
+
+    acts_norm = [{**a, "dist": _norm_act_dist(a.get("dist"))} for a in acts]
+
+    role_hours = assemble_role_hours(ticket_rh, overhead, patch_h, patch_role, acts_norm, contingency_pct)
 
     # Per-level raw & buffered "base" hours (before contingency) for the build-up.
     #   L1/L2/L3 base = ticket hours;  Architect base = the architect-% overhead.
     #   Activities (distributed) and patching are added un-buffered, exactly as
     #   assemble_role_hours accumulates them, so final == role_hours for every level.
     act_share = {lvl: 0.0 for lvl in _MS_LEVELS}
-    for a in acts:
-        ah, dist = a.get("hours", 0.0), (a.get("dist", {}) or {})
+    for a in acts_norm:
+        ah, dist = a.get("hours", 0.0), a.get("dist", {})
         for lvl in _MS_LEVELS:
             act_share[lvl] += ah * dist.get(lvl, 0.0) / 100.0
     raw_base = {"L1": ticket_raw["L1"], "L2": ticket_raw["L2"], "L3": ticket_raw["L3"],

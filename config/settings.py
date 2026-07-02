@@ -60,6 +60,20 @@ GRADE_ELIGIBILITY = {
     "SDM":       ["4.1-DELIVERY-ITIL"],
 }
 
+# CloudOps skills price off the CLOUD-INFRASTRUCTURE genus lines — same band structure as
+# INFRAOPS, just the cloud suffix. InfraOps is unchanged; SDM stays *-DELIVERY-ITIL for both.
+CLOUD_GENUS_SUFFIX = "CLOUD-INFRASTRUCTURE"
+
+
+def grade_eligibility(band, family="InfraOps"):
+    """Eligible rate-card genus grades for a band, per rate family:
+      InfraOps → *-INFRAOPS  (unchanged)
+      CloudOps → *-CLOUD-INFRASTRUCTURE  (same band numbers; SDM stays *-DELIVERY-ITIL)."""
+    infra = GRADE_ELIGIBILITY.get(band, [])
+    if family == "CloudOps":
+        return [g.replace("-INFRAOPS", f"-{CLOUD_GENUS_SUFFIX}") for g in infra]
+    return list(infra)
+
 # ── Skill adjacency (AI Team Optimizer) ───────────────────────────────────────
 # Which senior resources can be shared across technically-adjacent skills. A skill's
 # free-text name is matched to a canonical token by keyword; tokens in the same
@@ -127,6 +141,47 @@ CATEGORY_SUBLABELS = {
     "service_requests": SR_COMPLEXITIES,
     "incidents":        INCIDENT_SEVERITIES,
     "changes":          CHANGE_TYPES,
+}
+
+# ── Multi-skill classification model (classification-driven estimation) ───────────
+# Multi mode classifies workload per category, then seeds effort (AHT) and the L1/L2/L3
+# pyramid from these DEFAULTS so users adjust rather than hand-enter. Deterministic and
+# editable (not AI) — recommendations are seeds; the engine uses the user-approved values.
+# ⚠️ These defaults are industry seeds — TUNE per your delivery reality; changing a number
+# here changes only the starting point, never a saved estimate (approved values are stored).
+# Single mode is unaffected (it uses CATEGORY_SUBLABELS above).
+MS_CLASSIFICATIONS = {
+    "alerts":           ["Critical", "High", "Medium", "Low", "Informational"],
+    "incidents":        ["P1", "P2", "P3", "P4"],
+    "service_requests": ["Standard", "Normal", "Complex"],
+    "changes":          ["Standard", "Normal", "Emergency"],   # ITIL change types
+}
+
+# Volume distribution across classifications (%, each category sums to 100).
+MS_DEFAULT_DIST = {
+    "alerts":           {"Critical": 5, "High": 15, "Medium": 30, "Low": 40, "Informational": 10},
+    "incidents":        {"P1": 5, "P2": 20, "P3": 45, "P4": 30},
+    "service_requests": {"Standard": 55, "Normal": 30, "Complex": 15},
+    "changes":          {"Standard": 60, "Normal": 30, "Emergency": 10},
+}
+
+# Average handling time (minutes/ticket) per classification. Informational alerts = 0
+# (they are noise/suppressed events, not work) — do not inflate effort with them.
+MS_DEFAULT_AHT = {
+    "alerts":           {"Critical": 30, "High": 20, "Medium": 10, "Low": 5, "Informational": 0},
+    "incidents":        {"P1": 180, "P2": 90, "P3": 45, "P4": 20},
+    "service_requests": {"Standard": 20, "Normal": 40, "Complex": 90},
+    "changes":          {"Standard": 30, "Normal": 90, "Emergency": 150},
+}
+
+# Recommended L1/L2/L3 routing pyramid per classification (each tuple sums to 100).
+# Higher priority / complexity escalates to L2/L3; routine work stays on L1.
+MS_DEFAULT_ROUTING = {
+    "alerts":           {"Critical": (20, 50, 30), "High": (40, 45, 15), "Medium": (70, 25, 5),
+                         "Low": (90, 10, 0), "Informational": (100, 0, 0)},
+    "incidents":        {"P1": (10, 40, 50), "P2": (30, 45, 25), "P3": (60, 30, 10), "P4": (80, 20, 0)},
+    "service_requests": {"Standard": (85, 15, 0), "Normal": (60, 35, 5), "Complex": (30, 45, 25)},
+    "changes":          {"Standard": (70, 30, 0), "Normal": (35, 45, 20), "Emergency": (20, 50, 30)},
 }
 
 # ── Industry-standard defaults ────────────────────────────────────────────────

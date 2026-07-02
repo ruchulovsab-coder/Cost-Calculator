@@ -10,20 +10,69 @@ import copy
 
 import streamlit as st
 
-from config.settings import ACTIVITY_FORMULAS
+from config.settings import (ACTIVITY_FORMULAS, MS_CLASSIFICATIONS, MS_DEFAULT_DIST,
+                             MS_DEFAULT_AHT, MS_DEFAULT_ROUTING)
 from modules.calculations.engine import derive_activity_hours
+
+_CAT_KEYS = ("alerts", "service_requests", "incidents", "changes")
+
+
+def _class_row(cat: str, cls: str, count: float, minutes=None, split=None) -> dict:
+    """A per-classification workload row seeded from defaults (minutes/split overridable)."""
+    l1, l2, l3 = split if split is not None else MS_DEFAULT_ROUTING[cat].get(cls, (100, 0, 0))
+    return {"count": round(count),
+            "minutes": MS_DEFAULT_AHT[cat].get(cls, 0) if minutes is None else minutes,
+            "L1_pct": l1, "L2_pct": l2, "L3_pct": l3}
+
+
+def ensure_ms_workload(sk) -> dict:
+    """Migrate/normalise a skill's workload to the per-classification model, in place.
+    - Legacy `{'All': {...}}` rows are split across classifications by MS_DEFAULT_DIST,
+      keeping the same AHT and L1/L2/L3 split so totals & routing are numerically
+      UNCHANGED (safe migration; rounding remainder absorbed into the first class).
+    - Classification-shaped categories just get any missing classes back-filled at 0.
+    - Empty categories are left empty (no phantom volume)."""
+    wl = sk.setdefault("workload", {})
+    for cat in _CAT_KEYS:
+        classes = MS_CLASSIFICATIONS[cat]
+        rows = wl.get(cat) or {}
+        if not rows:
+            continue
+        if "All" in rows:   # legacy single-bucket → distribute (numerically neutral)
+            legacy = rows.get("All", {})
+            total = float(legacy.get("count", 0) or 0)
+            aht = float(legacy.get("minutes", 0) or 0)
+            split = (float(legacy.get("L1_pct", 0) or 0), float(legacy.get("L2_pct", 0) or 0),
+                     float(legacy.get("L3_pct", 0) or 0))
+            new, assigned = {}, 0
+            for cls in classes:
+                c = round(total * MS_DEFAULT_DIST[cat].get(cls, 0) / 100.0)
+                new[cls] = _class_row(cat, cls, c, minutes=aht, split=split)
+                assigned += c
+            if classes and assigned != round(total):   # keep the total exact
+                new[classes[0]]["count"] += round(total) - assigned
+            wl[cat] = new
+        else:
+            for cls in classes:
+                rows.setdefault(cls, _class_row(cat, cls, 0))
+    return sk
 
 
 def skill_volumes(sk) -> dict:
-    """This skill's monthly ticket counts, for auto-deriving activity effort."""
+    """This skill's monthly ticket counts (summed across classifications), for
+    auto-deriving activity effort. Works for both the classification and legacy shapes."""
     wl = sk.get("workload", {}) or {}
-    return {c: float((wl.get(c, {}) or {}).get("All", {}).get("count", 0) or 0)
-            for c in ("alerts", "service_requests", "incidents", "changes")}
+    return {c: float(sum((r or {}).get("count", 0) or 0 for r in (wl.get(c, {}) or {}).values()))
+            for c in _CAT_KEYS}
 
 
 def _refresh_activities(skills):
-    """Recompute 'auto' activity hours from each skill's volumes/servers, in place."""
+    """Migrate workload to the classification model, then recompute 'auto' activity hours
+    from each skill's volumes/servers, in place."""
     for sk in skills or []:
+        ensure_ms_workload(sk)
+        if "L3" not in (sk.get("active_levels") or []):
+            sk["has_architect"] = False   # Architect is a role above L3 — requires L3 active
         acts = sk.get("activities") or []
         if not acts:
             continue

@@ -9,7 +9,8 @@ from modules.inputs.steps_1_2 import page_header, section_hdr, callout
 from modules.calculations.engine import (
     calc_productive_hours, calc_coverage_multiplier, calc_fte, convert_rate_to_inr,
 )
-from config.settings import ALL_ROLES, COVERAGE_MODELS, GRADE_ELIGIBILITY, DEFAULT_CURRENCIES
+from config.settings import (ALL_ROLES, COVERAGE_MODELS, GRADE_ELIGIBILITY, DEFAULT_CURRENCIES,
+                             grade_eligibility)
 from utils.validators import validate_rate_card
 
 
@@ -186,7 +187,10 @@ def render_step7() -> bool:
 
     for role in ALL_ROLES:
         hours = role_hours.get(role, 0.0)
-        eligible = GRADE_ELIGIBILITY.get(role, [])
+        # Offer both InfraOps (*-INFRAOPS) and CloudOps (*-CLOUD-INFRASTRUCTURE) grades so a
+        # cloud engagement can price off cloud lines; InfraOps stays first (unchanged default).
+        eligible = list(dict.fromkeys(
+            grade_eligibility(role, "InfraOps") + grade_eligibility(role, "CloudOps")))
         avail_eligible = [g for g in eligible if g in available_grades]
 
         c0, c1, c2, c3 = st.columns([2, 2.5, 2, 2])

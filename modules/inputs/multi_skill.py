@@ -115,12 +115,36 @@ def _render_skill_setup():
                 "Coverage", COV_MODELS,
                 index=COV_MODELS.index(sk.get("coverage_model", "8×5")) if sk.get("coverage_model") in COV_MODELS else 0,
                 key=f"ms_cov_{sid}")
-            sk["has_architect"] = c6.checkbox("Architect", value=bool(sk.get("has_architect")),
-                                              key=f"ms_arch_{sid}")
-            sk["architect_pct"] = c7.number_input(
-                "Arch %", min_value=0.0, max_value=50.0, step=0.5,
-                value=float(sk.get("architect_pct", 5.0) or 0.0), key=f"ms_archpct_{sid}",
-                disabled=not sk.get("has_architect"))
+            # Architect is a senior/design role that sits above L3, so it is only offered
+            # once L3 is an active level. When first enabled it auto-fills the recommended %
+            # (deterministic, archetype-based); the user can override. No L3 → no Architect.
+            from modules.recommend import recommend_architect
+            arch_key, cb_key, prev_key = f"ms_archpct_{sid}", f"ms_arch_{sid}", f"_arch_prev_{sid}"
+            if "L3" in (sk.get("active_levels") or []):
+                _apct, _awhy = recommend_architect(sk)
+                if prev_key not in st.session_state:
+                    st.session_state[prev_key] = bool(sk.get("has_architect"))
+                if arch_key not in st.session_state:
+                    st.session_state[arch_key] = float(sk.get("architect_pct", _apct) or _apct)
+                prev = st.session_state[prev_key]
+                sk["has_architect"] = c6.checkbox("Architect", value=bool(sk.get("has_architect")),
+                                                  key=cb_key)
+                if sk["has_architect"] and not prev:          # just enabled → auto-fill recommended
+                    st.session_state[arch_key] = float(_apct)
+                st.session_state[prev_key] = sk["has_architect"]
+                sk["architect_pct"] = float(c7.number_input(
+                    "Arch %", min_value=0.0, max_value=50.0, step=0.5, key=arch_key,
+                    disabled=not sk["has_architect"]))
+                st.caption(f"💡 Recommended Architect ≈ **{_apct}%** ({_awhy}) — auto-filled on enable; "
+                           "override above if needed.")
+            else:
+                sk["has_architect"] = False   # no L3 → no architect effort
+                for k in (arch_key, cb_key, prev_key):
+                    st.session_state.pop(k, None)
+                c6.markdown("<div style='padding-top:6px;color:#B0B0B0;font-size:0.78rem'>Architect</div>",
+                            unsafe_allow_html=True)
+                c7.markdown("<div style='padding-top:6px;color:#B0B0B0;font-size:0.74rem'>after L3</div>",
+                            unsafe_allow_html=True)
     if to_remove:
         st.session_state["skills"] = [s for s in skills if s["id"] not in to_remove]
         st.rerun()
@@ -138,52 +162,76 @@ def _render_skill_setup():
 # Tab 2 — Per-skill workload (direct entry; one aggregate row per category)
 # ──────────────────────────────────────────────────────────────────────────────
 def _skill_dist_roles(sk) -> list:
-    """Roles that patching / additional activities can be assigned to — always the full
-    L1/L2/L3/Architect set (non-ticket work can land on any role, independent of which
-    levels handle this skill's tickets). The engine counts any level that gets work."""
-    return list(BD_LEVELS)
+    """Roles that patching / additional activities can be assigned to — the skill's ACTIVE
+    levels plus Architect when it has one (Architect requires L3). Non-ticket work is
+    distributed only across the levels this skill actually staffs; the engine renormalises
+    each activity's split onto these roles to match."""
+    roles = [l for l in LEVELS if l in (sk.get("active_levels") or [])]
+    if sk.get("has_architect"):
+        roles.append("Architect")
+    return roles or ["L1"]
 
 
 def _render_skill_tickets(sk, sid):
+    """Classification-driven workload: enter a monthly total per category, then review the
+    classification mix (share %), handling time (AHT), and the recommended L1/L2/L3 routing —
+    all pre-filled from industry defaults and editable. Per-class count = total × share%."""
+    from config.settings import MS_CLASSIFICATIONS, MS_DEFAULT_DIST, MS_DEFAULT_AHT
+    from modules.state.multi_state import ensure_ms_workload
+    from modules.recommend import recommend_routing
+    ensure_ms_workload(sk)
     active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
-    st.caption("Monthly volume, average minutes/ticket, and the split across this skill's "
-               "active levels. Inactive levels (set on the Skills tab) show “—” and take no "
-               "ticket work. Per-level **buffers** are on the **Effort & FTE** tab.")
+    st.caption("Enter the monthly **total** per category; the classification mix, handling time "
+               "and the **recommended L1/L2/L3 routing** are pre-filled — higher priority escalates "
+               "to L2/L3, routine work stays on L1, folded onto this skill's active levels. Everything "
+               "is editable. Inactive levels show “—”; Informational alerts default to 0 effort.")
     wl = sk.setdefault("workload", {})
-    hdr = st.columns([2, 1, 1, 1, 1, 1])
-    for col, t in zip(hdr, ["Category", "Count", "Min/Ticket", "L1 %", "L2 %", "L3 %"]):
-        col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
-                     unsafe_allow_html=True)
     for cat_key, cat_label in CATEGORIES:
-        row = (wl.get(cat_key, {}) or {}).get("All", {})
-        rc = st.columns([2, 1, 1, 1, 1, 1])
-        rc[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{cat_label}</div>",
-                       unsafe_allow_html=True)
-        cnt = rc[1].number_input(f"{cat_key} count", min_value=0, step=10,
-                                 value=int(row.get("count", 0) or 0),
-                                 key=f"ms_{sid}_{cat_key}_count", label_visibility="collapsed")
-        mins = rc[2].number_input(f"{cat_key} min", min_value=0.0, step=1.0,
-                                  value=float(row.get("minutes", 0) or 0),
-                                  key=f"ms_{sid}_{cat_key}_min", label_visibility="collapsed")
-        # Only active levels take ticket work; inactive levels show “—” and store 0, so the
-        # split can never route effort to a level this skill doesn't use (matches the engine).
-        pct = {}
-        for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
-            if lvl in active:
-                pct[lvl] = rc[i].number_input(
-                    f"{cat_key} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
-                    value=float(row.get(f"{lvl}_pct", 0) or 0),
-                    key=f"ms_{sid}_{cat_key}_{lvl.lower()}", label_visibility="collapsed")
-            else:
-                rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+        classes = MS_CLASSIFICATIONS[cat_key]
+        rows = wl.setdefault(cat_key, {})
+        cur_total = int(sum((rows.get(c, {}) or {}).get("count", 0) or 0 for c in classes))
+        with st.expander(f"{cat_label} — {cur_total}/mo", expanded=False):
+            total = st.number_input(f"Total {cat_label} / month", min_value=0, step=10,
+                                    value=cur_total, key=f"ms_{sid}_{cat_key}_total")
+            hdr = st.columns([1.8, 1.1, 1.1, 1, 1, 1])
+            for col, t in zip(hdr, ["Classification", "Share %", "AHT (min)", "L1 %", "L2 %", "L3 %"]):
+                col.markdown(f"<div style='font-size:0.72rem;color:#1A5F6A;font-weight:600'>{t}</div>",
+                             unsafe_allow_html=True)
+            new_rows, shares = {}, {}
+            for c in classes:
+                cur = rows.get(c, {}) or {}
+                cur_share = (cur.get("count", 0) or 0) / cur_total * 100.0 if cur_total > 0 \
+                    else MS_DEFAULT_DIST[cat_key].get(c, 0)
+                rl1, rl2, rl3, _why = recommend_routing(cat_key, c, sk.get("active_levels"))
+                dr = (rl1, rl2, rl3)   # recommended split, folded onto active levels
+                rc = st.columns([1.8, 1.1, 1.1, 1, 1, 1])
+                rc[0].markdown(f"<div style='padding-top:6px;font-size:0.82rem'>{c}</div>",
                                unsafe_allow_html=True)
-                pct[lvl] = 0.0
-        wl[cat_key] = {"All": {"count": cnt, "minutes": mins,
-                               "L1_pct": pct["L1"], "L2_pct": pct["L2"], "L3_pct": pct["L3"]}}
-        tot = sum(pct[l] for l in active)
-        if active and abs(tot - 100.0) > 0.5 and tot > 0:
-            rc[0].markdown(f"<span style='color:#E74C3C;font-size:0.72rem'>{'+'.join(active)} ≠ 100%</span>",
-                           unsafe_allow_html=True)
+                sh = rc[1].number_input(f"{c} share", min_value=0.0, max_value=100.0, step=1.0,
+                                        value=float(round(cur_share, 1)),
+                                        key=f"ms_{sid}_{cat_key}_{c}_sh", label_visibility="collapsed")
+                aht = rc[2].number_input(f"{c} aht", min_value=0.0, step=1.0,
+                                         value=float(cur.get("minutes", MS_DEFAULT_AHT[cat_key].get(c, 0)) or 0),
+                                         key=f"ms_{sid}_{cat_key}_{c}_aht", label_visibility="collapsed")
+                split = {}
+                for i, lvl in enumerate(("L1", "L2", "L3"), start=3):
+                    if lvl in active:
+                        split[lvl] = rc[i].number_input(
+                            f"{c} {lvl}", min_value=0.0, max_value=100.0, step=1.0,
+                            value=float(cur.get(f"{lvl}_pct", dr[i - 3]) or 0),
+                            key=f"ms_{sid}_{cat_key}_{c}_{lvl.lower()}", label_visibility="collapsed")
+                    else:
+                        rc[i].markdown("<div style='padding-top:6px;color:#B0B0B0;text-align:center'>—</div>",
+                                       unsafe_allow_html=True)
+                        split[lvl] = 0.0
+                shares[c] = sh
+                new_rows[c] = {"count": round(total * sh / 100.0), "minutes": aht,
+                               "L1_pct": split["L1"], "L2_pct": split["L2"], "L3_pct": split["L3"]}
+            wl[cat_key] = new_rows
+            ssum = sum(shares.values())
+            if abs(ssum - 100.0) > 0.5 and ssum > 0:
+                st.markdown(f"<span style='color:#E74C3C;font-size:0.74rem'>Classification shares "
+                            f"sum to {ssum:.0f}% — should be 100%.</span>", unsafe_allow_html=True)
 
 
 def _render_skill_patching(sk, sid):
@@ -257,11 +305,17 @@ def _render_skill_activities(sk, sid):
                                      value=float(act.get("hours", 0) or 0),
                                      key=f"ms_{sid}_act_hrs_{i}", label_visibility="collapsed")
         d = act.get("dist", {}) or {}
+        # Fold the stored split onto this skill's staffed roles so the shown values sum to
+        # 100 across the active levels (+Architect) — matches how the engine distributes it.
+        _dsum = sum(float(d.get(r, 0) or 0) for r in roles)
+        d_disp = ({r: float(d.get(r, 0) or 0) / _dsum * 100.0 for r in roles} if _dsum > 0
+                  else {roles[0]: 100.0})
         new_dist = {}
         for j, r in enumerate(roles):
             new_dist[r] = rc[3 + j].number_input(
                 f"a {r} {sid}{i}", min_value=0.0, max_value=100.0, step=5.0,
-                value=float(d.get(r, 0) or 0), key=f"ms_{sid}_act_{r}_{i}", label_visibility="collapsed")
+                value=float(round(d_disp.get(r, 0.0), 1)), key=f"ms_{sid}_act_{r}_{i}",
+                label_visibility="collapsed")
         if rc[-1].button("🗑️", key=f"ms_{sid}_act_del_{i}", help="Remove"):
             to_remove.append(i)
         act.update({"name": nm.strip() or "Custom Activity", "hours": float(hrs or 0),
@@ -289,6 +343,25 @@ def _render_skill_activities(sk, sid):
     st.info(f"**Total additional activity effort: {total:.1f} hrs/month**")
 
 
+def _render_pyramid_hint(sk):
+    """Per-skill 'Recommended support pyramid' summary — effort-weighted L1/L2/L3 (+Architect)
+    from this skill's classification mix, folded onto its active levels. Advisory, no gating."""
+    from modules.recommend import recommend_skill_pyramid, recommend_architect
+    pyr, data_driven = recommend_skill_pyramid(sk)
+    if not pyr:
+        return
+    active = sk.get("active_levels") or []
+    parts = "  ·  ".join(f"<strong>{l} {pyr[l]}%</strong>" for l in ("L1", "L2", "L3") if l in active)
+    arch = f"  (+ Architect ~{recommend_architect(sk)[0]}%)" if "L3" in active else ""
+    basis = "from this skill's workload mix" if data_driven \
+        else "archetype indication — enter volumes below to refine"
+    st.markdown(
+        f"<div style='background:#EAF4F4;border-left:3px solid #1A5F6A;padding:6px 11px;"
+        f"border-radius:4px;font-size:0.85rem;margin:2px 0 10px'>💡 <strong>Recommended support "
+        f"pyramid</strong> <span style='color:#5A6B6B'>({basis})</span>: {parts}{arch}</div>",
+        unsafe_allow_html=True)
+
+
 def _render_workload():
     section_hdr("📊 Per-skill Workload")
     skills = st.session_state.get("skills", [])
@@ -298,6 +371,9 @@ def _render_workload():
     names = {s["id"]: s.get("name") or s["id"] for s in skills}
     sid = st.selectbox("Skill", list(names), format_func=lambda x: names[x], key="ms_wl_skill")
     sk = next(s for s in skills if s["id"] == sid)
+    from modules.state.multi_state import ensure_ms_workload
+    ensure_ms_workload(sk)
+    _render_pyramid_hint(sk)
     with st.expander("🎫 Tickets", expanded=True):
         _render_skill_tickets(sk, sid)
     with st.expander("🖥️ Patching", expanded=False):
@@ -507,7 +583,7 @@ def _render_team_summary(model, names):
     sdm_raw = float(sdm["raw_fte"]) if sdm else 0.0
     sdm_final = float(sdm["fte"]) if sdm else 0.0
 
-    def _table(title, kind, sdm_val):
+    def _table(title, kind, sdm_val, subtitle=""):
         rows, col_tot, grand = _fte_matrix(model, names, kind)
         gtot = grand + sdm_val
         if sdm and sdm_val > 0:
@@ -517,8 +593,11 @@ def _render_team_summary(model, names):
         tcells = "".join(f"<td class='r'><strong>{col_tot[lvl]:.2f}</strong></td>" for lvl in BD_LEVELS)
         rows += (f"<tr class='total-row'><td><strong>Grand total</strong></td>{tcells}"
                  f"<td class='r'><strong>{gtot:.2f}</strong></td></tr>")
-        st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .2rem'>{title}</div>",
+        st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .1rem'>{title}</div>",
                     unsafe_allow_html=True)
+        if subtitle:
+            st.markdown(f"<div style='font-size:0.72rem;color:#7A8A99;line-height:1.35;margin:0 0 .35rem'>{subtitle}</div>",
+                        unsafe_allow_html=True)
         st.markdown(
             f"""<table class="styled-table"><thead><tr>
             <th>Skill</th><th class="r">L1</th><th class="r">L2</th><th class="r">L3</th>
@@ -526,13 +605,29 @@ def _render_team_summary(model, names):
             unsafe_allow_html=True)
         return gtot
 
-    raw_grand = _table("Raw FTE (exact, pre-pooling)", "raw", sdm_raw)
-    fin_grand = _table("Final FTE (delivered team, pooled-aware)", "final", sdm_final)
+    raw_grand = _table(
+        "Raw FTE (exact, pre-pooling)", "raw", sdm_raw,
+        "Exact fractional requirement per skill × level = monthly hours ÷ productive hours × coverage "
+        "multiplier. The mathematical demand — not directly staffable as whole people.")
+    fin_grand = _table(
+        "Final FTE (delivered team, pooled-aware)", "final", sdm_final,
+        "The team you actually staff: every skill × level is rounded <strong>up to the nearest 0.5</strong>, "
+        "with a <strong>0.5-person minimum</strong> (you can't deploy less than half a person on a line). "
+        "Shared/pooled roles are rounded <strong>once</strong>, not per skill.")
 
     g1, g2 = st.columns(2)
     g1.metric("Total Raw FTE", f"{raw_grand:.2f}")
     g2.metric("Total Final FTE (headcount)", f"{fin_grand:.1f}",
-              help="Equals the engagement Total FTE (pooling applied where configured)")
+              help="Delivered team. Equals the engagement Total FTE (pooling applied where configured).")
+
+    gap = fin_grand - raw_grand
+    if raw_grand > 0 and gap > 0.05:
+        pct = gap / raw_grand * 100.0
+        callout(f"↕️ <strong>Rounding &amp; minimum-staffing overhead: +{gap:.1f} FTE ({pct:.0f}% over Raw).</strong> "
+                "Each skill × level is rounded up to a 0.5-person minimum, so many small fractions across "
+                "skills/levels round up independently and add up. To shrink this, <strong>pool L2/L3/Architect "
+                "across similar skills on the <em>Optimize (AI)</em> tab</strong> — pooled roles round once "
+                "instead of once per skill.", "info")
 
 
 def _render_dashboard():
@@ -554,6 +649,22 @@ def _render_dashboard():
     st.session_state["sdm_overhead_pct"] = st.number_input(
         "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
         value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
+
+    # New multi estimates default to Raw (the chosen basis); loaded estimates keep their saved
+    # basis. Leadership can switch here; both bases are compared on the Approve & Export tab.
+    if not st.session_state.get("_ms_basis_init"):
+        if not st.session_state.get("_current_estimate_ref"):
+            st.session_state["fte_basis"] = "raw"
+        st.session_state["_ms_basis_init"] = True
+    _basis = st.radio(
+        "Estimation basis (drives cost, price, approval & export)",
+        ["Raw (theoretical minimum)", "Rounded (delivered team)"],
+        index=1 if st.session_state.get("fte_basis") == "rounded" else 0, horizontal=True,
+        key="ms_fte_basis_radio",
+        help="Raw = exact fractional demand (assumes perfect sharing/pooling) — the default. "
+             "Rounded = each skill × level rounded up to 0.5 (min 0.5), the team you actually staff. "
+             "Both are compared on the Approve & Export tab.")
+    st.session_state["fte_basis"] = "rounded" if _basis.startswith("Rounded") else "raw"
 
     # §2 Per-level effort buffer
     _render_buffer_config(skills)
@@ -594,11 +705,21 @@ def _inr(v) -> str:
     return f"₹{float(v or 0):,.0f}"
 
 
-def _default_grade(band, available):
-    """First eligible genus grade for a band that exists in the rate card, else first available."""
-    for g in GRADE_ELIGIBILITY.get(band, []):
+def _default_grade(band, available, family="InfraOps"):
+    """First eligible genus grade for a band + rate family that exists in the rate card
+    (InfraOps → *-INFRAOPS, CloudOps → *-CLOUD-INFRASTRUCTURE), else first available."""
+    from config.settings import grade_eligibility
+    for g in grade_eligibility(band, family):
         if g in available:
             return g
+    if family == "CloudOps":
+        # Tolerant fallback: any card grade sharing this band's number AND a cloud family,
+        # so naming variations (2.1-CLOUD-INFRASTRUCTURE / 2.1 CLOUD-INFRA / etc.) resolve.
+        prefixes = tuple(g.split("-", 1)[0] for g in grade_eligibility(band, "InfraOps"))
+        for g in available:
+            gs = str(g).upper()
+            if "CLOUD" in gs and gs.startswith(prefixes):
+                return g
     return available[0] if available else None
 
 
@@ -627,16 +748,21 @@ def _render_rate_matrix(filtered):
     for fam in GENUS:
         fg = fam_grades.setdefault(fam, {})
         for band in BD_LEVELS:
-            if fg.get(band) not in available:
-                fg[band] = _default_grade(band, available)
+            cur = fg.get(band)
+            # (Re)default when the cell is unset/invalid, OR when a CloudOps cell still points
+            # at an INFRAOPS grade (a stale fallback from before cloud grades were mapped).
+            stale_cloud = fam == "CloudOps" and cur and "INFRAOPS" in str(cur).upper()
+            if cur not in available or stale_cloud:
+                fg[band] = _default_grade(band, available, fam)
     if st.session_state.get("ms_sdm_grade") not in available:
         st.session_state["ms_sdm_grade"] = _default_grade("SDM", available)
 
     section_hdr("🎓 Rate family → grade mapping")
-    callout("Map each rate family (InfraOps / CloudOps) and band to a genus grade from the rate "
-            "card; the hourly rate (converted to INR) is read from the card. A skill prices off its "
-            "family's bands. <em>CloudOps defaults to the same grades as InfraOps until your rate "
-            "card carries CLOUDOPS grades.</em>", "info")
+    callout("Map each rate family and band to a genus grade from the rate card; the hourly rate "
+            "(converted to INR) is read from the card. A skill prices off its family's bands: "
+            "<strong>InfraOps → *-INFRAOPS</strong>, <strong>CloudOps → *-CLOUD-INFRASTRUCTURE</strong> "
+            "(defaulted automatically; override any cell). If the card lacks CLOUD-INFRASTRUCTURE rows, "
+            "CloudOps falls back to the first available grade.", "info")
     hc = st.columns([1.5, 2, 2, 2, 2])
     for col, t in zip(hc, ["Family", "L1", "L2", "L3", "Architect"]):
         col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",
@@ -892,6 +1018,63 @@ def _render_multi_summary_metrics(model):
     m4.metric(f"Selling price / mo ({pr.get('margin_pct', 0):.0f}%)", _inr(pr.get("selling_price", 0)))
 
 
+def _render_management_summary(state):
+    """Per-skill FTE build-up for management visibility, so the Raw→Rounded variance is
+    self-explanatory: L1/L2/L3/Architect effort (hrs) + three FTE stages per skill —
+    **Raw** (workload only, breakdown.fte_raw) → **+ Buffer & Contingency** (un-rounded
+    requirement, breakdown.fte_final) → **Rounded** (delivered, breakdown.fte_staffed, each
+    skill × level to a 0.5-person minimum). SDM + grand totals; a note when pooling applies."""
+    section_hdr("📋 Management Summary")
+    st.caption("The FTE build-up per skill: **Raw** (workload only) → **+ Buffer & Contingency** "
+               "(the un-rounded requirement) → **Rounded** (delivered team; each skill × level rounded "
+               "up to a 0.5-person minimum). L1–Architect are monthly effort hours. SDM is one "
+               "engagement resource.")
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    names = {s["id"]: (s.get("name") or s["id"]) for s in st.session_state.get("skills", [])}
+
+    tot_hrs = {lvl: 0.0 for lvl in BD_LEVELS}
+    t_raw = t_fin = t_rnd = 0.0
+    body = ""
+    for sid, ps in model["per_skill"].items():
+        rh, bd = ps["role_hours"], ps["breakdown"]
+        raw = sum(bd[l]["fte_raw"] for l in BD_LEVELS)
+        fin = sum(bd[l]["fte_final"] for l in BD_LEVELS)
+        rnd = sum(bd[l]["fte_staffed"] for l in BD_LEVELS)
+        hcells = "".join(f"<td class='r'>{rh.get(l, 0.0):.0f}</td>" for l in BD_LEVELS)
+        for l in BD_LEVELS:
+            tot_hrs[l] += rh.get(l, 0.0)
+        t_raw += raw; t_fin += fin; t_rnd += rnd
+        body += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
+                 f"<td>{ps['coverage_model']}</td>{hcells}"
+                 f"<td class='r'>{raw:.2f}</td><td class='r'>{fin:.2f}</td>"
+                 f"<td class='r'><strong>{rnd:.1f}</strong></td></tr>")
+    sdm = next((r for r in model["resources"] if r["level"] == "SDM"), None)
+    if sdm and (float(sdm.get("fte", 0) or 0) or float(sdm.get("raw_fte", 0) or 0)):
+        sr, sf, sh = float(sdm["raw_fte"]), float(sdm["fte"]), float(model.get("sdm_hours", 0) or 0)
+        body += (f"<tr><td>SDM <span style='color:#7A8A99'>(engagement)</span></td><td>—</td><td>—</td>"
+                 f"<td class='r' colspan='4'>{sh:.0f}h</td>"
+                 f"<td class='r'>{sr:.2f}</td><td class='r'>{sr:.2f}</td>"
+                 f"<td class='r'><strong>{sf:.1f}</strong></td></tr>")
+        t_raw += sr; t_fin += sr; t_rnd += sf
+    tcells = "".join(f"<td class='r'><strong>{tot_hrs[l]:.0f}</strong></td>" for l in BD_LEVELS)
+    body += (f"<tr class='total-row'><td><strong>Total</strong></td><td></td><td></td>{tcells}"
+             f"<td class='r'><strong>{t_raw:.2f}</strong></td><td class='r'><strong>{t_fin:.2f}</strong></td>"
+             f"<td class='r'><strong>{t_rnd:.1f}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr>
+        <th>Skill</th><th>Family</th><th>Coverage</th>
+        <th class="r">L1 h</th><th class="r">L2 h</th><th class="r">L3 h</th><th class="r">Arch h</th>
+        <th class="r">Raw FTE</th><th class="r">+ Buffer&amp;Cont</th><th class="r">Rounded FTE</th>
+        </tr></thead><tbody>{body}</tbody></table>""", unsafe_allow_html=True)
+    st.caption(f"Reconciliation: **Raw {t_raw:.2f}** → **+ Buffer & Contingency {t_fin:.2f}** → "
+               f"**Rounded {t_rnd:.1f}** (delivered). The +{t_rnd - t_raw:.1f} FTE is buffer/contingency "
+               "plus the 0.5-per-cell minimum-staffing round-up.")
+    if state.get("resource_sharing"):
+        st.caption(f"ℹ️ Resource sharing is applied: pooling combines fractional roles, so the delivered "
+                   f"team is **{model['total_fte']:.1f} FTE** (below the per-skill Rounded total above). "
+                   "See the Optimize tab.")
+
+
 def _render_excel_export():
     st.caption("Download the full working model as an Excel workbook — the numbers equal the engine.")
     if st.button("📊 Prepare Excel export", key="ms_ax_xlsx_prep", type="secondary"):
@@ -915,7 +1098,18 @@ def _render_approve_export():
     if not (st.session_state.get("project_name") or "").strip():
         callout("Name this estimate (Customer / RFP) at the top of the page before saving a "
                 "version or requesting approval.", "warning")
-    _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+    state = _build_multi_state()
+    basis = "Raw (theoretical minimum)" if state.get("fte_basis") == "raw" else "Rounded (delivered team)"
+    st.caption(f"Reported on the **{basis}** basis — change it on the Effort & FTE tab.")
+    _render_multi_summary_metrics(compute_multi_skill_model(state))
+    st.divider()
+
+    # Management summary — per-skill effort/FTE by level, coverage, Raw & Rounded FTE.
+    _render_management_summary(state)
+    st.divider()
+
+    # Raw vs Rounded comparison (folded in here from the former standalone tab).
+    _render_raw_vs_rounded()
     st.divider()
 
     from modules.outputs.approval import render_approval_panel, change_state
@@ -941,7 +1135,12 @@ def render_multi_approve_export(review: bool = False):
     if ref:
         st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
     if st.session_state.get("skills"):
-        _render_multi_summary_metrics(compute_multi_skill_model(_build_multi_state()))
+        state = _build_multi_state()
+        _render_multi_summary_metrics(compute_multi_skill_model(state))
+        st.divider()
+        _render_management_summary(state)
+        st.divider()
+        _render_raw_vs_rounded()
         st.divider()
     from modules.outputs.approval import render_approval_panel
     render_approval_panel()
@@ -1054,6 +1253,51 @@ def _render_multi_comparison(models: dict):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Raw vs Rounded — two estimate versions, shown as a section inside Approve & Export
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_raw_vs_rounded():
+    section_hdr("⚖️ Raw vs Rounded")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    state = _build_multi_state()
+    raw = compute_multi_skill_model({**state, "fte_basis": "raw"})
+    rnd = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    chosen = "Raw + Buffer & Contingency (un-rounded)" if state.get("fte_basis") == "raw" \
+        else "Rounded (delivered)"
+    callout(f"The two priced views of the same estimate. <strong>Raw + Buffer & Contingency</strong> = "
+            f"the un-rounded requirement (workload + buffer + contingency, before whole/half-person "
+            f"rounding). <strong>Rounded</strong> = the delivered team (each skill × level rounded up to "
+            f"0.5, min 0.5). Pricing, approval &amp; export currently use <strong>{chosen}</strong> — "
+            f"switch it on the Effort &amp; FTE tab. (The pre-overhead workload demand is the “Raw FTE” "
+            f"column in the Management Summary above.)", "info")
+
+    def _r(lbl, rv, fv, fmt):
+        d = fv - rv
+        return (f"<tr><td>{lbl}</td><td class='r'>{fmt(rv)}</td><td class='r'>{fmt(fv)}</td>"
+                f"<td class='r' style='color:#7A8A99'>{'+' if d >= 0 else ''}{fmt(d)}</td></tr>")
+    fte = lambda v: f"{v:.2f}"
+    cr_r, cr_f, pr_r, pr_f = raw["cost_result"], rnd["cost_result"], raw["price_result"], rnd["price_result"]
+    body = (
+        _r("Total FTE", raw["total_fte"], rnd["total_fte"], fte)
+        + _r("Resource cost / mo", raw["total_resource_cost"], rnd["total_resource_cost"], _inr)
+        + _r("Delivery cost / mo", cr_r["total_delivery_cost"], cr_f["total_delivery_cost"], _inr)
+        + _r("Selling price / mo", pr_r["selling_price"], pr_f["selling_price"], _inr)
+        + _r("Gross profit / mo", pr_r["gross_profit"], pr_f["gross_profit"], _inr))
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Metric</th>
+        <th class="r">Raw + Buffer&amp;Cont (un-rounded)</th><th class="r">Rounded (delivered)</th>
+        <th class="r">Δ (Rounded − Raw)</th></tr></thead><tbody>{body}</tbody></table>""",
+        unsafe_allow_html=True)
+    gap = rnd["total_fte"] - raw["total_fte"]
+    if raw["total_fte"] > 0 and gap > 0.05:
+        st.caption(f"Rounding adds **{gap:.1f} FTE ({gap / raw['total_fte'] * 100:.0f}%)** and "
+                   f"**{_inr(rnd['total_resource_cost'] - raw['total_resource_cost'])}/mo** resource cost — "
+                   "the price of indivisible people. Pool L2/L3/Architect on the Optimize tab to reduce it.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 def render_multi_skill_app():
@@ -1087,9 +1331,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["1 · Skills", "2 · Workload", "3 · Effort & FTE",
-                                          "4 · Rates & Cost", "5 · Optimize (AI)",
-                                          "6 · Approve & Export", "7 · Versions & Compare"])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(
+        ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
+         "6 · Approve & Export", "7 · Versions & Compare"])
     with t1:
         _render_skill_setup()
     with t2:
