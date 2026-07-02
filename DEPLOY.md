@@ -213,6 +213,32 @@ an email.
 
 ---
 
+## Staging site (the `testing` branch)
+
+There are two live, independent deployments driven by one workflow:
+
+| Branch | Container App | Purpose |
+|--------|---------------|---------|
+| `main` | `nagarro-ops-estimator` | **Production** — unchanged behaviour |
+| `testing` | `nagarro-ops-estimator-test` | **Staging** — all new development |
+
+- **How it works:** the deploy job derives its target from the pushed branch. `main` →
+  production; anything else (i.e. `testing`) → `<name>-test`. Both share the same Container
+  Apps environment + ACR, but are separate apps with their own URLs and scale independently
+  (both scale-to-zero, so idle staging costs ≈ nothing).
+- **Isolation:** staging gets its own `APP_BASE_URL` (its own FQDN, so approval/orphan links
+  point to staging, never prod) and its estimates container is suffixed `-test`, so test
+  drafts/estimates/approvals never mix with production data.
+- **First staging deploy caveat:** the new app's system-assigned identity has **no Storage
+  Blob role yet** (that grant needs Owner and is manual — see step 5 above). Until granted,
+  staging's cloud drafts + rate-card-from-blob degrade gracefully (disabled); the app still
+  runs. Grant `Storage Blob Data Reader`/`Contributor` to the `-test` app's identity to enable
+  them, and create the `<container>-test` blob container.
+- **Promote to production:** merge `testing` → `main` and push — production redeploys.
+- **Dev loop:** push to `testing` → staging redeploys; validate on the `-test` URL first.
+
+---
+
 ## Notes / tuning
 
 - **Cold start:** first request after idle takes a few seconds (scale-from-zero). Set
