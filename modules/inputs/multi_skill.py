@@ -115,17 +115,36 @@ def _render_skill_setup():
                 "Coverage", COV_MODELS,
                 index=COV_MODELS.index(sk.get("coverage_model", "8×5")) if sk.get("coverage_model") in COV_MODELS else 0,
                 key=f"ms_cov_{sid}")
-            sk["has_architect"] = c6.checkbox("Architect", value=bool(sk.get("has_architect")),
-                                              key=f"ms_arch_{sid}")
-            sk["architect_pct"] = c7.number_input(
-                "Arch %", min_value=0.0, max_value=50.0, step=0.5,
-                value=float(sk.get("architect_pct", 5.0) or 0.0), key=f"ms_archpct_{sid}",
-                disabled=not sk.get("has_architect"))
-            # Deterministic architect recommendation from the skill's archetype (advisory).
+            # Architect is a senior/design role that sits above L3, so it is only offered
+            # once L3 is an active level. When first enabled it auto-fills the recommended %
+            # (deterministic, archetype-based); the user can override. No L3 → no Architect.
             from modules.recommend import recommend_architect
-            _apct, _awhy = recommend_architect(sk)
-            st.caption(f"💡 Recommended Architect ≈ **{_apct}%** — {_awhy}. "
-                       f"{'Enable Architect and set this if it fits.' if not sk.get('has_architect') else 'Adjust the value above if needed.'}")
+            arch_key, cb_key, prev_key = f"ms_archpct_{sid}", f"ms_arch_{sid}", f"_arch_prev_{sid}"
+            if "L3" in (sk.get("active_levels") or []):
+                _apct, _awhy = recommend_architect(sk)
+                if prev_key not in st.session_state:
+                    st.session_state[prev_key] = bool(sk.get("has_architect"))
+                if arch_key not in st.session_state:
+                    st.session_state[arch_key] = float(sk.get("architect_pct", _apct) or _apct)
+                prev = st.session_state[prev_key]
+                sk["has_architect"] = c6.checkbox("Architect", value=bool(sk.get("has_architect")),
+                                                  key=cb_key)
+                if sk["has_architect"] and not prev:          # just enabled → auto-fill recommended
+                    st.session_state[arch_key] = float(_apct)
+                st.session_state[prev_key] = sk["has_architect"]
+                sk["architect_pct"] = float(c7.number_input(
+                    "Arch %", min_value=0.0, max_value=50.0, step=0.5, key=arch_key,
+                    disabled=not sk["has_architect"]))
+                st.caption(f"💡 Recommended Architect ≈ **{_apct}%** ({_awhy}) — auto-filled on enable; "
+                           "override above if needed.")
+            else:
+                sk["has_architect"] = False   # no L3 → no architect effort
+                for k in (arch_key, cb_key, prev_key):
+                    st.session_state.pop(k, None)
+                c6.markdown("<div style='padding-top:6px;color:#B0B0B0;font-size:0.78rem'>Architect</div>",
+                            unsafe_allow_html=True)
+                c7.markdown("<div style='padding-top:6px;color:#B0B0B0;font-size:0.74rem'>after L3</div>",
+                            unsafe_allow_html=True)
     if to_remove:
         st.session_state["skills"] = [s for s in skills if s["id"] not in to_remove]
         st.rerun()

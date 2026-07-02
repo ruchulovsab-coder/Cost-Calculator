@@ -71,6 +71,8 @@ def _refresh_activities(skills):
     from each skill's volumes/servers, in place."""
     for sk in skills or []:
         ensure_ms_workload(sk)
+        if "L3" not in (sk.get("active_levels") or []):
+            sk["has_architect"] = False   # Architect is a role above L3 — requires L3 active
         acts = sk.get("activities") or []
         if not acts:
             continue

@@ -224,6 +224,23 @@ def _active_levels_state(active):
     }
 
 
+def test_architect_requires_l3():
+    """Architect is a role above L3 — the state builder drops has_architect when L3 is
+    not an active level, so no architect effort/cost leaks in without L3."""
+    from modules.state.multi_state import build_multi_model_state_from
+    sk = {"id": "s1", "name": "Monitoring", "genus_category": "InfraOps",
+          "active_levels": ["L1", "L2"], "has_architect": True, "architect_pct": 25.0,
+          "role_buffers": {"L1": 20, "L2": 20, "L3": 20, "Architect": 0},
+          "workload": {"incidents": {"P3": {"count": 50, "minutes": 30, "L1_pct": 60, "L2_pct": 40, "L3_pct": 0}}},
+          "patching": None, "activities": []}
+    state = build_multi_model_state_from({"estimation_mode": "multi", "skills": [sk]})
+    assert state["skills"][0]["has_architect"] is False
+    # with L3 active, it is preserved
+    sk2 = dict(sk); sk2["active_levels"] = ["L1", "L2", "L3"]; sk2["has_architect"] = True
+    state2 = build_multi_model_state_from({"estimation_mode": "multi", "skills": [sk2]})
+    assert state2["skills"][0]["has_architect"] is True
+
+
 def test_classification_migration_is_neutral():
     """Legacy single-bucket ('All') workload migrates to the per-classification model
     with identical total effort and per-level hours (safe, numerically neutral)."""
