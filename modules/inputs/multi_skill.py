@@ -705,9 +705,11 @@ def _inr(v) -> str:
     return f"₹{float(v or 0):,.0f}"
 
 
-def _default_grade(band, available):
-    """First eligible genus grade for a band that exists in the rate card, else first available."""
-    for g in GRADE_ELIGIBILITY.get(band, []):
+def _default_grade(band, available, family="InfraOps"):
+    """First eligible genus grade for a band + rate family that exists in the rate card
+    (InfraOps → *-INFRAOPS, CloudOps → *-CLOUD-INFRASTRUCTURE), else first available."""
+    from config.settings import grade_eligibility
+    for g in grade_eligibility(band, family):
         if g in available:
             return g
     return available[0] if available else None
@@ -739,15 +741,16 @@ def _render_rate_matrix(filtered):
         fg = fam_grades.setdefault(fam, {})
         for band in BD_LEVELS:
             if fg.get(band) not in available:
-                fg[band] = _default_grade(band, available)
+                fg[band] = _default_grade(band, available, fam)
     if st.session_state.get("ms_sdm_grade") not in available:
         st.session_state["ms_sdm_grade"] = _default_grade("SDM", available)
 
     section_hdr("🎓 Rate family → grade mapping")
-    callout("Map each rate family (InfraOps / CloudOps) and band to a genus grade from the rate "
-            "card; the hourly rate (converted to INR) is read from the card. A skill prices off its "
-            "family's bands. <em>CloudOps defaults to the same grades as InfraOps until your rate "
-            "card carries CLOUDOPS grades.</em>", "info")
+    callout("Map each rate family and band to a genus grade from the rate card; the hourly rate "
+            "(converted to INR) is read from the card. A skill prices off its family's bands: "
+            "<strong>InfraOps → *-INFRAOPS</strong>, <strong>CloudOps → *-CLOUD-INFRASTRUCTURE</strong> "
+            "(defaulted automatically; override any cell). If the card lacks CLOUD-INFRASTRUCTURE rows, "
+            "CloudOps falls back to the first available grade.", "info")
     hc = st.columns([1.5, 2, 2, 2, 2])
     for col, t in zip(hc, ["Family", "L1", "L2", "L3", "Architect"]):
         col.markdown(f"<div style='font-size:0.76rem;color:#1A5F6A;font-weight:600'>{t}</div>",

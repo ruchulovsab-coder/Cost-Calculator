@@ -224,6 +224,19 @@ def _active_levels_state(active):
     }
 
 
+def test_grade_eligibility_by_family():
+    """InfraOps prices off *-INFRAOPS (unchanged); CloudOps off *-CLOUD-INFRASTRUCTURE
+    (same band numbers); SDM stays *-DELIVERY-ITIL for both."""
+    from config.settings import grade_eligibility
+    assert grade_eligibility("L1", "InfraOps") == ["2.1-INFRAOPS", "2.2-INFRAOPS"]
+    assert grade_eligibility("L1", "CloudOps") == ["2.1-CLOUD-INFRASTRUCTURE", "2.2-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("L2", "CloudOps") == ["2.3-CLOUD-INFRASTRUCTURE", "3.1-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("L3", "CloudOps") == ["3.2-CLOUD-INFRASTRUCTURE", "3.3-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("Architect", "CloudOps") == ["4.1-CLOUD-INFRASTRUCTURE"]
+    assert grade_eligibility("SDM", "CloudOps") == ["4.1-DELIVERY-ITIL"]        # shared
+    assert grade_eligibility("L1") == ["2.1-INFRAOPS", "2.2-INFRAOPS"]          # default InfraOps
+
+
 def test_architect_requires_l3():
     """Architect is a role above L3 — the state builder drops has_architect when L3 is
     not an active level, so no architect effort/cost leaks in without L3."""

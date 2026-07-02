@@ -60,6 +60,20 @@ GRADE_ELIGIBILITY = {
     "SDM":       ["4.1-DELIVERY-ITIL"],
 }
 
+# CloudOps skills price off the CLOUD-INFRASTRUCTURE genus lines — same band structure as
+# INFRAOPS, just the cloud suffix. InfraOps is unchanged; SDM stays *-DELIVERY-ITIL for both.
+CLOUD_GENUS_SUFFIX = "CLOUD-INFRASTRUCTURE"
+
+
+def grade_eligibility(band, family="InfraOps"):
+    """Eligible rate-card genus grades for a band, per rate family:
+      InfraOps → *-INFRAOPS  (unchanged)
+      CloudOps → *-CLOUD-INFRASTRUCTURE  (same band numbers; SDM stays *-DELIVERY-ITIL)."""
+    infra = GRADE_ELIGIBILITY.get(band, [])
+    if family == "CloudOps":
+        return [g.replace("-INFRAOPS", f"-{CLOUD_GENUS_SUFFIX}") for g in infra]
+    return list(infra)
+
 # ── Skill adjacency (AI Team Optimizer) ───────────────────────────────────────
 # Which senior resources can be shared across technically-adjacent skills. A skill's
 # free-text name is matched to a canonical token by keyword; tokens in the same
