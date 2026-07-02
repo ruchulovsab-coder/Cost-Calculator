@@ -583,7 +583,7 @@ def _render_team_summary(model, names):
     sdm_raw = float(sdm["raw_fte"]) if sdm else 0.0
     sdm_final = float(sdm["fte"]) if sdm else 0.0
 
-    def _table(title, kind, sdm_val):
+    def _table(title, kind, sdm_val, subtitle=""):
         rows, col_tot, grand = _fte_matrix(model, names, kind)
         gtot = grand + sdm_val
         if sdm and sdm_val > 0:
@@ -593,8 +593,11 @@ def _render_team_summary(model, names):
         tcells = "".join(f"<td class='r'><strong>{col_tot[lvl]:.2f}</strong></td>" for lvl in BD_LEVELS)
         rows += (f"<tr class='total-row'><td><strong>Grand total</strong></td>{tcells}"
                  f"<td class='r'><strong>{gtot:.2f}</strong></td></tr>")
-        st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .2rem'>{title}</div>",
+        st.markdown(f"<div style='font-size:0.82rem;color:#1A5F6A;font-weight:600;margin:.4rem 0 .1rem'>{title}</div>",
                     unsafe_allow_html=True)
+        if subtitle:
+            st.markdown(f"<div style='font-size:0.72rem;color:#7A8A99;line-height:1.35;margin:0 0 .35rem'>{subtitle}</div>",
+                        unsafe_allow_html=True)
         st.markdown(
             f"""<table class="styled-table"><thead><tr>
             <th>Skill</th><th class="r">L1</th><th class="r">L2</th><th class="r">L3</th>
@@ -602,13 +605,29 @@ def _render_team_summary(model, names):
             unsafe_allow_html=True)
         return gtot
 
-    raw_grand = _table("Raw FTE (exact, pre-pooling)", "raw", sdm_raw)
-    fin_grand = _table("Final FTE (delivered team, pooled-aware)", "final", sdm_final)
+    raw_grand = _table(
+        "Raw FTE (exact, pre-pooling)", "raw", sdm_raw,
+        "Exact fractional requirement per skill × level = monthly hours ÷ productive hours × coverage "
+        "multiplier. The mathematical demand — not directly staffable as whole people.")
+    fin_grand = _table(
+        "Final FTE (delivered team, pooled-aware)", "final", sdm_final,
+        "The team you actually staff: every skill × level is rounded <strong>up to the nearest 0.5</strong>, "
+        "with a <strong>0.5-person minimum</strong> (you can't deploy less than half a person on a line). "
+        "Shared/pooled roles are rounded <strong>once</strong>, not per skill.")
 
     g1, g2 = st.columns(2)
     g1.metric("Total Raw FTE", f"{raw_grand:.2f}")
     g2.metric("Total Final FTE (headcount)", f"{fin_grand:.1f}",
-              help="Equals the engagement Total FTE (pooling applied where configured)")
+              help="Delivered team. Equals the engagement Total FTE (pooling applied where configured).")
+
+    gap = fin_grand - raw_grand
+    if raw_grand > 0 and gap > 0.05:
+        pct = gap / raw_grand * 100.0
+        callout(f"↕️ <strong>Rounding &amp; minimum-staffing overhead: +{gap:.1f} FTE ({pct:.0f}% over Raw).</strong> "
+                "Each skill × level is rounded up to a 0.5-person minimum, so many small fractions across "
+                "skills/levels round up independently and add up. To shrink this, <strong>pool L2/L3/Architect "
+                "across similar skills on the <em>Optimize (AI)</em> tab</strong> — pooled roles round once "
+                "instead of once per skill.", "info")
 
 
 def _render_dashboard():
