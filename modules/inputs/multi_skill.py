@@ -1019,51 +1019,60 @@ def _render_multi_summary_metrics(model):
 
 
 def _render_management_summary(state):
-    """Executive per-skill table for management visibility: L1/L2/L3/Architect effort (hrs)
-    and delivered FTE, coverage per skill, plus per-skill Raw and Rounded FTE totals, with
-    SDM and grand totals. Uses the rounded-basis model (fte_by_level = delivered team;
-    breakdown.fte_raw = exact demand)."""
+    """Per-skill FTE build-up for management visibility, so the Raw→Rounded variance is
+    self-explanatory: L1/L2/L3/Architect effort (hrs) + three FTE stages per skill —
+    **Raw** (workload only, breakdown.fte_raw) → **+ Buffer & Contingency** (un-rounded
+    requirement, breakdown.fte_final) → **Rounded** (delivered, breakdown.fte_staffed, each
+    skill × level to a 0.5-person minimum). SDM + grand totals; a note when pooling applies."""
     section_hdr("📋 Management Summary")
-    st.caption("Per skill: L1/L2/L3/Architect effort (hrs · delivered FTE) and coverage, with both "
-               "**Raw** (exact) and **Rounded** (delivered) FTE. SDM is one engagement resource.")
+    st.caption("The FTE build-up per skill: **Raw** (workload only) → **+ Buffer & Contingency** "
+               "(the un-rounded requirement) → **Rounded** (delivered team; each skill × level rounded "
+               "up to a 0.5-person minimum). L1–Architect are monthly effort hours. SDM is one "
+               "engagement resource.")
     model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
     names = {s["id"]: (s.get("name") or s["id"]) for s in st.session_state.get("skills", [])}
 
-    def _cell(hrs, fte):
-        return f"{hrs:.0f}h · {fte:.2f}" if (hrs > 1e-9 or fte > 1e-9) else "—"
-
     tot_hrs = {lvl: 0.0 for lvl in BD_LEVELS}
-    tot_raw = tot_rnd = 0.0
+    t_raw = t_fin = t_rnd = 0.0
     body = ""
     for sid, ps in model["per_skill"].items():
-        rh, fbl, bd = ps["role_hours"], ps["fte_by_level"], ps["breakdown"]
-        raw_t = sum(bd[l]["fte_raw"] for l in BD_LEVELS)
-        rnd_t = sum(fbl[l] for l in BD_LEVELS)
-        cells = "".join(f"<td class='r'>{_cell(rh.get(l, 0.0), fbl.get(l, 0.0))}</td>" for l in BD_LEVELS)
+        rh, bd = ps["role_hours"], ps["breakdown"]
+        raw = sum(bd[l]["fte_raw"] for l in BD_LEVELS)
+        fin = sum(bd[l]["fte_final"] for l in BD_LEVELS)
+        rnd = sum(bd[l]["fte_staffed"] for l in BD_LEVELS)
+        hcells = "".join(f"<td class='r'>{rh.get(l, 0.0):.0f}</td>" for l in BD_LEVELS)
         for l in BD_LEVELS:
             tot_hrs[l] += rh.get(l, 0.0)
-        tot_raw += raw_t; tot_rnd += rnd_t
+        t_raw += raw; t_fin += fin; t_rnd += rnd
         body += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
-                 f"<td>{ps['coverage_model']}</td>{cells}"
-                 f"<td class='r'>{raw_t:.2f}</td><td class='r'><strong>{rnd_t:.1f}</strong></td></tr>")
+                 f"<td>{ps['coverage_model']}</td>{hcells}"
+                 f"<td class='r'>{raw:.2f}</td><td class='r'>{fin:.2f}</td>"
+                 f"<td class='r'><strong>{rnd:.1f}</strong></td></tr>")
     sdm = next((r for r in model["resources"] if r["level"] == "SDM"), None)
     if sdm and (float(sdm.get("fte", 0) or 0) or float(sdm.get("raw_fte", 0) or 0)):
-        sdm_hrs = float(model.get("sdm_hours", 0) or 0)
+        sr, sf, sh = float(sdm["raw_fte"]), float(sdm["fte"]), float(model.get("sdm_hours", 0) or 0)
         body += (f"<tr><td>SDM <span style='color:#7A8A99'>(engagement)</span></td><td>—</td><td>—</td>"
-                 f"<td class='r' colspan='4'>{sdm_hrs:.0f}h</td>"
-                 f"<td class='r'>{float(sdm['raw_fte']):.2f}</td>"
-                 f"<td class='r'><strong>{float(sdm['fte']):.1f}</strong></td></tr>")
-        tot_raw += float(sdm["raw_fte"]); tot_rnd += float(sdm["fte"])
-    tcells = "".join(f"<td class='r'><strong>{tot_hrs[l]:.0f}h</strong></td>" for l in BD_LEVELS)
+                 f"<td class='r' colspan='4'>{sh:.0f}h</td>"
+                 f"<td class='r'>{sr:.2f}</td><td class='r'>{sr:.2f}</td>"
+                 f"<td class='r'><strong>{sf:.1f}</strong></td></tr>")
+        t_raw += sr; t_fin += sr; t_rnd += sf
+    tcells = "".join(f"<td class='r'><strong>{tot_hrs[l]:.0f}</strong></td>" for l in BD_LEVELS)
     body += (f"<tr class='total-row'><td><strong>Total</strong></td><td></td><td></td>{tcells}"
-             f"<td class='r'><strong>{tot_raw:.2f}</strong></td>"
-             f"<td class='r'><strong>{tot_rnd:.1f}</strong></td></tr>")
+             f"<td class='r'><strong>{t_raw:.2f}</strong></td><td class='r'><strong>{t_fin:.2f}</strong></td>"
+             f"<td class='r'><strong>{t_rnd:.1f}</strong></td></tr>")
     st.markdown(
         f"""<table class="styled-table"><thead><tr>
         <th>Skill</th><th>Family</th><th>Coverage</th>
-        <th class="r">L1 (hrs·FTE)</th><th class="r">L2</th><th class="r">L3</th><th class="r">Architect</th>
-        <th class="r">Raw FTE</th><th class="r">Rounded FTE</th></tr></thead><tbody>{body}</tbody></table>""",
-        unsafe_allow_html=True)
+        <th class="r">L1 h</th><th class="r">L2 h</th><th class="r">L3 h</th><th class="r">Arch h</th>
+        <th class="r">Raw FTE</th><th class="r">+ Buffer&amp;Cont</th><th class="r">Rounded FTE</th>
+        </tr></thead><tbody>{body}</tbody></table>""", unsafe_allow_html=True)
+    st.caption(f"Reconciliation: **Raw {t_raw:.2f}** → **+ Buffer & Contingency {t_fin:.2f}** → "
+               f"**Rounded {t_rnd:.1f}** (delivered). The +{t_rnd - t_raw:.1f} FTE is buffer/contingency "
+               "plus the 0.5-per-cell minimum-staffing round-up.")
+    if state.get("resource_sharing"):
+        st.caption(f"ℹ️ Resource sharing is applied: pooling combines fractional roles, so the delivered "
+                   f"team is **{model['total_fte']:.1f} FTE** (below the per-skill Rounded total above). "
+                   "See the Optimize tab.")
 
 
 def _render_excel_export():
@@ -1255,12 +1264,14 @@ def _render_raw_vs_rounded():
     state = _build_multi_state()
     raw = compute_multi_skill_model({**state, "fte_basis": "raw"})
     rnd = compute_multi_skill_model({**state, "fte_basis": "rounded"})
-    chosen = "Raw" if state.get("fte_basis") == "raw" else "Rounded"
-    callout(f"Two views of the same estimate, reported independently. <strong>Raw</strong> = exact "
-            f"fractional demand (theoretical minimum; assumes perfect sharing/pooling). "
-            f"<strong>Rounded</strong> = the delivered team (each skill × level rounded up to 0.5, min "
-            f"0.5). Pricing, approval &amp; export currently use <strong>{chosen}</strong> — switch it on "
-            f"the Effort &amp; FTE tab.", "info")
+    chosen = "Raw + Buffer & Contingency (un-rounded)" if state.get("fte_basis") == "raw" \
+        else "Rounded (delivered)"
+    callout(f"The two priced views of the same estimate. <strong>Raw + Buffer & Contingency</strong> = "
+            f"the un-rounded requirement (workload + buffer + contingency, before whole/half-person "
+            f"rounding). <strong>Rounded</strong> = the delivered team (each skill × level rounded up to "
+            f"0.5, min 0.5). Pricing, approval &amp; export currently use <strong>{chosen}</strong> — "
+            f"switch it on the Effort &amp; FTE tab. (The pre-overhead workload demand is the “Raw FTE” "
+            f"column in the Management Summary above.)", "info")
 
     def _r(lbl, rv, fv, fmt):
         d = fv - rv
@@ -1276,7 +1287,7 @@ def _render_raw_vs_rounded():
         + _r("Gross profit / mo", pr_r["gross_profit"], pr_f["gross_profit"], _inr))
     st.markdown(
         f"""<table class="styled-table"><thead><tr><th>Metric</th>
-        <th class="r">Raw (theoretical)</th><th class="r">Rounded (delivered)</th>
+        <th class="r">Raw + Buffer&amp;Cont (un-rounded)</th><th class="r">Rounded (delivered)</th>
         <th class="r">Δ (Rounded − Raw)</th></tr></thead><tbody>{body}</tbody></table>""",
         unsafe_allow_html=True)
     gap = rnd["total_fte"] - raw["total_fte"]
