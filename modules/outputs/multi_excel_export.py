@@ -447,13 +447,13 @@ def _live_model(wb, model, state):
     _hdr(ws, r, 1, "Engagement totals"); r += 1
     res = _calc(ws, r, 2, f"={'+'.join(skill_cost_refs) if skill_cost_refs else '0'}", "#,##0")
     _lbl(ws, r, 1, "Resource cost (skills)"); r += 1
-    # SDM
+    # SDM — one value per labelled row (hours = total delivery effort × SDM%; FTE = hours ÷ productive)
     sdm_hours = f"({'+'.join(f'{b}*(1+{CON}/100)' for b in skill_base_refs) if skill_base_refs else '0'})*{SDM}/100"
-    _lbl(ws, r, 1, "SDM hours / FTE / cost")
-    sdm_fte = _calc(ws, r, 3, _fte_formula(f"({sdm_hours})", ""), "#,##0.00")
-    sdm_rate = round(float(state.get("sdm_rate_inr", 0) or 0))
-    SDR = _edit(ws, r, 4, sdm_rate, "#,##0")
-    sdm_cost = _calc(ws, r, 5, f"={sdm_fte}*{MON}*{SDR}", "#,##0"); r += 1
+    _lbl(ws, r, 1, "SDM hours / mo"); sdm_h = _calc(ws, r, 2, f"={sdm_hours}", "#,##0.0"); r += 1
+    _lbl(ws, r, 1, "SDM FTE"); sdm_fte = _calc(ws, r, 2, _fte_formula(sdm_h, ""), "#,##0.00"); r += 1
+    _lbl(ws, r, 1, "SDM rate INR/hr")
+    SDR = _edit(ws, r, 2, round(float(state.get("sdm_rate_inr", 0) or 0)), "#,##0"); r += 1
+    _lbl(ws, r, 1, "SDM cost / mo"); sdm_cost = _calc(ws, r, 2, f"={sdm_fte}*{MON}*{SDR}", "#,##0"); r += 1
     _lbl(ws, r, 1, "Total resource cost")
     tot_cost = _calc(ws, r, 2, f"={res}+{sdm_cost}", "#,##0")
     ws.cell(r, 3, round(float(model.get("total_resource_cost", 0) or 0))).font = Font(italic=True, color="6B7B7B")
