@@ -34,6 +34,12 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
+def _locked() -> bool:
+    """Estimate-level read-only lock. When True, value inputs are disabled (via CSS in
+    render_multi_skill_app) and structural buttons (add/remove/apply) pass disabled=_locked()."""
+    return bool(st.session_state.get("ms_locked", False))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Mode chooser (shown once on Manual → Start afresh)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -105,7 +111,7 @@ def _render_skill_setup():
                 "Rate family", GENUS,
                 index=GENUS.index(sk.get("genus_category", "InfraOps")) if sk.get("genus_category") in GENUS else 0,
                 key=f"ms_genus_{sid}")
-            if c3.button("🗑️", key=f"ms_del_{sid}", help="Remove skill"):
+            if c3.button("🗑️", key=f"ms_del_{sid}", help="Remove skill", disabled=_locked()):
                 to_remove.append(sid)
             c4, c5, c6, c7 = st.columns([2.4, 1.6, 1, 1])
             sk["active_levels"] = c4.multiselect(
@@ -148,7 +154,7 @@ def _render_skill_setup():
     if to_remove:
         st.session_state["skills"] = [s for s in skills if s["id"] not in to_remove]
         st.rerun()
-    if st.button("➕ Add skill", key="ms_add_skill", type="secondary"):
+    if st.button("➕ Add skill", key="ms_add_skill", type="secondary", disabled=_locked()):
         new = _blank_skill(f"Skill {len(skills) + 1}")
         # TEMPORARY (DEMO_SEED_DATA): pre-fill new skills with representative workload so
         # testers skip manual entry per skill. No-op when the flag is off. Revert with it.
@@ -316,7 +322,7 @@ def _render_skill_activities(sk, sid):
                 f"a {r} {sid}{i}", min_value=0.0, max_value=100.0, step=5.0,
                 value=float(round(d_disp.get(r, 0.0), 1)), key=f"ms_{sid}_act_{r}_{i}",
                 label_visibility="collapsed")
-        if rc[-1].button("🗑️", key=f"ms_{sid}_act_del_{i}", help="Remove"):
+        if rc[-1].button("🗑️", key=f"ms_{sid}_act_del_{i}", help="Remove", disabled=_locked()):
             to_remove.append(i)
         act.update({"name": nm.strip() or "Custom Activity", "hours": float(hrs or 0),
                     "auto": bool(auto), "dist": new_dist})
@@ -328,7 +334,7 @@ def _render_skill_activities(sk, sid):
     if to_remove:
         st.rerun()
     a1, a2 = st.columns([1.4, 3])
-    if a1.button("➕ Add activity", key=f"ms_{sid}_act_add", type="secondary"):
+    if a1.button("➕ Add activity", key=f"ms_{sid}_act_add", type="secondary", disabled=_locked()):
         acts.append({"name": "Custom Activity", "hours": 0.0, "auto": False,
                      "dist": {r: 0.0 for r in roles}})
         st.rerun()
@@ -961,10 +967,12 @@ def _render_optimize():
             f"saves **{s['fte_saved']:.1f} FTE**{cost_txt}{chips}", unsafe_allow_html=True)
 
     a1, a2, a3 = st.columns([1.5, 1, 2])
-    if a1.button("✅ Apply to estimate", key="ms_opt_apply", type="primary", disabled=not accepted_groups):
+    if a1.button("✅ Apply to estimate", key="ms_opt_apply", type="primary",
+                 disabled=_locked() or not accepted_groups):
         st.session_state["resource_sharing"] = accepted_groups
         st.success(f"Applied {len(accepted_groups)} move(s) — Effort & Cost now reflect the leaner team.")
-    if a2.button("↩ Reset", key="ms_opt_clear", disabled=not st.session_state.get("resource_sharing")):
+    if a2.button("↩ Reset", key="ms_opt_clear",
+                 disabled=_locked() or not st.session_state.get("resource_sharing")):
         st.session_state["resource_sharing"] = []
         st.info("Reset — back to the current team.")
     if ai_available() and a3.button("✨ Explain with AI", key="ms_opt_ai"):
@@ -1315,6 +1323,33 @@ def render_multi_skill_app():
                 "able to resume later.", "info")
     else:
         st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — autosaves as you go.")
+
+    # ── Estimate-level Lock (read-only protection; calculations stay visible) ──
+    locked = _locked()
+    lk1, lk2 = st.columns([4.2, 1.3])
+    if locked:
+        lk1.markdown("<div style='background:#FBEED9;border-left:4px solid #B8860B;padding:8px 12px;"
+                     "border-radius:4px;font-size:0.9rem'>🔒 <strong>Locked (read-only)</strong> — inputs "
+                     "are protected from edits. Exports still work; <strong>Unlock</strong> to change "
+                     "anything or submit for approval.</div>", unsafe_allow_html=True)
+        if lk2.button("🔓 Unlock", key="ms_unlock", type="primary", use_container_width=True):
+            st.session_state["ms_locked"] = False
+            st.rerun()
+        # Disable all value inputs (buttons, tab nav and downloads stay usable). Testids
+        # verified against Streamlit 1.58 (see modules/inputs/identity_gate.py).
+        st.markdown(
+            "<style>"
+            '[data-testid="stNumberInput"],[data-testid="stTextInput"],[data-testid="stTextArea"],'
+            '[data-testid="stSelectbox"],[data-testid="stMultiSelect"],[data-testid="stCheckbox"],'
+            '[data-testid="stRadio"],[data-testid="stToggle"],[data-testid="stFileUploader"],'
+            '[data-testid="stSlider"],[data-testid="stDateInput"]'
+            "{pointer-events:none!important;opacity:.55!important;}</style>", unsafe_allow_html=True)
+    else:
+        lk1.caption("Estimate is editable. Lock it to protect inputs from accidental changes "
+                    "(calculations stay visible; exports still work).")
+        if lk2.button("🔒 Lock estimate", key="ms_lock", type="secondary", use_container_width=True):
+            st.session_state["ms_locked"] = True
+            st.rerun()
 
     hc1, hc2 = st.columns([1.6, 1.6])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
