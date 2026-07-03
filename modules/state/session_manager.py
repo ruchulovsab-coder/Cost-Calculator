@@ -172,6 +172,7 @@ def _build_initial_state():
         "ms_sdm_rate_inr":       0.0,   # resolved SDM rate (INR)
         "ms_context_switch_pct": 10.0,  # optimizer realism knob (no-op w/o sharing)
         "ms_enforce_min_shift":  False, # optimizer realism knob (off by default)
+        "ms_locked":             False, # estimate-level read-only lock (protects inputs)
 
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
