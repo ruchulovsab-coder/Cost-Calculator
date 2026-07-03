@@ -292,6 +292,187 @@ def _raw_vs_rounded(wb, state):
         _drow(ws, i, [m, rv, fv, fv - rv], fmts=[None, f, f, f])
 
 
+def _live_model(wb, model, state):
+    """Formula-driven, editable multi-skill model (pragmatic Phase B). Teal cells are
+    editable inputs; every result is a live Excel formula that reproduces the engine.
+    Per skill × category: Volume, blended AHT and blended L1/L2/L3 split (linear in volume,
+    so blended reproduces the engine exactly); + per-level buffer, non-ticket ('Other') hrs,
+    Architect %, rates; + engagement monthly hrs / utilisation / contingency / SDM% / margin.
+    Pooling/optimisation is NOT live here (see the Optimization sheet) — this is the un-pooled
+    build; a note flags it when sharing is applied."""
+    from openpyxl.styles import Font, Protection
+    from openpyxl.utils import get_column_letter
+    from modules.outputs.excel_model import _edit, _calc, _hdr, _lbl, _fill, _aref, YEL, BORDER, NAVY
+    from modules.calculations.engine import calc_coverage_multiplier
+
+    ws = wb.create_sheet("Live Model")
+    for col, w in (("A", 30), ("B", 12), ("C", 12), ("D", 12), ("E", 13), ("F", 12), ("G", 15)):
+        ws.column_dimensions[col].width = w
+    ws.cell(1, 1, "Live Model — editable & formula-driven").font = Font(bold=True, color=NAVY, size=13)
+    lg = ws.cell(2, 1, "  Editable input  "); lg.fill = _fill(YEL); lg.font = Font(italic=True, bold=True, size=9); lg.border = BORDER
+    ws.cell(2, 2, "Teal cells are editable — change them and the workbook recalculates. Everything "
+                  "else is a locked live formula. Cost uses Rounded FTE (delivered).").font = Font(italic=True, size=9, color="6B7B7B")
+
+    cats = [("alerts", "Monitoring Alerts"), ("service_requests", "Service Requests"),
+            ("incidents", "Incidents"), ("changes", "Change Requests")]
+    LV = ["L1", "L2", "L3"]
+    raw_basis = str(state.get("fte_basis", "rounded")).lower() == "raw"
+
+    def _fte_formula(fin_ref, covx):
+        raw = f"{fin_ref}/{PRD}{covx}"
+        return f"={raw}" if raw_basis else f"=IF({fin_ref}>0,MAX(CEILING({raw},0.5),0.5),0)"
+
+    # ── Engagement inputs ──
+    r = 4
+    _hdr(ws, r, 1, "Engagement inputs"); r += 1
+    monthly = float(state.get("monthly_working_hours", 160.0) or 160.0)
+    util = float(state.get("productive_utilisation", 75.0) or 75.0)
+    cont = float(state.get("contingency_pct", 10.0) or 0.0)
+    sdmp = float(state.get("sdm_overhead_pct", 0.0) or 0.0)
+    margin = float(state.get("target_margin_pct", 0.0) or 0.0)
+    _lbl(ws, r, 1, "Monthly working hrs / FTE"); MON = _edit(ws, r, 2, monthly, "#,##0"); r += 1
+    _lbl(ws, r, 1, "Productive utilisation %"); UTL = _edit(ws, r, 2, util, "#,##0"); r += 1
+    _lbl(ws, r, 1, "Productive hrs / FTE"); PRD = _calc(ws, r, 2, f"={MON}*{UTL}/100", "#,##0.0"); r += 1
+    _lbl(ws, r, 1, "Contingency %"); CON = _edit(ws, r, 2, cont, "#,##0"); r += 1
+    _lbl(ws, r, 1, "SDM overhead %"); SDM = _edit(ws, r, 2, sdmp, "#,##0"); r += 1
+    _lbl(ws, r, 1, "Target margin %"); MRG = _edit(ws, r, 2, margin, "#,##0"); r += 2
+
+    skill_cost_refs, skill_base_refs = [], []
+    for sk in state.get("skills", []):
+        ps = model["per_skill"].get(sk["id"], {})
+        fam = sk.get("genus_category", "InfraOps")
+        rates = (state.get("rates_by_category", {}) or {}).get(fam, {}) or {}
+        cov = calc_coverage_multiplier(sk.get("coverage_model") or "8×5",
+                                       state.get("custom_hours_per_day", 8), state.get("custom_days_per_week", 5))
+        rb = sk.get("role_buffers") or {}
+        wl = sk.get("workload", {}) or {}
+
+        _hdr(ws, r, 1, f"{sk.get('name') or sk['id']}  ·  {fam}  ·  {sk.get('coverage_model','')}")
+        for cc in range(2, 7):
+            ws.cell(r, cc).fill = _fill(NAVY)
+        r += 1
+        _lbl(ws, r, 1, "Coverage multiplier"); COV = _edit(ws, r, 2, round(cov, 3), "#,##0.000")
+        _lbl(ws, r, 4, "Architect %"); ARP = _edit(ws, r, 5, float(sk.get("architect_pct", 0) or 0) if sk.get("has_architect") else 0.0, "#,##0"); r += 1
+        # Category rows → refs for volume / blended AHT / blended split
+        ws.cell(r, 1, "Category").font = Font(bold=True, size=9)
+        for cc, t in ((2, "Volume"), (3, "AHT min"), (4, "L1 %"), (5, "L2 %"), (6, "L3 %")):
+            ws.cell(r, cc, t).font = Font(bold=True, size=9)
+        r += 1
+        cat_ref = {}          # cat -> (vol, aht, {L: splitref})
+        for ckey, clabel in cats:
+            rows = wl.get(ckey, {}) or {}
+            total_cnt = sum(float((rw or {}).get("count", 0) or 0) for rw in rows.values())
+            tot_min = sum(float((rw or {}).get("count", 0) or 0) * float((rw or {}).get("minutes", 0) or 0) for rw in rows.values())
+            blend_aht = (tot_min / total_cnt) if total_cnt > 0 else 0.0
+            split = {}
+            for L in LV:
+                num = sum(float((rw or {}).get("count", 0) or 0) * float((rw or {}).get("minutes", 0) or 0)
+                          * float((rw or {}).get(f"{L}_pct", 0) or 0) / 100.0 for rw in rows.values())
+                split[L] = (num / tot_min * 100.0) if tot_min > 0 else 0.0
+            _lbl(ws, r, 1, clabel)
+            v = _edit(ws, r, 2, round(total_cnt), "#,##0")
+            a = _edit(ws, r, 3, round(blend_aht, 1), "#,##0.0")
+            sp = {L: _edit(ws, r, 3 + i, round(split[L], 1), "#,##0.0") for i, L in enumerate(LV, start=1)}
+            cat_ref[ckey] = (v, a, sp)
+            r += 1
+        # Per-level rows
+        ws.cell(r, 1, "").value = None
+        hdr_r = r
+        _lbl(ws, r, 1, "By level");
+        for i, L in enumerate(["L1", "L2", "L3", "Architect"], start=2):
+            ws.cell(r, i, L).font = Font(bold=True, size=9)
+        r += 1
+        # Ticket raw hours per level (formula from category rows)
+        _lbl(ws, r, 1, "Ticket hours (raw)")
+        tk = {}
+        for i, L in enumerate(LV, start=2):
+            terms = "+".join(f"{v}*{a}/60*{sp[L]}/100" for (v, a, sp) in cat_ref.values())
+            tk[L] = _calc(ws, r, i, f"={terms}", "#,##0.0")
+        ws.cell(r, 5, "—")
+        r += 1
+        # Buffer % (editable)
+        _lbl(ws, r, 1, "Buffer %"); buf = {}
+        for i, L in enumerate(["L1", "L2", "L3", "Architect"], start=2):
+            buf[L] = _edit(ws, r, i, float(rb.get(L, 20) or 0), "#,##0")
+        r += 1
+        # Other (non-ticket) hrs per level = engine breakdown raw - ticket raw (patch+activities+arch)
+        _lbl(ws, r, 1, "Other (non-ticket) hrs")
+        bd = ps.get("breakdown", {})
+        base_effort = float(ps.get("total_effort", 0) or 0) / (1 + cont / 100.0)
+        oth = {}
+        for i, L in enumerate(["L1", "L2", "L3"], start=2):
+            ticket_raw_L = sum(float((rw or {}).get("count", 0) or 0) * float((rw or {}).get("minutes", 0) or 0) / 60.0
+                               * float((rw or {}).get(f"{L}_pct", 0) or 0) / 100.0
+                               for ck in [c for c, _ in cats] for rw in (wl.get(ck, {}) or {}).values())
+            extra = float(bd.get(L, {}).get("raw", 0) or 0) - ticket_raw_L
+            oth[L] = _edit(ws, r, i, round(max(extra, 0.0), 1), "#,##0.0")
+        arch_raw_seed = base_effort * (float(sk.get("architect_pct", 0) or 0) / 100.0 if sk.get("has_architect") else 0.0)
+        extra_arch = float(bd.get("Architect", {}).get("raw", 0) or 0) - arch_raw_seed
+        oth["Architect"] = _edit(ws, r, 5, round(max(extra_arch, 0.0), 1), "#,##0.0")
+        r += 1
+        # base effort formula (tickets + all other)
+        base_ref = f"({'+'.join(f'{v}*{a}/60' for (v, a, sp) in cat_ref.values())}+{oth['L1']}+{oth['L2']}+{oth['L3']}+{oth['Architect']})"
+        # Final hours per level
+        _lbl(ws, r, 1, "Final hours")
+        fin = {}
+        for i, L in enumerate(LV, start=2):
+            fin[L] = _calc(ws, r, i, f"=({tk[L]}*(1+{buf[L]}/100)+{oth[L]})*(1+{CON}/100)", "#,##0.0")
+        fin["Architect"] = _calc(ws, r, 5, f"=({base_ref}*{ARP}/100*(1+{buf['Architect']}/100)+{oth['Architect']})*(1+{CON}/100)", "#,##0.0")
+        r += 1
+        # FTE per level (coverage on L1/L2; basis = the estimate's fte_basis)
+        _lbl(ws, r, 1, "FTE (Raw)" if raw_basis else "FTE (Rounded)")
+        fte = {}
+        for L, i in (("L1", 2), ("L2", 3), ("L3", 4), ("Architect", 5)):
+            covx = f"*{COV}" if L in ("L1", "L2") else ""
+            fte[L] = _calc(ws, r, i, _fte_formula(fin[L], covx), "#,##0.00")
+        r += 1
+        # Rate per level (editable) + cost
+        _lbl(ws, r, 1, "Rate INR/hr"); rt = {}
+        for L, i in (("L1", 2), ("L2", 3), ("L3", 4), ("Architect", 5)):
+            rt[L] = _edit(ws, r, i, round(float(rates.get(L, 0) or 0)), "#,##0")
+        r += 1
+        _lbl(ws, r, 1, "Cost INR/mo")
+        cost_terms = []
+        for L, i in (("L1", 2), ("L2", 3), ("L3", 4), ("Architect", 5)):
+            cref = _calc(ws, r, i, f"={fte[L]}*{MON}*{rt[L]}", "#,##0")
+            cost_terms.append(cref)
+        sc = _calc(ws, r, 6, f"={'+'.join(cost_terms)}", "#,##0")
+        ws.cell(r, 7, round(float(ps.get("cost", 0) or 0))).font = Font(italic=True, color="6B7B7B")  # app value
+        ws.cell(hdr_r - 1, 7, "app →").font = Font(italic=True, size=8, color="6B7B7B")
+        skill_cost_refs.append(sc)
+        skill_base_refs.append(base_ref)
+        r += 2
+
+    # ── Engagement totals ──
+    _hdr(ws, r, 1, "Engagement totals"); r += 1
+    res = _calc(ws, r, 2, f"={'+'.join(skill_cost_refs) if skill_cost_refs else '0'}", "#,##0")
+    _lbl(ws, r, 1, "Resource cost (skills)"); r += 1
+    # SDM
+    sdm_hours = f"({'+'.join(f'{b}*(1+{CON}/100)' for b in skill_base_refs) if skill_base_refs else '0'})*{SDM}/100"
+    _lbl(ws, r, 1, "SDM hours / FTE / cost")
+    sdm_fte = _calc(ws, r, 3, _fte_formula(f"({sdm_hours})", ""), "#,##0.00")
+    sdm_rate = round(float(state.get("sdm_rate_inr", 0) or 0))
+    SDR = _edit(ws, r, 4, sdm_rate, "#,##0")
+    sdm_cost = _calc(ws, r, 5, f"={sdm_fte}*{MON}*{SDR}", "#,##0"); r += 1
+    _lbl(ws, r, 1, "Total resource cost")
+    tot_cost = _calc(ws, r, 2, f"={res}+{sdm_cost}", "#,##0")
+    ws.cell(r, 3, round(float(model.get("total_resource_cost", 0) or 0))).font = Font(italic=True, color="6B7B7B")
+    ws.cell(r, 4, "← app").font = Font(italic=True, size=8, color="6B7B7B"); r += 1
+    _lbl(ws, r, 1, "Selling price / mo")
+    price = _calc(ws, r, 2, f"=IF({MRG}<100,{tot_cost}/(1-{MRG}/100),{tot_cost})", "#,##0")
+    ws.cell(r, 3, round(float(model["price_result"].get("selling_price", 0) or 0))).font = Font(italic=True, color="6B7B7B")
+    ws.cell(r, 4, "← app").font = Font(italic=True, size=8, color="6B7B7B"); r += 2
+    if state.get("resource_sharing"):
+        ws.cell(r, 1, "Note: resource sharing (pooling) is applied in the app but NOT modelled live here "
+                      "— this sheet is the un-pooled build. See the Optimization sheet for the pooled delivered team.").font = \
+            Font(italic=True, size=9, color="B8860B")
+
+    # lock everything except the editable (teal, unlocked) cells
+    ws.protection.sheet = True
+    ws.protection.formatCells = False
+    ws.sheet_view.showGridLines = False
+
+
 def generate_multi_excel_report(state=None) -> bytes:
     """Build the multi-skill workbook and return .xlsx bytes. `state` defaults to the
     live `build_multi_model_state()`; pass a dict to render without the UI (tests)."""
@@ -310,6 +491,7 @@ def generate_multi_excel_report(state=None) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     _exec(wb, model, baseline, state)
+    _live_model(wb, model, state)
     _skills(wb, model, names)
     _buildup(wb, model, names)
     _team(wb, model, names)

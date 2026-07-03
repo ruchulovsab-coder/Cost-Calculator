@@ -33,9 +33,25 @@ def _state():
 
 def test_workbook_has_expected_sheets():
     wb = openpyxl.load_workbook(io.BytesIO(generate_multi_excel_report(_state())))
-    for name in ["Executive Summary", "Skills", "Effort Build-up", "Team (FTE)",
+    for name in ["Executive Summary", "Live Model", "Skills", "Effort Build-up", "Team (FTE)",
                  "Rates", "Optimization", "Workload Detail", "Inputs"]:
         assert name in wb.sheetnames
+
+
+def test_live_model_is_formula_driven():
+    """The Live Model sheet is editable + formula-driven: it has both editable input cells
+    (unlocked) and live Excel formula cells."""
+    wb = openpyxl.load_workbook(io.BytesIO(generate_multi_excel_report(_state())))
+    ws = wb["Live Model"]
+    formulas = editables = 0
+    for row in ws.iter_rows():
+        for c in row:
+            if isinstance(c.value, str) and c.value.startswith("="):
+                formulas += 1
+            if c.protection is not None and c.protection.locked is False:
+                editables += 1
+    assert formulas > 20 and editables > 10
+    assert ws.protection.sheet is True   # locked except the editable inputs
 
 
 def test_exec_total_fte_matches_engine():
