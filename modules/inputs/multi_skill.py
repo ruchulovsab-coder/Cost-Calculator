@@ -1012,6 +1012,52 @@ def _render_multi_summary_metrics(model):
     m4.metric(f"Selling price / mo ({pr.get('margin_pct', 0):.0f}%)", _inr(pr.get("selling_price", 0)))
 
 
+def _render_skill_table(skills):
+    """Skills basis for the approver: family, active levels, coverage, architect per skill."""
+    section_hdr("🧩 Skills")
+    rows = ""
+    for sk in skills:
+        lvls = ", ".join([l for l in LEVELS if l in (sk.get("active_levels") or [])]) or "—"
+        arch = f"{float(sk.get('architect_pct', 0) or 0):.0f}%" if sk.get("has_architect") else "—"
+        rows += (f"<tr><td>{sk.get('name') or sk['id']}</td><td>{sk.get('genus_category', '')}</td>"
+                 f"<td>{lvls}</td><td>{sk.get('coverage_model', '')}</td><td class='r'>{arch}</td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>
+        <th>Active Levels</th><th>Coverage</th><th class="r">Architect</th></tr></thead>
+        <tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
+
+
+def _render_workload_summary(skills):
+    """Monthly workload volumes per skill (the demand behind the commercials)."""
+    from modules.state.multi_state import skill_volumes
+    section_hdr("📊 Workload Summary (monthly)")
+    cats = ["alerts", "service_requests", "incidents", "changes"]
+    tot = {c: 0 for c in cats}
+    tot_srv = 0
+    rows = ""
+    for sk in skills:
+        v = skill_volumes(sk)
+        p = sk.get("patching") or {}
+        srv = int(p.get("num_servers", 0) or 0) if p.get("included") else 0
+        nact = len(sk.get("activities") or [])
+        cells = ""
+        for c in cats:
+            cnt = int(v.get(c, 0) or 0)
+            tot[c] += cnt
+            cells += f"<td class='r'>{cnt or '—'}</td>"
+        tot_srv += srv
+        rows += (f"<tr><td>{sk.get('name') or sk['id']}</td>{cells}"
+                 f"<td class='r'>{srv or '—'}</td><td class='r'>{nact or '—'}</td></tr>")
+    tcells = "".join(f"<td class='r'><strong>{tot[c]}</strong></td>" for c in cats)
+    rows += (f"<tr class='total-row'><td><strong>Total</strong></td>{tcells}"
+             f"<td class='r'><strong>{tot_srv or '—'}</strong></td><td></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Skill</th>
+        <th class="r">Alerts</th><th class="r">Service Requests</th><th class="r">Incidents</th>
+        <th class="r">Changes</th><th class="r">Patch Servers</th><th class="r">Activities</th>
+        </tr></thead><tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
+
+
 def _render_cost_by_skill(model, names):
     """Per-skill monthly resource cost table (moved here from Rates & Cost)."""
     section_hdr("📦 Cost by Skill (monthly)")
@@ -1104,7 +1150,14 @@ def _render_approve_export():
     if not skills:
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
-    if not (st.session_state.get("project_name") or "").strip():
+    # RFP / Customer name at the top so the approver has the estimate's identity.
+    proj = (st.session_state.get("project_name") or "").strip()
+    ref = st.session_state.get("_current_estimate_ref")
+    if proj:
+        vtxt = f" — v{ref['version']}" if ref and ref.get("version") else ""
+        st.markdown(f"<div style='font-size:1.15rem;font-weight:700;color:#0D1B2A;margin:-.2rem 0 .4rem'>"
+                    f"📄 {proj}{vtxt}</div>", unsafe_allow_html=True)
+    else:
         callout("Name this estimate (Customer / RFP) at the top of the page before saving a "
                 "version or requesting approval.", "warning")
     state = _build_multi_state()
@@ -1112,6 +1165,12 @@ def _render_approve_export():
     st.caption(f"Reported on the **{basis}** basis — change it on the Effort & FTE tab.")
     model = compute_multi_skill_model(state)
     _render_multi_summary_metrics(model)
+    st.divider()
+
+    # Basis of the commercials: skills (structure) + workload (demand).
+    _render_skill_table(skills)
+    st.divider()
+    _render_workload_summary(skills)
     st.divider()
 
     # Cost by Skill (monthly) — moved here from Rates & Cost.
@@ -1148,13 +1207,17 @@ def render_multi_approve_export(review: bool = False):
     ref = st.session_state.get("_current_estimate_ref")
     if ref:
         st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
-    if st.session_state.get("skills"):
+    skills = st.session_state.get("skills", [])
+    if skills:
         state = _build_multi_state()
         model = compute_multi_skill_model(state)
         _render_multi_summary_metrics(model)
         st.divider()
-        _render_cost_by_skill(model, {s["id"]: (s.get("name") or s["id"])
-                                      for s in st.session_state.get("skills", [])})
+        _render_skill_table(skills)
+        st.divider()
+        _render_workload_summary(skills)
+        st.divider()
+        _render_cost_by_skill(model, {s["id"]: (s.get("name") or s["id"]) for s in skills})
         st.divider()
         _render_management_summary(state)
         st.divider()
