@@ -841,23 +841,9 @@ def _render_rates_cost():
         value=float(st.session_state.get("target_margin_pct", 20.0) or 0.0), key="ms_margin")
 
     model = compute_multi_skill_model(_build_multi_state())
-    names = {s["id"]: (s.get("name") or s["id"]) for s in skills}
 
-    # Per-skill monthly cost
+    # Engagement cost → price (per-skill "Cost by Skill" table now lives on Approve & Export)
     st.divider()
-    section_hdr("📦 Cost by Skill (monthly)")
-    crows = ""
-    for sid, ps in model["per_skill"].items():
-        crows += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
-                  f"<td class='r'>{_inr(ps.get('cost', 0))}</td></tr>")
-    crows += (f"<tr class='total-row'><td><strong>Resource cost</strong></td><td></td>"
-              f"<td class='r'><strong>{_inr(model['total_resource_cost'])}</strong></td></tr>")
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>
-        <th class="r">Monthly Cost (INR)</th></tr></thead><tbody>{crows}</tbody></table>""",
-        unsafe_allow_html=True)
-
-    # Engagement cost → price
     cr, pr = model["cost_result"], model["price_result"]
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Resource cost / mo", _inr(cr["resource_cost"]))
@@ -1026,6 +1012,21 @@ def _render_multi_summary_metrics(model):
     m4.metric(f"Selling price / mo ({pr.get('margin_pct', 0):.0f}%)", _inr(pr.get("selling_price", 0)))
 
 
+def _render_cost_by_skill(model, names):
+    """Per-skill monthly resource cost table (moved here from Rates & Cost)."""
+    section_hdr("📦 Cost by Skill (monthly)")
+    crows = ""
+    for sid, ps in model["per_skill"].items():
+        crows += (f"<tr><td>{names.get(sid, sid)}</td><td>{ps['genus_category']}</td>"
+                  f"<td class='r'>{_inr(ps.get('cost', 0))}</td></tr>")
+    crows += (f"<tr class='total-row'><td><strong>Resource cost</strong></td><td></td>"
+              f"<td class='r'><strong>{_inr(model['total_resource_cost'])}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>
+        <th class="r">Monthly Cost (INR)</th></tr></thead><tbody>{crows}</tbody></table>""",
+        unsafe_allow_html=True)
+
+
 def _render_management_summary(state):
     """Per-skill FTE build-up for management visibility, so the Raw→Rounded variance is
     self-explanatory: L1/L2/L3/Architect effort (hrs) + three FTE stages per skill —
@@ -1109,7 +1110,12 @@ def _render_approve_export():
     state = _build_multi_state()
     basis = "Raw (theoretical minimum)" if state.get("fte_basis") == "raw" else "Rounded (delivered team)"
     st.caption(f"Reported on the **{basis}** basis — change it on the Effort & FTE tab.")
-    _render_multi_summary_metrics(compute_multi_skill_model(state))
+    model = compute_multi_skill_model(state)
+    _render_multi_summary_metrics(model)
+    st.divider()
+
+    # Cost by Skill (monthly) — moved here from Rates & Cost.
+    _render_cost_by_skill(model, {s["id"]: (s.get("name") or s["id"]) for s in skills})
     st.divider()
 
     # Management summary — per-skill effort/FTE by level, coverage, Raw & Rounded FTE.
@@ -1144,7 +1150,11 @@ def render_multi_approve_export(review: bool = False):
         st.caption(f"Estimate: **{ref.get('project', '')} — v{ref.get('version', '')}**")
     if st.session_state.get("skills"):
         state = _build_multi_state()
-        _render_multi_summary_metrics(compute_multi_skill_model(state))
+        model = compute_multi_skill_model(state)
+        _render_multi_summary_metrics(model)
+        st.divider()
+        _render_cost_by_skill(model, {s["id"]: (s.get("name") or s["id"])
+                                      for s in st.session_state.get("skills", [])})
         st.divider()
         _render_management_summary(state)
         st.divider()
