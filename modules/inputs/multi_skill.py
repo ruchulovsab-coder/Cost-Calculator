@@ -187,6 +187,19 @@ def _render_skill_tickets(sk, sid):
     from modules.recommend import recommend_routing
     ensure_ms_workload(sk)
     active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
+    # When the skill's active levels change (e.g. L2 activated on a previously L1-only skill),
+    # re-apply the recommended L1/L2/L3 routing to every workload row so the split adapts to
+    # the new levels — otherwise a stale split (e.g. alerts 100% L1 from an L1-only seed) sticks.
+    _pk = f"_ms_active_{sid}"
+    _cur_active = tuple(sk.get("active_levels") or [])
+    if st.session_state.get(_pk) is not None and st.session_state[_pk] != _cur_active:
+        for _ck in MS_CLASSIFICATIONS:
+            for _cls, _row in (sk.get("workload", {}).get(_ck, {}) or {}).items():
+                _row["L1_pct"], _row["L2_pct"], _row["L3_pct"] = \
+                    recommend_routing(_ck, _cls, sk.get("active_levels"))[:3]
+                for _l in ("l1", "l2", "l3"):
+                    st.session_state.pop(f"ms_{sid}_{_ck}_{_cls}_{_l}", None)
+    st.session_state[_pk] = _cur_active
     st.caption("Enter the monthly **total** per category; the classification mix, handling time "
                "and the **recommended L1/L2/L3 routing** are pre-filled — higher priority escalates "
                "to L2/L3, routine work stays on L1, folded onto this skill's active levels. Everything "
