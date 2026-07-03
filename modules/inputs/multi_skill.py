@@ -666,8 +666,10 @@ def _render_dashboard():
         "Contingency %", min_value=0.0, max_value=50.0, step=1.0,
         value=float(st.session_state.get("contingency_pct", 10.0) or 0.0), key="ms_cont")
     st.session_state["sdm_overhead_pct"] = st.number_input(
-        "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
-        value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
+        "SDM allocation (% of one SDM FTE)", min_value=0.0, max_value=100.0, step=5.0,
+        value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm",
+        help="Fraction of ONE Service Delivery Manager assigned to this engagement — 25 = 0.25 SDM FTE "
+             "(fixed, independent of engagement size). Not a % of delivery effort.")
 
     # New multi estimates default to Raw (the chosen basis); loaded estimates keep their saved
     # basis. Leadership can switch here; both bases are compared on the Approve & Export tab.

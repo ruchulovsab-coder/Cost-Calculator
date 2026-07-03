@@ -334,7 +334,7 @@ def _live_model(wb, model, state):
     _lbl(ws, r, 1, "Productive utilisation %"); UTL = _edit(ws, r, 2, util, "#,##0"); r += 1
     _lbl(ws, r, 1, "Productive hrs / FTE"); PRD = _calc(ws, r, 2, f"={MON}*{UTL}/100", "#,##0.0"); r += 1
     _lbl(ws, r, 1, "Contingency %"); CON = _edit(ws, r, 2, cont, "#,##0"); r += 1
-    _lbl(ws, r, 1, "SDM overhead %"); SDM = _edit(ws, r, 2, sdmp, "#,##0"); r += 1
+    _lbl(ws, r, 1, "SDM allocation (% of one SDM)"); SDM = _edit(ws, r, 2, sdmp, "#,##0"); r += 1
     _lbl(ws, r, 1, "Target margin %"); MRG = _edit(ws, r, 2, margin, "#,##0"); r += 2
 
     skill_cost_refs, skill_base_refs = [], []
@@ -447,10 +447,10 @@ def _live_model(wb, model, state):
     _hdr(ws, r, 1, "Engagement totals"); r += 1
     res = _calc(ws, r, 2, f"={'+'.join(skill_cost_refs) if skill_cost_refs else '0'}", "#,##0")
     _lbl(ws, r, 1, "Resource cost (skills)"); r += 1
-    # SDM — one value per labelled row (hours = total delivery effort × SDM%; FTE = hours ÷ productive)
-    sdm_hours = f"({'+'.join(f'{b}*(1+{CON}/100)' for b in skill_base_refs) if skill_base_refs else '0'})*{SDM}/100"
-    _lbl(ws, r, 1, "SDM hours / mo"); sdm_h = _calc(ws, r, 2, f"={sdm_hours}", "#,##0.0"); r += 1
-    _lbl(ws, r, 1, "SDM FTE"); sdm_fte = _calc(ws, r, 2, _fte_formula(sdm_h, ""), "#,##0.00"); r += 1
+    # SDM (Option A): a fixed allocation of ONE SDM — FTE = SDM%/100 (not a % of effort, not
+    # rounded). Hours = FTE × productive; cost = FTE × monthly × rate.
+    _lbl(ws, r, 1, "SDM FTE (= SDM% of one SDM)"); sdm_fte = _calc(ws, r, 2, f"={SDM}/100", "#,##0.00"); r += 1
+    _lbl(ws, r, 1, "SDM hours / mo"); _calc(ws, r, 2, f"={sdm_fte}*{PRD}", "#,##0.0"); r += 1
     _lbl(ws, r, 1, "SDM rate INR/hr")
     SDR = _edit(ws, r, 2, round(float(state.get("sdm_rate_inr", 0) or 0)), "#,##0"); r += 1
     _lbl(ws, r, 1, "SDM cost / mo"); sdm_cost = _calc(ws, r, 2, f"={sdm_fte}*{MON}*{SDR}", "#,##0"); r += 1
