@@ -12,17 +12,9 @@ _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file
 
 
 def _add_logo(ws, anchor="E1"):
-    """Place the Nagarro logo on a sheet (parity with the PDF). No-op if missing."""
-    try:
-        if not os.path.exists(_LOGO_PATH):
-            return
-        from openpyxl.drawing.image import Image as XLImage
-        img = XLImage(_LOGO_PATH)
-        w = float(img.width or 120); h = float(img.height or 40)
-        img.width = 130; img.height = int(130 * (h / w)) if w else 40
-        ws.add_image(img, anchor)
-    except Exception:
-        pass
+    """No-op: the Nagarro logo is intentionally omitted from Excel workbooks (kept in the
+    PDF). Signature retained so existing callers don't break."""
+    return
 from config.settings import (
     ALL_ROLES, APP_NAME, DEFAULT_ROLE_BUFFER_PCT, REPORTING_CURRENCIES, hx,
 )
