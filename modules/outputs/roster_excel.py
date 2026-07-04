@@ -85,19 +85,46 @@ def build_roster_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
     _cell(ws, r, 6, f"+{tot.get('delta', 0):.2f}", bold=True, right=True, fill=TINT)
     r += 2
 
-    # Shift grid
-    _title(ws, r, "Proposed Shifts", 11); r += 1
-    _hdr_row(ws, r, ["Skill", "Level", "Shift", "Window (Customer)", "Window (Delivery)",
-                     "Days", "Seats", "Notes"]); r += 1
-    for s in plan.get("shifts", []):
-        _cell(ws, r, 1, s["skill"])
-        _cell(ws, r, 2, s["level"])
-        _cell(ws, r, 3, s["shift"])
-        _cell(ws, r, 4, s["customer"], right=True)
-        _cell(ws, r, 5, s["delivery"], right=True)
-        _cell(ws, r, 6, s["days"])
-        _cell(ws, r, 7, s["seats"], right=True)
-        _cell(ws, r, 8, s.get("note", ""))
+    # Shift-timing legend
+    _title(ws, r, "Shift Timings", 11); r += 1
+    _hdr_row(ws, r, ["Shift", f"Customer ({plan.get('customer_tz','')})",
+                     f"Delivery ({plan.get('delivery_tz','')})"]); r += 1
+    for t in plan.get("shift_timings", []):
+        _cell(ws, r, 1, t["label"])
+        _cell(ws, r, 2, t["customer"], right=True)
+        _cell(ws, r, 3, t["delivery"], right=True)
+        r += 1
+    r += 1
+
+    # Weekly roster (person × weekday) — the requested sample format:
+    # Employee | Role | Filter | Mon…Sun (anonymous seats, no rate column).
+    _title(ws, r, "Weekly Roster", 11); r += 1
+    days = plan.get("days", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+    header_row = r
+    _hdr_row(ws, r, ["Employee", "Role", "Filter"] + days); r += 1
+    cell_bg = {"Morning": "D6F0ED", "Evening": "A8DDD8", "Night": "1A5F6A",
+               "Day": "EAF3F4", "On-Call": AMBER}
+    for p in plan.get("people", []):
+        _cell(ws, r, 1, p["employee"])
+        _cell(ws, r, 2, p["role"])
+        _cell(ws, r, 3, "")   # Filter helper column (Excel autofilter)
+        for j, v in enumerate(p["cells"], start=4):
+            fill = cell_bg.get(v)
+            c = ws.cell(r, j, v or ""); c.border = BORDER
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.font = Font(size=9, color=("FFFFFF" if v == "Night" else "1B2A3A"))
+            if fill:
+                c.fill = _fill(fill)
+        r += 1
+    # Autofilter across the roster header (the "Filter" column mirrors the sample).
+    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(3 + len(days))}{r - 1}"
+    r += 1
+
+    # Roster notes
+    for n in plan.get("roster_notes", []):
+        c = ws.cell(r, 1, "• " + n); c.font = Font(size=9, italic=True, color=MUTED)
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3 + len(days))
         r += 1
     r += 1
 
@@ -108,10 +135,10 @@ def build_roster_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
         for a in advisories:
             c = ws.cell(r, 1, "⚠  " + a); c.fill = _fill(AMBER)
             c.font = Font(size=10); c.alignment = Alignment(wrap_text=True, vertical="center")
-            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
+            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3 + len(days))
             r += 1
 
-    widths = [26, 10, 20, 20, 20, 12, 8, 40]
+    widths = [20, 26, 8] + [11] * len(days)
     for j, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(j)].width = w
 

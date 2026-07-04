@@ -1506,20 +1506,39 @@ def _render_roster():
                "unchanged** — the delta is the rounding to indivisible heads, not a commercial change.")
     st.divider()
 
-    # Shift grid
-    section_hdr("🕒 Proposed Shifts")
-    grows = ""
-    for s in plan["shifts"]:
-        oc = " 📞" if s.get("on_call") else ""
-        grows += (f"<tr><td>{s['skill']}</td><td>{s['level']}</td><td>{s['shift']}{oc}</td>"
-                  f"<td class='r'>{s['customer']}</td><td class='r'>{s['delivery']}</td>"
-                  f"<td>{s['days']}</td><td class='r'>{s['seats']}</td>"
-                  f"<td style='color:#7A8A99'>{s.get('note', '')}</td></tr>")
+    # Shift-timing legend: map each cell label to a real clock window (customer + delivery).
+    section_hdr("🕒 Shift Timings")
+    trows = "".join(
+        f"<tr><td>{t['label']}</td><td class='r'>{t['customer']}</td><td class='r'>{t['delivery']}</td></tr>"
+        for t in plan["shift_timings"])
     st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Level</th><th>Shift</th>
-        <th class="r">Window (Customer)</th><th class="r">Window (Delivery)</th><th>Days</th>
-        <th class="r">Seats</th><th>Notes</th></tr></thead><tbody>{grows}</tbody></table>""",
+        f"""<table class="styled-table"><thead><tr><th>Shift</th>
+        <th class="r">Customer ({plan['customer_tz']})</th>
+        <th class="r">Delivery ({plan['delivery_tz']})</th></tr></thead><tbody>{trows}</tbody></table>""",
         unsafe_allow_html=True)
+    st.divider()
+
+    # Weekly roster (person × weekday) — the proposal roster in the requested format.
+    section_hdr("🗓️ Weekly Roster")
+    cell_bg = {"Morning": "#D6F0ED", "Evening": "#A8DDD8", "Night": "#1A5F6A",
+               "Day": "#EAF3F4", "On-Call": "#FBEED9"}
+    cell_fg = {"Night": "#FFFFFF"}
+    dcols = "".join(f"<th class='r'>{d}</th>" for d in plan["days"])
+    prows = ""
+    for p0 in plan["people"]:
+        cells = ""
+        for v in p0["cells"]:
+            bg = cell_bg.get(v, "")
+            fg = cell_fg.get(v, "#1B2A3A")
+            style = f"background:{bg};color:{fg};" if bg else "color:#B8C2CC;"
+            cells += f"<td class='r' style='{style}font-size:.82rem'>{v or '—'}</td>"
+        prows += (f"<tr><td style='white-space:nowrap'>{p0['employee']}</td>"
+                  f"<td style='white-space:nowrap'>{p0['role']}</td>{cells}</tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Employee</th><th>Role</th>{dcols}</tr></thead>
+        <tbody>{prows}</tbody></table>""", unsafe_allow_html=True)
+    for n in plan["roster_notes"]:
+        st.caption("• " + n)
     st.divider()
 
     # Advisories (informational — never affect commercials)

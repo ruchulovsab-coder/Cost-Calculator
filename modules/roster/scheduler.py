@@ -41,6 +41,55 @@ COVERAGE_PREF_MODES = ["Business Hours", "Non-Business Hours", "Custom Window"]
 _COVERAGE_ROLES = ("L1", "L2")   # engine applies the coverage multiplier only to these
 _ALL_LEVELS = ("L1", "L2", "L3", "Architect")
 
+DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_WEEKDAYS = (0, 1, 2, 3, 4)
+WEEK_OFF = ""   # blank cell = weekly off (matches the sample format)
+
+
+def _l1_cells(seats: int, hpd: float, dpw: float) -> List[List[str]]:
+    """L1 = dedicated rotational coverage. 24×7 → 3 shifts (Morning/Evening/Night) over 7 days
+    with staggered week-offs; 12–16h → Morning/Evening; 8h → Day, weekends off. One shift per
+    person for the displayed week (rotates weekly for fairness)."""
+    blocks = (["Morning", "Evening", "Night"] if hpd >= 24
+              else ["Morning", "Evening"] if hpd >= 12 else ["Day"])
+    days7 = dpw >= 7
+    out = []
+    group_pos: Dict[str, int] = {}   # per-shift running index → stagger offs WITHIN each shift
+    for i in range(seats):
+        shift = blocks[i % len(blocks)]
+        k = group_pos.get(shift, 0)
+        group_pos[shift] = k + 1
+        cells = [WEEK_OFF] * 7
+        if days7:
+            offs = {(2 * k) % 7, (2 * k + 1) % 7}   # stagger the 2 week-offs across the shift group
+            for d in range(7):
+                cells[d] = WEEK_OFF if d in offs else shift
+        else:
+            for d in _WEEKDAYS:
+                cells[d] = shift
+        out.append(cells)
+    return out
+
+
+def _support_cells(seats: int, hpd: float, dpw: float, level: str) -> List[List[str]]:
+    """L2/L3/Architect. L2/L3 work business-hours 'Day' and are On-Call outside it (nights,
+    weekends, holidays) — never dedicated night shifts. Exception: a *staffed* 12–16×5 L2 works
+    the window (Morning/Evening) on weekdays. Architect = Day, no on-call. Weekend On-Call goes to
+    the week's primary (index 0; rotates weekly)."""
+    is247 = hpd >= 24 and dpw >= 7
+    staffed_window = (level == "L2" and not is247 and hpd >= 12)
+    blocks = ["Morning", "Evening"] if staffed_window else ["Day"]
+    out = []
+    for i in range(seats):
+        shift = blocks[i % len(blocks)]
+        cells = [WEEK_OFF] * 7
+        for d in _WEEKDAYS:
+            cells[d] = shift
+        if level in ("L2", "L3") and i == 0:      # weekly primary on-call
+            cells[5] = cells[6] = "On-Call"
+        out.append(cells)
+    return out
+
 
 # ── time helpers ──────────────────────────────────────────────────────────────
 def parse_hhmm(val: Any, default: float = 9.0) -> float:
@@ -122,6 +171,8 @@ def build_roster(model: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any
     shifts: List[Dict[str, Any]] = []
     recon: List[Dict[str, Any]] = []
     advisories: List[str] = []
+    people: List[Dict[str, Any]] = []   # person × weekday rotational calendar (the roster grid)
+    eng = 0
 
     def _win(start: float, end: float) -> Dict[str, str]:
         return {
@@ -164,6 +215,14 @@ def build_roster(model: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any
             recon.append({"skill": name, "level": lvl, "coverage": cov,
                           "fte": round(fte, 2), "seats": seats, "delta": round(seats - fte, 2)})
 
+            # Materialise seats → anonymous person rows with a Mon–Sun rotation (the roster grid).
+            cells_list = (_l1_cells(seats, hpd, dpw) if lvl == "L1"
+                          else _support_cells(seats, hpd, dpw, lvl))
+            for cells in cells_list:
+                eng += 1
+                people.append({"employee": f"Engineer {eng:02d}", "role": f"{name} · {lvl}",
+                               "skill": name, "level": lvl, "coverage": cov, "cells": cells})
+
             if lvl in _COVERAGE_ROLES:
                 # Spread seats across the daily shift blocks as evenly as possible.
                 base, extra = divmod(seats, n_blocks)
@@ -195,6 +254,26 @@ def build_roster(model: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any
                     **_win(bs, be),
                 })
 
+    # Shift-timing legend so the Morning/Evening/Night/Day cell labels map to real clock windows
+    # in both customer and delivery time. Morning/Evening/Night are fixed 8h anchors; Day = the
+    # customer business window.
+    def _tw(s: float, e: float) -> Dict[str, str]:
+        return {"customer": f"{fmt_hhmm(s)}–{fmt_hhmm(e)}",
+                "delivery": f"{fmt_hhmm(convert(s, co, do))}–{fmt_hhmm(convert(e, co, do))}"}
+    shift_timings = [
+        {"label": "Morning", **_tw(6, 14)},
+        {"label": "Evening", **_tw(14, 22)},
+        {"label": "Night", **_tw(22, 6)},
+        {"label": "Day (business hours)", **_tw(bh_start, bh_end)},
+    ]
+    roster_notes = [
+        "Seats are anonymous; individuals rotate across shifts week-to-week for fairness.",
+        "L2/L3 work business hours and provide On-Call coverage outside displayed shifts "
+        "(nights, weekends, public holidays) — primary + secondary on a weekly rotation.",
+        "Blank cell = weekly off. Times shown are customer-local; delivery (IST) equivalents "
+        "are in the shift-timing legend.",
+    ]
+
     total_fte = round(sum(r["fte"] for r in recon), 2)
     total_seats = sum(r["seats"] for r in recon)
     return {
@@ -202,6 +281,10 @@ def build_roster(model: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any
         "customer_tz": cust_tz, "delivery_tz": deliv_tz,
         "business_hours": f"{fmt_hhmm(bh_start)}–{fmt_hhmm(bh_end)} {cust_tz}",
         "shifts": shifts,
+        "days": DAYS,
+        "people": people,
+        "shift_timings": shift_timings,
+        "roster_notes": roster_notes,
         "reconciliation": recon,
         "advisories": advisories,
         "totals": {"delivered_fte": total_fte, "deployable_seats": total_seats,

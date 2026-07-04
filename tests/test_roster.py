@@ -113,6 +113,49 @@ def test_business_vs_nonbusiness_window_placement():
     assert non_win.startswith("17:00")
 
 
+def test_calendar_person_rows_and_coverage():
+    """Person × weekday grid: L1 24×7 rotates Morning/Evening/Night and each shift is covered
+    every day; L2/L3 are Day + weekend On-Call (never Night); Architect is Day, no on-call."""
+    st = _multi_1skill_state()
+    st["skills"][0]["coverage_model"] = "24×7"
+    st["skills"][0]["active_levels"] = ["L1", "L2", "L3"]
+    model = compute_multi_skill_model(st)
+    plan = build_roster(model, _cfg())
+    people = plan["people"]
+    assert people and all(len(p["cells"]) == 7 for p in people)
+    assert all(p["employee"].startswith("Engineer ") for p in people)
+
+    # L1: every day, each of Morning/Evening/Night is staffed by ≥1 person.
+    l1 = [p for p in people if p["level"] == "L1"]
+    for d in range(7):
+        present = {p["cells"][d] for p in l1}
+        for shift in ("Morning", "Evening", "Night"):
+            assert shift in present, f"day {d} missing {shift}"
+
+    # L2/L3 never work Night; Architect has no On-Call.
+    for p in people:
+        if p["level"] in ("L2", "L3"):
+            assert "Night" not in p["cells"]
+        if p["level"] == "Architect":
+            assert "On-Call" not in p["cells"]
+    # At least one L2/L3 carries weekend On-Call.
+    assert any("On-Call" in p["cells"] for p in people if p["level"] in ("L2", "L3"))
+
+
+def test_calendar_seats_match_reconciliation():
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_roster(model, _cfg())
+    assert len(plan["people"]) == plan["totals"]["deployable_seats"]
+
+
+def test_roster_excel_builds():
+    from modules.outputs.roster_excel import build_roster_workbook
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_roster(model, _cfg())
+    data = build_roster_workbook(plan, "Demo RFP")
+    assert data[:2] == b"PK" and len(data) > 2000   # a valid .xlsx zip
+
+
 def test_roster_does_not_mutate_model():
     model = compute_multi_skill_model(_multi_1skill_state())
     snapshot = copy.deepcopy(model)

@@ -18,15 +18,25 @@ management / HR / scheduling / attendance / payroll system.
    does **not** add a second relief factor. Deployable whole heads = **⌈delivered FTE⌉** per
    skill×level; the delta (seats − billed FTE) is shown transparently and never changes price.
 
-## Shift model (v1, "Balanced")
-- **L1/L2** are coverage roles → seats spread across the daily coverage window, split into
-  ~shift-length blocks (24h → 3, 16h → 2, 8h → 1). Window placement for non-24×7 skills follows
-  the per-skill preference (Business / Non-Business / Custom).
-- **L3/Architect** are not coverage-inflated by the engine → business hours + on-call/escalation
-  outside it (not spread across nights).
-- Every shift renders in **both** customer-local and delivery-local time (dual clock).
-- **Advisories** (informational, never affect commercials): flag when seats < shift blocks, and
-  when a 24×7 desk has < 5 seats for sustainable rotation.
+## Shift model
+Role behaviour (confirmed with the delivery model, offshore IST team):
+- **L1** = dedicated **rotational shifts**. 24×7 → Morning/Evening/Night over 7 days with
+  staggered week-offs (staggered *within each shift group* so every shift is covered every day);
+  16×5 → Morning/Evening; 8×5 → Day. One shift per person per displayed week (rotates weekly).
+- **L2** = business-hours **Day** + **On-Call** outside it (nights, weekends, holidays) — **never
+  dedicated night shifts, even at 24×7** (user decision). Exception: a *staffed* 12–16×5 L2 works
+  the window (Morning/Evening) on weekdays. On-call is primary+secondary on a weekly rotation.
+- **L3** = business-hours **Day** + On-Call; never night.
+- **Architect** = Day, Mon–Fri, no on-call (escalation of last resort).
+- Shift-timing legend maps Morning(06–14)/Evening(14–22)/Night(22–06)/Day(business hours) to real
+  clock windows in **both** customer and delivery (IST) time (dual clock).
+- **Advisories** (informational, never affect commercials): seats < shift blocks; 24×7 desk < 5 seats.
+
+## Output format (the deliverable)
+A **person × weekday rotational calendar** — one row per anonymous seat: **Employee | Role |
+Filter | Mon…Sun**, cells = Morning / Evening / Night / Day / On-Call, blank = week-off. No rate
+column (commercially sensitive). Matches `assets/Shift roster sample format .png`. Rendered in the
+Shift Plan tab and exported to Excel (autofilter enabled, app theme).
 
 ## Inputs (few, on the tab)
 Customer TZ, delivery/offshore TZ, business hours (customer local), shift length, and a per-skill
@@ -57,11 +67,14 @@ tests/test_roster.py           # determinism, reconciliation, dependency guard, 
 
 ## Phased roadmap
 - **P0 (done)** — FTE→seats reconciliation principle (⌈FTE⌉, delta shown; no double-count).
-- **P1 (done, on `testing`)** — deterministic Balanced scheduler + Shift Plan tab (dual-clock grid,
+- **P1 (done, on `testing`)** — deterministic Balanced scheduler + Shift Plan tab (dual-clock
   reconciliation, advisories) + Excel appendix export. No AI.
-- **P2** — Cost-Optimized & Max-Coverage strategies; PowerPoint proposal appendix; richer manual
+- **P2 (done, on `testing`)** — **person × weekday rotational calendar** in the requested sample
+  format (anonymous seats, Morning/Evening/Night/Day/On-Call, no rate); L2/L3 24×7 = On-Call;
+  shift-timing legend (dual clock); Excel with autofilter matching the sample.
+- **P3** — Cost-Optimized & Max-Coverage strategies; PowerPoint proposal appendix; richer manual
   override with live re-validation.
-- **P3** — optional AI *narration* layer (labels/explains/ranks accepted plans; deterministic
+- **P4** — optional AI *narration* layer (labels/explains/ranks accepted plans; deterministic
   validator gates anything it touches).
-- **P4 (no redesign)** — holidays/regional calendars, labour rules, named resources, multi-location,
+- **P5 (no redesign)** — holidays/regional calendars, labour rules, named resources, multi-location,
   follow-the-sun.
