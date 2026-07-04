@@ -1935,7 +1935,7 @@ def render_multi_skill_app():
         st.rerun()
     t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
         ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Shift Plan", "7 · Transition", "8 · Approve & Export", "9 · Versions & Compare"])
+         "6 · Approve & Export", "7 · Versions & Compare", "8 · Transition", "9 · Shift Plan"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -1947,10 +1947,10 @@ def render_multi_skill_app():
     with t5:
         _render_optimize()
     with t6:
-        _render_roster()
-    with t7:
-        _render_transition()
-    with t8:
         _render_approve_export()
-    with t9:
+    with t7:
         _render_versions_compare()
+    with t8:
+        _render_transition()
+    with t9:
+        _render_roster()
