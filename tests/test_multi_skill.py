@@ -64,16 +64,29 @@ def _multi_1skill_state():
 
 
 def test_single_skill_equals_single_tower():
-    single = compute_full_model(_single_state())
-    multi = compute_multi_skill_model(_multi_1skill_state())
+    # SDM excluded from parity: multi SDM is a fixed allocation (Option A), single is % of
+    # effort — intentionally different. Everything else (effort/role hours/cost/price) matches.
+    ss = _single_state(); ss["overhead_pcts"] = {**ss["overhead_pcts"], "SDM": 0.0}
+    ms = _multi_1skill_state(); ms["sdm_overhead_pct"] = 0.0
+    single = compute_full_model(ss)
+    multi = compute_multi_skill_model(ms)
     assert multi["engagement_total_effort"] == pytest.approx(single["total_effort"], rel=1e-3)
     rh = multi["per_skill"]["s1"]["role_hours"]
     for lvl in ("L1", "L2", "L3", "Architect"):
         assert rh[lvl] == pytest.approx(single["role_hours"][lvl], rel=1e-3), lvl
-    assert multi["sdm_hours"] == pytest.approx(single["role_hours"]["SDM"], rel=1e-3)
     assert multi["total_resource_cost"] == pytest.approx(single["total_resource_cost"], rel=1e-3)
     assert multi["price_result"]["selling_price"] == pytest.approx(
         single["price_result"]["selling_price"], rel=1e-3)
+
+
+def test_sdm_is_fixed_allocation():
+    """SDM (Option A): SDM% is a fixed fraction of ONE SDM FTE, not a % of effort and not
+    rounded to 0.5 — so 25% → 0.25 FTE regardless of engagement size or basis."""
+    st = _multi_1skill_state(); st["sdm_overhead_pct"] = 25.0; st["sdm_rate_inr"] = 2000
+    for basis in ("raw", "rounded"):
+        m = compute_multi_skill_model({**st, "fte_basis": basis})
+        sdm = next(r for r in m["resources"] if r["level"] == "SDM")
+        assert sdm["fte"] == pytest.approx(0.25)
 
 
 def test_two_skills_aggregate():

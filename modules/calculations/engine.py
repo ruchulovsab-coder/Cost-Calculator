@@ -965,7 +965,10 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
             "breakdown": breakdown,
         }
         engagement_total_effort += skill_total
-    sdm_hours = engagement_total_effort * sdm_pct / 100.0
+    # SDM is a fixed allocation of ONE SDM (Option A): sdm_pct% of one SDM FTE — NOT a
+    # percentage of delivery effort. Expressed as hours (= FTE × productive) so the resource
+    # loop yields SDM FTE = sdm_pct/100 exactly (and it is NOT rounded to 0.5, see below).
+    sdm_hours = (sdm_pct / 100.0) * productive
 
     # 2. Build resources, pooling L2/L3/Architect by sharing group
     group_of, groups = {}, {}
@@ -1020,6 +1023,8 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
         eff_hours = r["hours"] * csw
         raw = (eff_hours / productive * (mult if applies else 1.0)) if productive > 0 else 0.0
         final = max(ceil_half(raw), 0.5) if r["hours"] > 0 else 0.0
+        if r["level"] == "SDM":
+            final = raw   # SDM is a direct fractional allocation (Option A) — not rounded to 0.5
         if enforce_shift and applies and mult > 1.0 and r["hours"] > 0:
             final = max(final, ceil_half(mult))     # one continuous seat for the window
         fte = raw if fte_key == "raw_fte" else final

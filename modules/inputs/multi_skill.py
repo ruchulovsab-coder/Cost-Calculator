@@ -187,6 +187,19 @@ def _render_skill_tickets(sk, sid):
     from modules.recommend import recommend_routing
     ensure_ms_workload(sk)
     active = [l for l in LEVELS if l in (sk.get("active_levels") or [])]   # LEVELS = L1/L2/L3
+    # When the skill's active levels change (e.g. L2 activated on a previously L1-only skill),
+    # re-apply the recommended L1/L2/L3 routing to every workload row so the split adapts to
+    # the new levels — otherwise a stale split (e.g. alerts 100% L1 from an L1-only seed) sticks.
+    _pk = f"_ms_active_{sid}"
+    _cur_active = tuple(sk.get("active_levels") or [])
+    if st.session_state.get(_pk) is not None and st.session_state[_pk] != _cur_active:
+        for _ck in MS_CLASSIFICATIONS:
+            for _cls, _row in (sk.get("workload", {}).get(_ck, {}) or {}).items():
+                _row["L1_pct"], _row["L2_pct"], _row["L3_pct"] = \
+                    recommend_routing(_ck, _cls, sk.get("active_levels"))[:3]
+                for _l in ("l1", "l2", "l3"):
+                    st.session_state.pop(f"ms_{sid}_{_ck}_{_cls}_{_l}", None)
+    st.session_state[_pk] = _cur_active
     st.caption("Enter the monthly **total** per category; the classification mix, handling time "
                "and the **recommended L1/L2/L3 routing** are pre-filled — higher priority escalates "
                "to L2/L3, routine work stays on L1, folded onto this skill's active levels. Everything "
@@ -653,8 +666,10 @@ def _render_dashboard():
         "Contingency %", min_value=0.0, max_value=50.0, step=1.0,
         value=float(st.session_state.get("contingency_pct", 10.0) or 0.0), key="ms_cont")
     st.session_state["sdm_overhead_pct"] = st.number_input(
-        "SDM overhead % (one engagement SDM)", min_value=0.0, max_value=50.0, step=0.5,
-        value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm")
+        "SDM allocation (% of one SDM FTE)", min_value=0.0, max_value=100.0, step=5.0,
+        value=float(st.session_state.get("sdm_overhead_pct", 5.0) or 0.0), key="ms_sdm",
+        help="Fraction of ONE Service Delivery Manager assigned to this engagement — 25 = 0.25 SDM FTE "
+             "(fixed, independent of engagement size). Not a % of delivery effort.")
 
     # New multi estimates default to Raw (the chosen basis); loaded estimates keep their saved
     # basis. Leadership can switch here; both bases are compared on the Approve & Export tab.
@@ -1378,6 +1393,182 @@ def _render_raw_vs_rounded():
                    "the price of indivisible people. Pool L2/L3/Architect on the Optimize tab to reduce it.")
 
 
+def _roster_config() -> dict:
+    """RosterConfig from session_state (self-healing defaults). Read by the deterministic
+    scheduler; the roster never writes back to the estimate."""
+    return {
+        "strategy": st.session_state.get("roster_strategy", "Balanced"),
+        "customer_tz": st.session_state.get("roster_customer_tz", "EST"),
+        "delivery_tz": st.session_state.get("roster_delivery_tz", "IST"),
+        "business_start": st.session_state.get("roster_bh_start", "09:00"),
+        "business_end": st.session_state.get("roster_bh_end", "17:00"),
+        "shift_length_h": st.session_state.get("roster_shift_len", 8),
+        "coverage_prefs": st.session_state.get("roster_prefs", {}) or {},
+    }
+
+
+def _idx(choices, val, default=0):
+    return choices.index(val) if val in choices else default
+
+
+def _render_roster():
+    from modules.roster.scheduler import (build_roster, CUSTOMER_TZ_CHOICES,
+                                          DELIVERY_TZ_CHOICES, COVERAGE_PREF_MODES)
+    section_hdr("🗓️ Shift Plan")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    callout("A proposal-ready coverage &amp; shift plan <strong>derived from the final estimate</strong> — "
+            "it regenerates when the estimate changes and never affects effort, FTE or commercials. "
+            "Whole-person <strong>seats = ⌈delivered FTE⌉</strong> (the coverage relief factor is already "
+            "baked into the FTE, so there's no double-count).", "info")
+
+    # ── Config strip ──
+    c1, c2, c3, c4 = st.columns(4)
+    st.session_state["roster_customer_tz"] = c1.selectbox(
+        "Customer time zone", CUSTOMER_TZ_CHOICES,
+        index=_idx(CUSTOMER_TZ_CHOICES, st.session_state.get("roster_customer_tz", "EST")),
+        key="roster_customer_tz_w")
+    st.session_state["roster_delivery_tz"] = c2.selectbox(
+        "Delivery time zone", DELIVERY_TZ_CHOICES,
+        index=_idx(DELIVERY_TZ_CHOICES, st.session_state.get("roster_delivery_tz", "IST")),
+        key="roster_delivery_tz_w")
+    st.session_state["roster_bh_start"] = c3.text_input(
+        "Business hours from", value=st.session_state.get("roster_bh_start", "09:00"),
+        key="roster_bh_start_w", help="Customer local time, HH:MM.")
+    st.session_state["roster_bh_end"] = c4.text_input(
+        "Business hours to", value=st.session_state.get("roster_bh_end", "17:00"),
+        key="roster_bh_end_w", help="Customer local time, HH:MM.")
+
+    s1, s2 = st.columns(2)
+    st.session_state["roster_shift_len"] = s1.selectbox(
+        "Shift length (hours)", [8, 12],
+        index=_idx([8, 12], int(st.session_state.get("roster_shift_len", 8) or 8)),
+        key="roster_shift_len_w")
+    st.session_state["roster_strategy"] = s2.selectbox(
+        "Roster strategy", ["Balanced"], index=0, key="roster_strategy_w",
+        help="Cost-Optimized, Max-Coverage and Follow-the-Sun strategies arrive in a later phase.")
+
+    # ── Per-skill coverage window preference (only for non-24×7 skills) ──
+    non247 = [s for s in skills if (s.get("coverage_model") or "8×5") != "24×7"]
+    prefs = dict(st.session_state.get("roster_prefs", {}) or {})
+    if non247:
+        with st.expander("Coverage window preference (per non-24×7 skill)", expanded=False):
+            st.caption("Where each skill's coverage window sits in the customer's day. 24×7 skills "
+                       "run the full day and aren't listed here.")
+            for s in non247:
+                sid = s["id"]; nm = s.get("name") or sid
+                p = dict(prefs.get(sid, {}) or {})
+                row = st.columns([2.4, 2, 1.3, 1.3])
+                row[0].markdown(f"**{nm}** · {s.get('coverage_model')}")
+                p["mode"] = row[1].selectbox(
+                    "Window", COVERAGE_PREF_MODES, index=_idx(COVERAGE_PREF_MODES, p.get("mode", "Business Hours")),
+                    key=f"roster_mode_{sid}", label_visibility="collapsed")
+                if p["mode"] == "Custom Window":
+                    p["start"] = row[2].text_input("From", value=p.get("start", "09:00"),
+                                                   key=f"roster_cs_{sid}", label_visibility="collapsed")
+                    p["end"] = row[3].text_input("To", value=p.get("end", "17:00"),
+                                                 key=f"roster_ce_{sid}", label_visibility="collapsed")
+                prefs[sid] = p
+    st.session_state["roster_prefs"] = prefs
+
+    # ── Build the roster (deterministic; rounded/delivered team) ──
+    state = _build_multi_state()
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    plan = build_roster(model, _roster_config())
+
+    tot = plan["totals"]
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Delivered FTE", f"{tot['delivered_fte']:.2f}")
+    m2.metric("Deployable seats", f"{tot['deployable_seats']}")
+    m3.metric("Δ (seats − FTE)", f"+{tot['delta']:.2f}")
+    st.caption(f"Shifts shown in **{plan['customer_tz']} (customer)** and **{plan['delivery_tz']} "
+               f"(delivery)** time · business hours {plan['business_hours']}.")
+    st.divider()
+
+    # Reconciliation: billed FTE → whole heads
+    section_hdr("🔗 FTE → Deployable Seats")
+    rrows = ""
+    for r0 in plan["reconciliation"]:
+        rrows += (f"<tr><td>{r0['skill']}</td><td>{r0['level']}</td><td>{r0['coverage']}</td>"
+                  f"<td class='r'>{r0['fte']:.2f}</td><td class='r'>{r0['seats']}</td>"
+                  f"<td class='r' style='color:#7A8A99'>+{r0['delta']:.2f}</td></tr>")
+    rrows += (f"<tr class='total-row'><td><strong>Total</strong></td><td></td><td></td>"
+              f"<td class='r'><strong>{tot['delivered_fte']:.2f}</strong></td>"
+              f"<td class='r'><strong>{tot['deployable_seats']}</strong></td>"
+              f"<td class='r'><strong>+{tot['delta']:.2f}</strong></td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Skill</th><th>Level</th><th>Coverage</th>
+        <th class="r">Billed FTE</th><th class="r">Seats</th><th class="r">Δ</th></tr></thead>
+        <tbody>{rrows}</tbody></table>""", unsafe_allow_html=True)
+    st.caption("Seats are whole people (⌈FTE⌉) for a realistic shift plan. The **billed FTE is "
+               "unchanged** — the delta is the rounding to indivisible heads, not a commercial change.")
+    st.divider()
+
+    # Shift-timing legend: map each cell label to a real clock window (customer + delivery).
+    section_hdr("🕒 Shift Timings")
+    trows = "".join(
+        f"<tr><td>{t['label']}</td><td class='r'>{t['customer']}</td><td class='r'>{t['delivery']}</td></tr>"
+        for t in plan["shift_timings"])
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Shift</th>
+        <th class="r">Customer ({plan['customer_tz']})</th>
+        <th class="r">Delivery ({plan['delivery_tz']})</th></tr></thead><tbody>{trows}</tbody></table>""",
+        unsafe_allow_html=True)
+    st.divider()
+
+    # Weekly roster (person × weekday) — the proposal roster in the requested format.
+    section_hdr("🗓️ Weekly Roster")
+    cell_bg = {"Morning": "#D6F0ED", "Evening": "#A8DDD8", "Night": "#1A5F6A",
+               "Day": "#EAF3F4", "On-Call": "#FBEED9"}
+    cell_fg = {"Night": "#FFFFFF"}
+    dcols = "".join(f"<th class='r'>{d}</th>" for d in plan["days"])
+    prows = ""
+    for p0 in plan["people"]:
+        cells = ""
+        for v in p0["cells"]:
+            bg = cell_bg.get(v, "")
+            fg = cell_fg.get(v, "#1B2A3A")
+            style = f"background:{bg};color:{fg};" if bg else "color:#B8C2CC;"
+            cells += f"<td class='r' style='{style}font-size:.82rem'>{v or '—'}</td>"
+        prows += (f"<tr><td style='white-space:nowrap'>{p0['employee']}</td>"
+                  f"<td style='white-space:nowrap'>{p0['role']}</td>{cells}</tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Employee</th><th>Role</th>{dcols}</tr></thead>
+        <tbody>{prows}</tbody></table>""", unsafe_allow_html=True)
+    for n in plan["roster_notes"]:
+        st.caption("• " + n)
+    st.divider()
+
+    # Advisories (informational — never affect commercials)
+    if plan["advisories"]:
+        section_hdr("⚠️ Coverage Advisories")
+        st.caption("Feasibility notes only — these do **not** change effort, FTE or price.")
+        for a in plan["advisories"]:
+            callout(a, "warning")
+    else:
+        st.success("Coverage looks feasible for the proposed team.")
+    st.divider()
+
+    # Export
+    section_hdr("📤 Export")
+    st.caption("Download the shift plan as a presentation-ready Excel appendix.")
+    if st.button("🗓️ Prepare Shift Plan Excel", key="roster_xlsx_prep", type="secondary",
+                 disabled=_locked()):
+        from modules.outputs.roster_excel import build_roster_workbook
+        with st.spinner("Building shift plan…"):
+            st.session_state["_roster_xlsx"] = build_roster_workbook(
+                plan, (st.session_state.get("project_name") or "").strip())
+    if st.session_state.get("_roster_xlsx"):
+        from datetime import date
+        st.download_button(
+            "⬇️ Download shift plan (.xlsx)", data=st.session_state["_roster_xlsx"],
+            file_name=f"shift_plan_{date.today():%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="roster_xlsx_dl")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1439,9 +1630,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs(
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
         ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Approve & Export", "7 · Versions & Compare"])
+         "6 · Shift Plan", "7 · Approve & Export", "8 · Versions & Compare"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -1453,6 +1644,8 @@ def render_multi_skill_app():
     with t5:
         _render_optimize()
     with t6:
-        _render_approve_export()
+        _render_roster()
     with t7:
+        _render_approve_export()
+    with t8:
         _render_versions_compare()

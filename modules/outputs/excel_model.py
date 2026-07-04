@@ -42,7 +42,8 @@ from config.settings import (
 from modules.calculations.engine import filter_rate_card
 from modules.state.session_manager import run_model
 
-NAVY = hx("navy"); YEL = "FFF2CC"; LB = hx("tint"); GREY = hx("text_muted"); TEAL = hx("teal_dark")
+NAVY = hx("navy"); YEL = hx("accent_light"); LB = hx("tint"); GREY = hx("text_muted"); TEAL = hx("teal_dark")
+# YEL = editable-input highlight, now the app-theme light teal (was spreadsheet yellow).
 _thin = Side(style="thin", color="CCCCCC")
 BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 
@@ -784,15 +785,7 @@ def generate_excel_model() -> bytes:
     ws_sum = wb.create_sheet(S_SUM, 0)
     for col, w in (("A", 38), ("B", 20), ("C", 20)):
         ws_sum.column_dimensions[col].width = w
-    try:
-        _logo = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                             "assets", "nagarro_logo.png")
-        if os.path.exists(_logo):
-            from openpyxl.drawing.image import Image as XLImage
-            _img = XLImage(_logo); _img.width = 140; _img.height = 44
-            ws_sum.add_image(_img, "C1")
-    except Exception:
-        pass
+    # (Nagarro logo intentionally omitted from Excel.)
     ws_sum["A1"] = APP_NAME; ws_sum["A1"].font = Font(bold=True, size=14, color=NAVY)
     ws_sum["A2"] = "Managed Services — Cost & Price Summary"
     ws_sum["A2"].font = Font(italic=True, size=10, color=GREY)
@@ -843,9 +836,11 @@ def generate_excel_model() -> bytes:
         ("Transition amortisation (months)", IN["trMonths"], "#,##0"),
     ]:
         _lbl(ws_sum, r, 1, label); _calc(ws_sum, r, 2, f"={ref}", fmt); r += 1
-    ws_sum.cell(r, 1, "Utilisation legend: 1 = 100%, 0.5 = 50%, 0.25 = 25%, 0 = not used. "
-                      "Transition is applied to the price after margin (pass-through). "
-                      "Only the Inputs sheet is editable; every other sheet is live formulas.").font = \
+    _leg = ws_sum.cell(r, 1, "  Editable input  ")
+    _leg.fill = _fill(YEL); _leg.font = Font(italic=True, size=9, bold=True); _leg.border = BORDER
+    ws_sum.cell(r, 2, "Teal-shaded cells are editable inputs — change them and the workbook "
+                      "recalculates. Every other cell is a locked live formula. "
+                      "Utilisation legend: 1 = 100%, 0.5 = 50%, 0.25 = 25%, 0 = not used.").font = \
         Font(italic=True, size=9, color=GREY)
 
     # ── Lock everything except the yellow Inputs cells ────────────────────────
