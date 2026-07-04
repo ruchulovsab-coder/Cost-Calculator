@@ -1569,6 +1569,218 @@ def _render_roster():
             key="roster_xlsx_dl")
 
 
+def _transition_config() -> dict:
+    """TransitionConfig from session_state (self-healing). Read by the deterministic builder;
+    the transition plan never writes back to the estimate."""
+    from modules.transition.builder import default_phase_config
+    return {
+        "start_date": st.session_state.get("transition_start"),
+        "duration_weeks": st.session_state.get("transition_duration_weeks", 20),
+        "go_live_date": st.session_state.get("transition_go_live"),
+        "customer_tz": st.session_state.get("transition_customer_tz", "EST"),
+        "sequencing": st.session_state.get("transition_sequencing", "Sequential"),
+        "incumbent_present": st.session_state.get("transition_incumbent", True),
+        "phases": st.session_state.get("transition_phase_cfg") or default_phase_config(),
+    }
+
+
+_BAND_COLOR = {"Service Strategy": "#1A5F6A", "Service Design": "#2E7D8A",
+               "Service Transition": "#3E9AA6", "Service Operations": "#7FC4C4"}
+
+
+def _render_transition():
+    from datetime import date, timedelta
+    from modules.transition.builder import build_transition_plan, default_phase_config
+    from modules.roster.scheduler import CUSTOMER_TZ_CHOICES
+    section_hdr("🚀 Transition Strategy")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    callout("A proposal-ready, ITIL-aligned <strong>Transition Strategy</strong> derived from the "
+            "estimate and your dates — timeline (Gantt), phase activities, skill-wise plan, RACI and "
+            "deliverables. Read-only: it never affects effort, FTE or commercials.", "info")
+
+    # ── Config strip ──
+    c1, c2, c3 = st.columns(3)
+    st.session_state["transition_start"] = c1.date_input(
+        "Transition start", value=st.session_state.get("transition_start") or (date.today() + timedelta(days=30)),
+        key="transition_start_w")
+    st.session_state["transition_duration_weeks"] = c2.number_input(
+        "Overall duration (weeks)", min_value=1, max_value=104,
+        value=int(st.session_state.get("transition_duration_weeks", 20) or 20), step=1,
+        key="transition_dur_w")
+    st.session_state["transition_go_live"] = c3.date_input(
+        "Customer Go-Live", value=st.session_state.get("transition_go_live") or (date.today() + timedelta(days=140)),
+        key="transition_gl_w")
+
+    c4, c5, c6 = st.columns(3)
+    st.session_state["transition_customer_tz"] = c4.selectbox(
+        "Customer time zone", CUSTOMER_TZ_CHOICES,
+        index=_idx(CUSTOMER_TZ_CHOICES, st.session_state.get("transition_customer_tz", "EST")),
+        key="transition_tz_w")
+    st.session_state["transition_sequencing"] = c5.selectbox(
+        "Phase sequencing", ["Sequential", "Overlap"],
+        index=_idx(["Sequential", "Overlap"], st.session_state.get("transition_sequencing", "Sequential")),
+        key="transition_seq_w")
+    st.session_state["transition_incumbent"] = c6.checkbox(
+        "Incumbent / outgoing vendor present", value=st.session_state.get("transition_incumbent", True),
+        key="transition_inc_w", help="Shadow & Reverse-Shadow assume live operations to shadow.")
+
+    # ── Per-phase duration / include / overlap editor ──
+    overlap = st.session_state.get("transition_sequencing") == "Overlap"
+    phases = st.session_state.get("transition_phase_cfg") or default_phase_config()
+    with st.expander("Phase durations & sequencing", expanded=False):
+        st.caption("Durations in weeks. Uncheck a phase to exclude it. "
+                   + ("Overlap lead = weeks a phase starts before the previous ends." if overlap else ""))
+        for ph in phases:
+            cols = st.columns([3, 1.3, 1.2, 1.6])
+            cols[0].markdown(f"**{ph['name']}**  \n<span style='color:#7A8A99;font-size:.78rem'>{ph['band']}</span>",
+                             unsafe_allow_html=True)
+            ph["duration_weeks"] = cols[1].number_input(
+                "wks", min_value=0, max_value=52, value=int(ph.get("duration_weeks", 2) or 0), step=1,
+                key=f"tr_dur_{ph['key']}", label_visibility="collapsed")
+            ph["included"] = cols[2].checkbox("incl.", value=ph.get("included", True),
+                                              key=f"tr_inc_{ph['key']}")
+            if overlap and ph["key"] != phases[0]["key"]:
+                ph["overlap_lead_weeks"] = cols[3].number_input(
+                    "lead", min_value=0, max_value=12, value=int(ph.get("overlap_lead_weeks", 0) or 0),
+                    step=1, key=f"tr_lead_{ph['key']}", label_visibility="collapsed")
+    st.session_state["transition_phase_cfg"] = phases
+
+    # ── Build the plan (deterministic; rounded/delivered team) ──
+    state = _build_multi_state()
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    plan = build_transition_plan(model, _transition_config())
+    st.divider()
+
+    # ── Gantt ──
+    section_hdr("📅 Transition Timeline")
+    rows = plan["timeline"]
+    if rows:
+        start = plan["start"]; span = max((rows[-1]["end"] - start).days, 1)
+        gantt = ""
+        for row in rows:
+            l = (row["start"] - start).days / span * 100
+            w = max((row["end"] - row["start"]).days / span * 100, 1.5)
+            col = _BAND_COLOR.get(row["band"], "#3E9AA6")
+            ms = f" <strong>◆ {row['milestone']}</strong>" if row["milestone"] else ""
+            bar = (f"<div style='position:relative;height:20px;background:#EEF2F4;border-radius:3px'>"
+                   f"<div style='position:absolute;left:{l:.1f}%;width:{w:.1f}%;height:20px;"
+                   f"background:{col};border-radius:3px'></div></div>")
+            gantt += (f"<tr><td style='white-space:nowrap;font-size:.8rem;padding-right:8px'>{row['name']}{ms}</td>"
+                      f"<td style='width:68%'>{bar}</td>"
+                      f"<td style='white-space:nowrap;font-size:.72rem;color:#7A8A99;padding-left:8px'>"
+                      f"{row['start']:%d-%b}→{row['end']:%d-%b} · {row['duration_weeks']:g}w</td></tr>")
+        st.markdown(f"<table style='width:100%;border-collapse:collapse'>{gantt}</table>",
+                    unsafe_allow_html=True)
+        st.caption(f"Start **{start:%d-%b-%Y}** · span **{plan['span_weeks']:g} weeks** · foundation "
+                   f"throughout: *{plan['foundation']}*.")
+        # Milestone chips
+        chips = " ".join(
+            f"<span style='background:#FBEED9;border-radius:10px;padding:2px 10px;margin-right:6px;"
+            f"font-size:.78rem'>◆ <strong>{m['id']}</strong> {m['date']:%d-%b} — {m['gate']}</span>"
+            for m in plan["milestones"])
+        if chips:
+            st.markdown("<div style='margin-top:6px'>" + chips + "</div>", unsafe_allow_html=True)
+    st.divider()
+
+    # ── Phase activities ──
+    section_hdr("🧭 Phase Activities")
+    for p in plan["phase_activities"]:
+        ms = f" · ◆ {p['milestone']}" if p.get("milestone") else ""
+        with st.expander(f"{p['name']}  ({p['band']}{ms})", expanded=False):
+            g1, g2 = st.columns(2)
+            g1.markdown("**Objectives**\n" + "\n".join("- " + x for x in p.get("objectives", [])))
+            g1.markdown("**Deliverables**\n" + "\n".join("- " + x for x in p.get("deliverables", [])))
+            g1.markdown("**Entry criteria**\n" + "\n".join("- " + x for x in p.get("entry", [])))
+            g1.markdown("**Exit criteria**\n" + "\n".join("- " + x for x in p.get("exit", [])))
+            g2.markdown("**Risks**\n" + "\n".join("- " + x for x in p.get("risks", [])))
+            g2.markdown("**Dependencies**\n" + "\n".join("- " + x for x in p.get("dependencies", [])))
+            g2.markdown("**Customer responsibilities**\n" + "\n".join("- " + x for x in p.get("customer_resp", [])))
+            g2.markdown("**Nagarro responsibilities**\n" + "\n".join("- " + x for x in p.get("nagarro_resp", [])))
+    st.divider()
+
+    # ── Skill-wise plan ──
+    section_hdr("🧩 Skill-wise Transition Plan")
+    for sp in plan["skill_plans"]:
+        with st.expander(f"{sp['skill']}  ({', '.join(sp['levels']) or '—'} · {sp['coverage']})",
+                         expanded=False):
+            s1, s2 = st.columns(2)
+            s1.markdown("**Knowledge Transition**\n" + "\n".join("- " + x for x in sp["knowledge_transition"]))
+            s1.markdown("**Shadow Support**\n" + "\n".join("- " + x for x in sp["shadow"]))
+            s1.markdown("**Reverse Shadow**\n" + "\n".join("- " + x for x in sp["reverse_shadow"]))
+            s2.markdown("**Stabilization**\n" + "\n".join("- " + x for x in sp["stabilization"]))
+            s2.markdown("**Exit criteria**\n" + "\n".join("- " + x for x in sp["exit_criteria"]))
+            s2.markdown("**Sign-off criteria**\n" + "\n".join("- " + x for x in sp["signoff_criteria"]))
+    st.divider()
+
+    # ── RACI ──
+    section_hdr("👥 RACI Matrix")
+    st.caption("R = Responsible · A = Accountable · C = Consulted · I = Informed")
+    roles = plan["roles_customer"] + plan["roles_nagarro"]
+    raci_bg = {"R": "#D6F0ED", "A": "#A8DDD8", "C": "#EAF3F4", "I": "#F4F6F7"}
+    rhead = "".join(f"<th class='r' style='font-size:.68rem'>{ro}</th>" for ro in roles)
+    rbody = ""
+    for row in plan["raci"]:
+        cells = ""
+        for ro in roles:
+            v = row["raci"].get(ro, "")
+            bg = raci_bg.get(v, "")
+            cells += (f"<td class='r' style='background:{bg};font-weight:{'700' if v=='A' else '400'};"
+                      f"font-size:.72rem'>{v or ''}</td>")
+        rbody += f"<tr><td style='font-size:.76rem'>{row['activity']}</td>{cells}</tr>"
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Activity</th>{rhead}</tr></thead>
+        <tbody>{rbody}</tbody></table>""", unsafe_allow_html=True)
+    st.divider()
+
+    # ── Deliverables & gates ──
+    section_hdr("📦 Deliverables & Quality Gates")
+    drows = ""
+    for d in plan["deliverables"]:
+        ms = f"◆ {d['milestone']}" if d.get("milestone") else "—"
+        dl = "<br>".join("• " + x for x in d.get("deliverables", []))
+        ex = "<br>".join("• " + x for x in d.get("exit", []))
+        drows += (f"<tr><td><strong>{d['phase']}</strong></td><td style='font-size:.8rem'>{dl}</td>"
+                  f"<td style='font-size:.8rem'>{ex}</td><td class='r'>{ms}</td></tr>")
+    st.markdown(
+        f"""<table class="styled-table"><thead><tr><th>Phase</th><th>Key Deliverables</th>
+        <th>Exit / Quality Gate</th><th class="r">Milestone</th></tr></thead>
+        <tbody>{drows}</tbody></table>""", unsafe_allow_html=True)
+    st.markdown("**Best-practice artifacts**")
+    for a in plan["best_practice_artifacts"]:
+        st.caption("• " + a)
+    st.divider()
+
+    # ── Advisories ──
+    if plan["advisories"]:
+        section_hdr("⚠️ Advisories")
+        st.caption("Informational — these do **not** change effort, FTE or price.")
+        for a in plan["advisories"]:
+            callout(a, "warning")
+    else:
+        st.success("Timeline is consistent and the RACI is valid.")
+    st.divider()
+
+    # ── Export ──
+    section_hdr("📤 Export")
+    st.caption("Download the transition strategy as a presentation-ready Excel appendix.")
+    if st.button("🚀 Prepare Transition Excel", key="transition_xlsx_prep", type="secondary",
+                 disabled=_locked()):
+        from modules.outputs.transition_excel import build_transition_workbook
+        with st.spinner("Building transition strategy…"):
+            st.session_state["_transition_xlsx"] = build_transition_workbook(
+                plan, (st.session_state.get("project_name") or "").strip())
+    if st.session_state.get("_transition_xlsx"):
+        from datetime import date as _date
+        st.download_button(
+            "⬇️ Download transition strategy (.xlsx)", data=st.session_state["_transition_xlsx"],
+            file_name=f"transition_strategy_{_date.today():%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="transition_xlsx_dl")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1630,9 +1842,9 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
+    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
         ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Shift Plan", "7 · Approve & Export", "8 · Versions & Compare"])
+         "6 · Shift Plan", "7 · Transition", "8 · Approve & Export", "9 · Versions & Compare"])
     with t1:
         _render_skill_setup()
     with t2:
@@ -1646,6 +1858,8 @@ def render_multi_skill_app():
     with t6:
         _render_roster()
     with t7:
-        _render_approve_export()
+        _render_transition()
     with t8:
+        _render_approve_export()
+    with t9:
         _render_versions_compare()
