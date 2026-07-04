@@ -15,6 +15,7 @@ No code changes needed anywhere else.
 DEMO_SEED_DATA = True
 
 # ── Branding ──────────────────────────────────────────────────────────────────
+APP_VERSION    = "1.62"   # bump on each promotion to prod; stamped onto captured feedback
 APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Tool"
 APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
 ORG_NAME       = "Nagarro"

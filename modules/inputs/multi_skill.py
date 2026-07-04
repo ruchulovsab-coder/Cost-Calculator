@@ -1952,9 +1952,12 @@ def render_multi_skill_app():
             st.session_state["ms_locked"] = True
             st.rerun()
 
-    hc1, hc2 = st.columns([1.6, 1.6])
+    hc1, hc2, hc3 = st.columns([1.6, 1.6, 1.6])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
+        st.rerun()
+    if hc3.button("🗒️ View feedback", key="ms_feedback_admin", type="secondary"):
+        st.session_state["_show_feedback_admin"] = True
         st.rerun()
     # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
     # renders in multi, so surface it here when there are abandoned drafts to clean up.
@@ -1967,24 +1970,17 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
-        ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Approve & Export", "7 · Versions & Compare", "8 · Transition", "9 · Shift Plan"])
-    with t1:
-        _render_skill_setup()
-    with t2:
-        _render_workload()
-    with t3:
-        _render_dashboard()
-    with t4:
-        _render_rates_cost()
-    with t5:
-        _render_optimize()
-    with t6:
-        _render_approve_export()
-    with t7:
-        _render_versions_compare()
-    with t8:
-        _render_transition()
-    with t9:
-        _render_roster()
+    from modules.inputs.feedback_widget import render_feedback_widget
+    _tabs_meta = [
+        ("1 · Skills", _render_skill_setup), ("2 · Workload", _render_workload),
+        ("3 · Effort & FTE", _render_dashboard), ("4 · Rates & Cost", _render_rates_cost),
+        ("5 · Optimize (AI)", _render_optimize), ("6 · Approve & Export", _render_approve_export),
+        ("7 · Versions & Compare", _render_versions_compare), ("8 · Transition", _render_transition),
+        ("9 · Shift Plan", _render_roster),
+    ]
+    for _i, (_tab, (_label, _fn)) in enumerate(zip(st.tabs([m[0] for m in _tabs_meta]), _tabs_meta)):
+        with _tab:
+            _fc = st.columns([6, 1])
+            with _fc[1]:
+                render_feedback_widget(f"Multi · {_label}", key=f"fb_ms_{_i}")
+            _fn()
