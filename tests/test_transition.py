@@ -145,6 +145,38 @@ def test_new_skill_reflects_in_skill_plans():
     assert any("landing-zone" in x for x in added["knowledge_transition"])
 
 
+def test_acceptance_gate_per_skill():
+    """Exit/Sign-off are detailed governance gates: open items owned & agreed, residual risk
+    accepted by both parties, ownership transfer, named sign-off — with a family critical check."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    sid = next(iter(model["per_skill"]))
+    model["per_skill"][sid]["name"] = "Oracle Database"
+    plan = build_transition_plan(model, _cfg())
+    sp = plan["skill_plans"][0]
+
+    exit_txt = " ".join(sp["exit_criteria"]).lower()
+    signoff_txt = " ".join(sp["signoff_criteria"]).lower()
+    assert "owner" in exit_txt and "agreed by both parties" in exit_txt
+    assert "no open p1/p2" in exit_txt
+    assert "accepted by both parties" in signoff_txt          # residual risk acceptance
+    assert "ownership of" in signoff_txt and "transferred" in signoff_txt
+    assert "no-go" in signoff_txt or "conditional-go" in signoff_txt
+
+    # Family-specific critical check (DB → restore/failover); generic fallback for unmapped.
+    assert "restore" in sp["family_critical_check"].lower()
+    assert "Oracle Database" in sp["family_critical_check"]
+    model["per_skill"][sid]["name"] = "Zzz Unmapped Skill"
+    gen = build_transition_plan(model, _cfg())["skill_plans"][0]
+    assert gen["family_critical_check"] == \
+        C.GENERIC_CRITICAL_CHECK.format(skill="Zzz Unmapped Skill")
+
+    # Fillable register + named sign-off block templates present at plan level.
+    assert plan["open_items_columns"] == C.OPEN_ITEMS_RISK_COLUMNS
+    parties = {p for p, _ in plan["signoff_signatories"]}
+    assert parties == {"Customer", "Nagarro"}                 # both parties sign
+    assert "Go" in plan["signoff_decision"]
+
+
 def test_excluded_phase_drops_from_plan():
     phases = default_phase_config()
     for p in phases:

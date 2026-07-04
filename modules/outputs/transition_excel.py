@@ -1,8 +1,9 @@
 """Excel export for the Transition Strategy — themed, proposal-ready appendix.
 
-Sheets: Timeline (phase Gantt-style bands + milestones), Phase Activities, Skill-wise Plan, RACI,
-Deliverables. Presentation values (not a recalc model), app theme, no logo (parity with the other
-formula-driven exports)."""
+Sheets: Timeline (phase Gantt-style bands + milestones), Phase Activities, Skill-wise Plan,
+Acceptance & Sign-off (per-skill exit/sign-off gates + fillable open-items/risk register + named
+sign-off block), RACI, Deliverables. Presentation values (not a recalc model), app theme, no logo
+(parity with the other formula-driven exports)."""
 from __future__ import annotations
 
 import io
@@ -108,6 +109,46 @@ def build_transition_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
     ws.column_dimensions["C"].width = 14
     for j in range(4, 10):
         ws.column_dimensions[get_column_letter(j)].width = 32
+
+    # ── Acceptance & Sign-off (per skill) ──
+    ws = wb.create_sheet("Acceptance & Sign-off"); ws.sheet_view.showGridLines = False
+    r = 1
+    _title(ws, r, "Acceptance & Sign-off — Exit / Go-Live Gates per Skill"); r += 1
+    ws.cell(r, 1, "Templates — completed during the transition. Every open item must carry a named owner "
+                  "and target date and be agreed by both parties; residual risk must be accepted by both "
+                  "parties before sign-off.").font = Font(size=9, italic=True, color=MUTED); r += 2
+    oi_cols = plan.get("open_items_columns", []) or ["#"]
+    ncol = len(oi_cols)
+    for sp in plan.get("skill_plans", []):
+        _title(ws, r, f"{sp['skill']}  —  {sp.get('family_label', 'General')}", 11); r += 1
+        for label, key, fill in [("Exit criteria (KT/Shadow gate)", "exit_criteria", TINT),
+                                 ("Sign-off criteria (Go-Live gate)", "signoff_criteria", TINT)]:
+            _cell(ws, r, 1, label, bold=True, fill=fill, wrap=True)
+            _cell(ws, r, 2, _bullets(sp.get(key, [])), wrap=True)
+            ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=ncol); r += 1
+        _cell(ws, r, 1, "Critical readiness check", bold=True, fill=ACCENT, wrap=True)
+        _cell(ws, r, 2, sp.get("family_critical_check", ""), wrap=True, fill=ACCENT)
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=ncol); r += 2
+        # Fillable open-items / residual-risk register
+        _cell(ws, r, 1, "Open Items & Residual Risk register", bold=True); r += 1
+        _hdr(ws, r, oi_cols); r += 1
+        for i in range(6):
+            _cell(ws, r, 1, i + 1, center=True)
+            for j in range(2, ncol + 1):
+                _cell(ws, r, j, "")
+            r += 1
+        r += 1
+        # Named sign-off block
+        _cell(ws, r, 1, "Sign-off — recorded at the gate", bold=True); r += 1
+        _hdr(ws, r, ["Party", "Role", "Name", "Signature", "Date"]); r += 1
+        for party, role in plan.get("signoff_signatories", []):
+            _cell(ws, r, 1, party); _cell(ws, r, 2, role, wrap=True)
+            _cell(ws, r, 3, ""); _cell(ws, r, 4, ""); _cell(ws, r, 5, ""); r += 1
+        _cell(ws, r, 1, plan.get("signoff_decision", ""), bold=True)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=ncol); r += 3
+    ws.column_dimensions["A"].width = 24
+    for j in range(2, ncol + 1):
+        ws.column_dimensions[get_column_letter(j)].width = 18
 
     # ── RACI ──
     ws = wb.create_sheet("RACI"); ws.sheet_view.showGridLines = False

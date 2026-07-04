@@ -1750,8 +1750,32 @@ def _render_transition():
             s1.markdown("**Shadow Support**\n" + "\n".join("- " + x for x in sp["shadow"]))
             s1.markdown("**Reverse Shadow**\n" + "\n".join("- " + x for x in sp["reverse_shadow"]))
             s2.markdown("**Stabilization**\n" + "\n".join("- " + x for x in sp["stabilization"]))
-            s2.markdown("**Exit criteria**\n" + "\n".join("- " + x for x in sp["exit_criteria"]))
-            s2.markdown("**Sign-off criteria**\n" + "\n".join("- " + x for x in sp["signoff_criteria"]))
+            s2.markdown("**Exit criteria** (KT/Shadow gate)\n"
+                        + "\n".join("- " + x for x in sp["exit_criteria"]))
+            s2.markdown("**Sign-off criteria** (Go-Live gate)\n"
+                        + "\n".join("- " + x for x in sp["signoff_criteria"]))
+
+            # ── Acceptance gate: critical check + fillable register + named sign-off ──
+            st.markdown(f"**✅ Critical readiness check — must pass at sign-off:** "
+                        f"{sp['family_critical_check']}")
+            st.markdown(
+                "**📋 Open Items & Residual Risk register** "
+                "<span style='color:#7A8A99;font-size:.8rem'>— complete during transition: every open "
+                "item highlighted with a named owner &amp; target date and agreed by both parties; "
+                "residual risk accepted by both parties before sign-off.</span>",
+                unsafe_allow_html=True)
+            cols = plan["open_items_columns"]
+            header = "| " + " | ".join(cols) + " |"
+            sep = "| " + " | ".join(["---"] * len(cols)) + " |"
+            blanks = "\n".join("| " + str(i + 1) + " | " + " | ".join([""] * (len(cols) - 1)) + " |"
+                               for i in range(3))
+            st.markdown(header + "\n" + sep + "\n" + blanks)
+            st.markdown("**✍️ Sign-off** — recorded at the gate")
+            st.markdown("\n".join(
+                f"- **{party} — {role}:**  Name \\_\\_\\_\\_\\_\\_\\_\\_   "
+                f"Signature \\_\\_\\_\\_\\_\\_\\_\\_   Date \\_\\_\\_\\_\\_"
+                for party, role in plan["signoff_signatories"]))
+            st.markdown(plan["signoff_decision"])
     st.divider()
 
     # ── RACI ──

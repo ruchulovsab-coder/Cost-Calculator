@@ -60,6 +60,7 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
                           for t in (C.PROCESS_STAGE_ACTIVITIES.get(stage, [])
                                     + technical.get(stage, []))]
                   for stage in C.STAGE_KEYS}
+        critical = (C.FAMILY_CRITICAL_CHECK.get(family) or C.GENERIC_CRITICAL_CHECK).format(skill=name)
         plans.append({
             "skill": name, "levels": levels, "coverage": ps.get("coverage_model", ""),
             "family": family, "family_label": C.FAMILY_LABELS.get(family, "General"),
@@ -68,6 +69,7 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
             "stabilization": stages["stabilization"],
             "exit_criteria": [t.format(skill=name) for t in C.SKILL_EXIT_CRITERIA],
             "signoff_criteria": [t.format(skill=name) for t in C.SKILL_SIGNOFF_CRITERIA],
+            "family_critical_check": critical,
         })
     return plans
 
@@ -105,5 +107,9 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
         "raci": raci, "roles_customer": C.ROLES_CUSTOMER, "roles_nagarro": C.ROLES_NAGARRO,
         "deliverables": deliverables,
         "best_practice_artifacts": C.BEST_PRACTICE_ARTIFACTS,
+        # Acceptance-gate templates (same for every skill; rendered per skill).
+        "open_items_columns": C.OPEN_ITEMS_RISK_COLUMNS,
+        "signoff_signatories": C.SIGNOFF_SIGNATORIES,
+        "signoff_decision": C.SIGNOFF_DECISION,
         "advisories": tl["advisories"] + validate_raci(raci),
     }

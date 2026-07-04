@@ -199,15 +199,57 @@ PROCESS_STAGE_ACTIVITIES = {
         "Monitor & report {skill} KPIs/SLAs (penalties waived) and drive early continuous improvement",
     ],
 }
-SKILL_EXIT_CRITERIA = [
-    "All {skill} KT sessions completed and documentation approved",
+# ── Acceptance gates (Exit + Sign-off) — the contractual moments where responsibility ─
+# shifts. Detailed, {skill}-templated; every criterion must be demonstrably satisfied,
+# all open items owned & agreed, and residual risk accepted by BOTH parties before the
+# gate is passed. Rendered per skill in the tab + a dedicated Excel "Acceptance & Sign-off"
+# sheet with a fillable open-items/risk register and a named sign-off block (templates —
+# the tool is a proposal artifact, so status/names are completed during the real transition).
+SKILL_EXIT_CRITERIA = [   # KT/Shadow completion gate (aligns to M2/M3)
+    "All {skill} KT & Shadow activities completed; documentation, SOPs and runbooks reviewed and approved",
     "{skill} SOPs/runbooks validated in production-like conditions",
-    "No P1/P2 knowledge gaps open for {skill}",
+    "No open P1/P2 {skill} knowledge gaps",
+    "All open {skill} items captured in the register below — each with a named owner, "
+    "target date and remediation plan — and explicitly agreed by both parties",
+    "Access, environments and tooling required for the next phase confirmed available",
 ]
-SKILL_SIGNOFF_CRITERIA = [
-    "Customer sign-off on {skill} production readiness",
-    "{skill} steady-state KPIs/SLAs baselined",
+SKILL_SIGNOFF_CRITERIA = [   # Go-Live / Reverse-Shadow sign-off gate
+    "{skill} production readiness demonstrated in Reverse-Shadow (Nagarro operating, incumbent reviewing)",
+    "{skill} steady-state KPIs/SLAs agreed and baselined (penalties waived through Stabilization)",
+    "Residual {skill} risks documented and rated with mitigation, and formally ACCEPTED BY BOTH PARTIES "
+    "(customer risk-acceptance recorded) — no unaccepted open risk remains",
+    "All {skill} open items either closed or carried with an agreed owner, target date and both-party sign-off",
+    "Operational ownership of {skill} formally transferred to Nagarro",
+    "Go / Conditional-Go / No-Go decision recorded with named sign-off from both parties",
 ]
+
+# Family-specific critical readiness check that MUST pass at sign-off (generic fallback below).
+GENERIC_CRITICAL_CHECK = "Production readiness — backup/restore and failover (where applicable) — validated for {skill}"
+FAMILY_CRITICAL_CHECK = {
+    "compute":    "Backup/restore drill and host failover validated for {skill}",
+    "network":    "Configuration-backup restore and failover validated for {skill}",
+    "database":   "Restore drill and HA/DR failover validated for {skill}",
+    "storage":    "Backup restore and replication failover validated for {skill}",
+    "cloud":      "DR/backup restore and guardrail/security-baseline checks validated for {skill}",
+    "platform":   "Pipeline rollback and DR restore validated for {skill}",
+    "security":   "Detection playbook execution and control-coverage validated for {skill}",
+    "monitoring": "Alert-coverage and runbook execution validated for {skill}",
+}
+
+# Fillable open-items / residual-risk register (headers only — completed during transition).
+OPEN_ITEMS_RISK_COLUMNS = [
+    "#", "Open Item / Residual Risk", "Type (Item / Risk)", "Severity", "Owner",
+    "Party (Customer / Nagarro)", "Target date", "Mitigation / Plan",
+    "Agreed by both parties (Y/N)", "Status",
+]
+# Named sign-off block (signatures/dates completed at the gate).
+SIGNOFF_SIGNATORIES = [
+    ("Customer", "Business / Service Owner"),
+    ("Customer", "Application / Infrastructure Owner"),
+    ("Nagarro", "Transition Manager"),
+    ("Nagarro", "Delivery Manager / SDM"),
+]
+SIGNOFF_DECISION = ("Decision:  [ ] Go     [ ] Conditional-Go (with agreed open items)     [ ] No-Go")
 
 # ── Family-aware TECHNICAL layer ──────────────────────────────────────────────
 # The builder merges the common PROCESS_STAGE_ACTIVITIES backbone (same ITIL processes
