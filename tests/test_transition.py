@@ -145,6 +145,41 @@ def test_new_skill_reflects_in_skill_plans():
     assert any("landing-zone" in x for x in added["knowledge_transition"])
 
 
+def _rs_end(plan):
+    return next(r["end"] for r in plan["timeline"] if r["key"] == "reverse_shadow")
+
+
+def test_go_live_reshapes_timeline():
+    """Changing the Go-Live date moves Reverse-Shadow's end to that date (phases fit the window)."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    near = build_transition_plan(model, _cfg(go_live_date="2026-11-01"))
+    far = build_transition_plan(model, _cfg(go_live_date="2027-03-01"))
+    # Reverse-Shadow ends on (≈) the configured Go-Live date, within rounding.
+    assert abs((_rs_end(near) - date(2026, 11, 1)).days) <= 1
+    assert abs((_rs_end(far) - date(2027, 3, 1)).days) <= 1
+    # A later Go-Live yields a longer overall span — the Gantt reflects the change.
+    assert far["span_weeks"] > near["span_weeks"]
+    # The Go-Live milestone lands on the Go-Live date too.
+    gl = next(m for m in far["milestones"] if m["id"] == "Go-Live")
+    assert abs((gl["date"] - date(2027, 3, 1)).days) <= 1
+
+
+def test_start_date_shifts_timeline():
+    model = compute_multi_skill_model(_multi_1skill_state())
+    a = build_transition_plan(model, _cfg(start_date="2026-08-03", go_live_date="2026-12-01"))
+    b = build_transition_plan(model, _cfg(start_date="2026-09-03", go_live_date="2026-12-01"))
+    assert b["start"] > a["start"]                    # start moves
+    assert b["timeline"][0]["start"] == date(2026, 9, 3)
+
+
+def test_no_go_live_leaves_phases_unscaled():
+    """Without a Go-Live date, phases keep their configured durations (no fitting)."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_transition_plan(model, _cfg(go_live_date=None))
+    kt = next(r for r in plan["timeline"] if r["key"] == "knowledge_transition")
+    assert kt["duration_weeks"] == 4                  # default, unscaled
+
+
 def test_acceptance_gate_per_skill():
     """Exit/Sign-off are detailed governance gates: open items owned & agreed, residual risk
     accepted by both parties, ownership transfer, named sign-off — with a family critical check."""

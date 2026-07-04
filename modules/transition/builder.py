@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from config.settings import SKILL_CANONICAL_KEYWORDS
 
 from . import catalog as C
-from .timeline import solve_timeline
+from .timeline import solve_timeline, fit_phases_to_go_live
 
 
 def _skill_family(name: str) -> Optional[str]:
@@ -78,12 +78,13 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
     """model = compute_multi_skill_model(...) output; config = TransitionConfig dict.
     Deterministic: same model + config → identical plan."""
     phases = config.get("phases") or default_phase_config()
-    # Overall duration is derived from start→Go-Live in the UI (not an independent input), so we do
-    # NOT re-check the full phase span against it here — the Go-Live gate advisory (Reverse-Shadow
-    # end vs configured Go-Live) is the meaningful reconciliation.
+    seq = config.get("sequencing", "Sequential")
+    # The start→Go-Live window drives the schedule: scale the phases up to Go-Live so Reverse-Shadow
+    # ends on the configured Go-Live date (phases after Go-Live keep their durations). So changing
+    # either the start or the Go-Live date reshapes the Gantt. No-op when Go-Live isn't set.
+    phases = fit_phases_to_go_live(config.get("start_date"), phases, config.get("go_live_date"), seq)
     tl = solve_timeline(
-        config.get("start_date"), phases,
-        sequencing=config.get("sequencing", "Sequential"),
+        config.get("start_date"), phases, sequencing=seq,
         go_live=config.get("go_live_date"),
         incumbent_present=config.get("incumbent_present", True))
 

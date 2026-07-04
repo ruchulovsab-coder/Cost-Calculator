@@ -1722,7 +1722,7 @@ def _render_transition():
             w = max((row["end"] - row["start"]).days / span * 100, 1.5)
             col = _BAND_COLOR.get(row["band"], "#3E9AA6")
             ms = f" <strong>◆ {row['milestone']}</strong>" if row["milestone"] else ""
-            dur = f"{row['duration_weeks']:g}w"
+            dur = f"{round(row['duration_weeks'], 1):g}w"
             title = f"{row['start']:%d-%b-%Y} → {row['end']:%d-%b-%Y} · {dur}"
             bar = (f"<div style='position:relative;height:22px'>{grid}"
                    f"<div title='{title}' style='position:absolute;left:{l:.1f}%;width:{w:.1f}%;height:22px;"
@@ -1734,8 +1734,11 @@ def _render_transition():
                      f"<div style='flex:1'>{bar}</div></div>")
         html += "</div>"
         st.markdown(html, unsafe_allow_html=True)
+        _gl = st.session_state.get("transition_go_live")
+        _fit = (" · phases scaled to fit **start → Go-Live**, so Reverse-Shadow ends on your Go-Live "
+                "date (set the split under *Phase durations & sequencing*)") if _gl else ""
         st.caption(f"Start **{start:%d-%b-%Y}** · span **{plan['span_weeks']:g} weeks** · foundation "
-                   f"throughout: *{plan['foundation']}*.")
+                   f"throughout: *{plan['foundation']}*{_fit}.")
         # Milestone chips
         chips = " ".join(
             f"<span style='background:#FBEED9;border-radius:10px;padding:2px 10px;margin-right:6px;"

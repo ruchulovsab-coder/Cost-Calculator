@@ -23,6 +23,68 @@ def _as_date(v: Any, default: Optional[date] = None) -> Optional[date]:
     return default
 
 
+def fit_phases_to_go_live(start: Any, phases: List[Dict[str, Any]], go_live: Any,
+                          sequencing: str = "Sequential") -> List[Dict[str, Any]]:
+    """Scale the phases up to & including the Go-Live milestone so Reverse-Shadow ends on the
+    configured Go-Live date; phases after Go-Live keep their durations. PURE — returns a new
+    phases list, never mutates the input. No-op (returns phases unchanged) when Go-Live is
+    missing/invalid, there is no included Go-Live phase, or the nominal pre-Go-Live span is 0."""
+    start_d = _as_date(start)
+    gl = _as_date(go_live)
+    if not start_d or not gl or gl <= start_d:
+        return phases
+    gl_key = next((p["key"] for p in phases
+                   if p.get("milestone") == "Go-Live" and p.get("included", True)), None)
+    if gl_key is None:
+        return phases
+    window_days = (gl - start_d).days
+    # pre-Go-Live phases (up to & including the Go-Live phase), in order.
+    pre_keys = []
+    for p in phases:
+        pre_keys.append(p["key"])
+        if p["key"] == gl_key:
+            break
+    inc = [p for p in phases if p["key"] in set(pre_keys) and p.get("included", True)]
+    weeks = [float(p.get("duration_weeks", p.get("default_weeks", 1)) or 0) for p in inc]
+    total = sum(weeks)
+    if total <= 0:
+        return phases
+
+    if sequencing == "Overlap":
+        # Overlap span ≠ Σ durations, so scale durations + leads proportionally to the window.
+        nominal = solve_timeline(start_d, phases, sequencing=sequencing)
+        rs = next((r for r in nominal["rows"] if r.get("milestone") == "Go-Live"), None)
+        nd = (rs["end"] - start_d).days if rs else 0
+        if nd <= 0:
+            return phases
+        k = window_days / nd
+        scale = {p["key"]: k for p in inc}
+        out = []
+        for p in phases:
+            q = dict(p)
+            if p["key"] in scale:
+                q["duration_weeks"] = float(p.get("duration_weeks", p.get("default_weeks", 1)) or 0) * k
+                q["overlap_lead_weeks"] = float(p.get("overlap_lead_weeks", 0) or 0) * k
+            out.append(q)
+        return out
+
+    # Sequential: allocate whole days across the pre-Go-Live phases by cumulative rounding, so the
+    # last one ends exactly on Go-Live (no per-phase truncation drift).
+    day_alloc, running, prev_cd = {}, 0.0, 0
+    for p, w in zip(inc, weeks):
+        running += w
+        cd = round(running / total * window_days)
+        day_alloc[p["key"]] = cd - prev_cd
+        prev_cd = cd
+    out = []
+    for p in phases:
+        q = dict(p)
+        if p["key"] in day_alloc:
+            q["duration_weeks"] = day_alloc[p["key"]] / 7.0
+        out.append(q)
+    return out
+
+
 def solve_timeline(start: Any, phases: List[Dict[str, Any]], sequencing: str = "Sequential",
                    overall_weeks: Optional[float] = None, go_live: Any = None,
                    incumbent_present: bool = True) -> Dict[str, Any]:
@@ -36,16 +98,17 @@ def solve_timeline(start: Any, phases: List[Dict[str, Any]], sequencing: str = "
         if not ph.get("included", True):
             continue
         dur = max(0.0, float(ph.get("duration_weeks", ph.get("default_weeks", 1)) or 0))
+        dur_days = round(dur * 7)        # fractional weeks (from Go-Live fitting) → whole days
         if prev_end is None:
             s = start_d
         else:
             lead = float(ph.get("overlap_lead_weeks", 0) or 0) if sequencing == "Overlap" else 0.0
-            s = prev_end - timedelta(weeks=lead)
+            s = prev_end - timedelta(days=round(lead * 7))
             if s < prev_start:          # never start before the previous phase started
                 s = prev_start
-        e = s + timedelta(weeks=dur)
+        e = s + timedelta(days=dur_days)
         rows.append({"key": ph["key"], "name": ph["name"], "band": ph.get("band", ""),
-                     "start": s, "end": e, "duration_weeks": dur,
+                     "start": s, "end": e, "duration_weeks": dur_days / 7.0,
                      "milestone": ph.get("milestone"), "ongoing": bool(ph.get("ongoing"))})
         prev_start, prev_end = s, e
 
