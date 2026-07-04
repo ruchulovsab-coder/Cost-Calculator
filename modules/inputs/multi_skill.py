@@ -1692,6 +1692,17 @@ def _render_transition():
     plan = build_transition_plan(model, _transition_config())
     st.divider()
 
+    # ── Summary KPIs (at-a-glance) ──
+    _k = st.columns(5)
+    _k[0].metric("Span", f"{plan['span_weeks']:g} wks")
+    _k[1].metric("Phases", f"{len(plan['timeline'])}")
+    _k[2].metric("Milestones", f"{len(plan['milestones'])}")
+    _k[3].metric("Skills", f"{len(plan['skill_plans'])}")
+    _k[4].metric("RAID items", f"{len(plan['raid_register'])}")
+    st.caption("The timeline is always visible below; the detailed sections are collapsed — "
+               "expand what you need.")
+    st.divider()
+
     # ── Gantt ──
     section_hdr("📅 Transition Timeline")
     rows = plan["timeline"]
@@ -1807,75 +1818,75 @@ def _render_transition():
     st.divider()
 
     # ── RACI ──
-    section_hdr("👥 RACI Matrix")
-    st.caption("R = Responsible · A = Accountable · C = Consulted · I = Informed")
-    roles = plan["roles_customer"] + plan["roles_nagarro"]
-    raci_bg = {"R": "#D6F0ED", "A": "#A8DDD8", "C": "#EAF3F4", "I": "#F4F6F7"}
-    rhead = "".join(f"<th class='r' style='font-size:.68rem'>{ro}</th>" for ro in roles)
-    rbody = ""
-    for row in plan["raci"]:
-        cells = ""
-        for ro in roles:
-            v = row["raci"].get(ro, "")
-            bg = raci_bg.get(v, "")
-            cells += (f"<td class='r' style='background:{bg};font-weight:{'700' if v=='A' else '400'};"
-                      f"font-size:.72rem'>{v or ''}</td>")
-        rbody += f"<tr><td style='font-size:.76rem'>{row['activity']}</td>{cells}</tr>"
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Activity</th>{rhead}</tr></thead>
-        <tbody>{rbody}</tbody></table>""", unsafe_allow_html=True)
+    with st.expander("👥 RACI Matrix", expanded=False):
+        st.caption("R = Responsible · A = Accountable · C = Consulted · I = Informed")
+        roles = plan["roles_customer"] + plan["roles_nagarro"]
+        raci_bg = {"R": "#D6F0ED", "A": "#A8DDD8", "C": "#EAF3F4", "I": "#F4F6F7"}
+        rhead = "".join(f"<th class='r' style='font-size:.68rem'>{ro}</th>" for ro in roles)
+        rbody = ""
+        for row in plan["raci"]:
+            cells = ""
+            for ro in roles:
+                v = row["raci"].get(ro, "")
+                bg = raci_bg.get(v, "")
+                cells += (f"<td class='r' style='background:{bg};font-weight:{'700' if v=='A' else '400'};"
+                          f"font-size:.72rem'>{v or ''}</td>")
+            rbody += f"<tr><td style='font-size:.76rem'>{row['activity']}</td>{cells}</tr>"
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr><th>Activity</th>{rhead}</tr></thead>
+            <tbody>{rbody}</tbody></table>""", unsafe_allow_html=True)
     st.divider()
 
     # ── Deliverables & gates ──
-    section_hdr("📦 Deliverables & Quality Gates")
-    drows = ""
-    for d in plan["deliverables"]:
-        ms = f"◆ {d['milestone']}" if d.get("milestone") else "—"
-        dl = "<br>".join("• " + x for x in d.get("deliverables", []))
-        ex = "<br>".join("• " + x for x in d.get("exit", []))
-        drows += (f"<tr><td><strong>{d['phase']}</strong></td><td style='font-size:.8rem'>{dl}</td>"
-                  f"<td style='font-size:.8rem'>{ex}</td><td class='r'>{ms}</td></tr>")
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Phase</th><th>Key Deliverables</th>
-        <th>Exit / Quality Gate</th><th class="r">Milestone</th></tr></thead>
-        <tbody>{drows}</tbody></table>""", unsafe_allow_html=True)
-    st.markdown("**Best-practice artifacts**")
-    for a in plan["best_practice_artifacts"]:
-        st.caption("• " + a)
+    with st.expander("📦 Deliverables & Quality Gates", expanded=False):
+        drows = ""
+        for d in plan["deliverables"]:
+            ms = f"◆ {d['milestone']}" if d.get("milestone") else "—"
+            dl = "<br>".join("• " + x for x in d.get("deliverables", []))
+            ex = "<br>".join("• " + x for x in d.get("exit", []))
+            drows += (f"<tr><td><strong>{d['phase']}</strong></td><td style='font-size:.8rem'>{dl}</td>"
+                      f"<td style='font-size:.8rem'>{ex}</td><td class='r'>{ms}</td></tr>")
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr><th>Phase</th><th>Key Deliverables</th>
+            <th>Exit / Quality Gate</th><th class="r">Milestone</th></tr></thead>
+            <tbody>{drows}</tbody></table>""", unsafe_allow_html=True)
+        st.markdown("**Best-practice artifacts**")
+        for a in plan["best_practice_artifacts"]:
+            st.caption("• " + a)
     st.divider()
 
     # ── RAID register ──
-    section_hdr("🧭 RAID Register")
-    st.caption("Risks · Assumptions · Issues · Dependencies — Risks/Dependencies are seeded from the "
-               "phase plan and Assumptions are listed; **Issues are logged during execution**. "
-               "Complete Owner, Likelihood/Impact, Response and Status during the transition.")
-    _raid_bg = {"Risk": "#FBEED9", "Dependency": "#EAF3F4", "Assumption": "#EDF3E6", "Issue": "#FDE7E7"}
-    rrows = ""
-    for i, item in enumerate(plan["raid_register"], start=1):
-        bg = _raid_bg.get(item["type"], "")
-        rrows += (f"<tr><td class='r'>{i}</td>"
-                  f"<td style='background:{bg};font-size:.76rem'>{item['type']}</td>"
-                  f"<td style='font-size:.8rem'>{item['description']}</td>"
-                  f"<td style='font-size:.76rem'>{item['phase']}</td>"
-                  f"<td></td><td></td><td></td><td></td></tr>")
-    st.markdown('<table class="styled-table"><thead><tr>'
-                + "".join(f"<th>{h}</th>" for h in plan["raid_columns"])
-                + f"</tr></thead><tbody>{rrows}</tbody></table>", unsafe_allow_html=True)
+    with st.expander(f"🧭 RAID Register ({len(plan['raid_register'])})", expanded=False):
+        st.caption("Risks · Assumptions · Issues · Dependencies — Risks/Dependencies are seeded from the "
+                   "phase plan and Assumptions are listed; **Issues are logged during execution**. "
+                   "Complete Owner, Likelihood/Impact, Response and Status during the transition.")
+        _raid_bg = {"Risk": "#FBEED9", "Dependency": "#EAF3F4", "Assumption": "#EDF3E6", "Issue": "#FDE7E7"}
+        rrows = ""
+        for i, item in enumerate(plan["raid_register"], start=1):
+            bg = _raid_bg.get(item["type"], "")
+            rrows += (f"<tr><td class='r'>{i}</td>"
+                      f"<td style='background:{bg};font-size:.76rem'>{item['type']}</td>"
+                      f"<td style='font-size:.8rem'>{item['description']}</td>"
+                      f"<td style='font-size:.76rem'>{item['phase']}</td>"
+                      f"<td></td><td></td><td></td><td></td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr>'
+                    + "".join(f"<th>{h}</th>" for h in plan["raid_columns"])
+                    + f"</tr></thead><tbody>{rrows}</tbody></table>", unsafe_allow_html=True)
     st.divider()
 
     # ── Governance & communications ──
-    section_hdr("🗣️ Governance & Communications")
-    st.caption("Cadence of transition forums — attendees and purpose. Escalation & communication "
-               "protocols per skill are in the Skill-wise plan above.")
-    grows = ""
-    for g in plan["governance_cadence"]:
-        grows += (f"<tr><td><strong>{g['forum']}</strong></td>"
-                  f"<td class='r' style='font-size:.78rem'>{g['cadence']}</td>"
-                  f"<td style='font-size:.78rem'>{g['participants']}</td>"
-                  f"<td style='font-size:.78rem'>{g['purpose']}</td></tr>")
-    st.markdown('<table class="styled-table"><thead><tr>'
-                + "".join(f"<th>{h}</th>" for h in plan["governance_columns"])
-                + f"</tr></thead><tbody>{grows}</tbody></table>", unsafe_allow_html=True)
+    with st.expander("🗣️ Governance & Communications", expanded=False):
+        st.caption("Cadence of transition forums — attendees and purpose. Escalation & communication "
+                   "protocols per skill are in the Skill-wise plan above.")
+        grows = ""
+        for g in plan["governance_cadence"]:
+            grows += (f"<tr><td><strong>{g['forum']}</strong></td>"
+                      f"<td class='r' style='font-size:.78rem'>{g['cadence']}</td>"
+                      f"<td style='font-size:.78rem'>{g['participants']}</td>"
+                      f"<td style='font-size:.78rem'>{g['purpose']}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr>'
+                    + "".join(f"<th>{h}</th>" for h in plan["governance_columns"])
+                    + f"</tr></thead><tbody>{grows}</tbody></table>", unsafe_allow_html=True)
     st.divider()
 
     # ── Advisories ──
@@ -1904,6 +1915,38 @@ def _render_transition():
             file_name=f"transition_strategy_{_date.today():%Y%m%d}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="transition_xlsx_dl")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Overview KPI band — at-a-glance headline shown above the tabs (every screen)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_overview_strip():
+    """Executive at-a-glance band above the tabs: the key commercial & delivery numbers,
+    always visible so any persona can read the headline without opening a tab."""
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        return
+    try:
+        model = compute_multi_skill_model(_build_multi_state())
+    except Exception:
+        return
+    pr = model.get("price_result", {}) or {}
+    locked = _locked()
+    approved = bool(st.session_state.get("ms_approved"))
+    status = "🔒 Locked" if locked else ("✅ Approved" if approved else "✏️ Draft")
+    c = st.columns(6)
+    c[0].metric("Skills", f"{len(skills)}")
+    c[1].metric("Total FTE", f"{float(model.get('total_fte', 0) or 0):.1f}")
+    c[2].metric("Selling price / mo", _inr(pr.get("selling_price", 0)))
+    c[3].metric("Gross margin", f"{float(pr.get('margin_pct', 0) or 0):.0f}%")
+    _ts = st.session_state.get("transition_start")
+    _gl = st.session_state.get("transition_go_live")
+    if _ts and _gl and _gl > _ts:
+        c[4].metric("Transition → Go-Live", f"{round((_gl - _ts).days / 7)} wks")
+    else:
+        c[4].metric("Gross profit / mo", _inr(pr.get("gross_profit", 0)))
+    c[5].metric("Status", status)
+    st.divider()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1970,6 +2013,8 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
+    _render_overview_strip()
+
     from modules.inputs.feedback_widget import render_feedback_widget
     _tabs_meta = [
         ("1 · Skills", _render_skill_setup), ("2 · Workload", _render_workload),
