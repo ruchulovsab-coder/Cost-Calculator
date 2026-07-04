@@ -1844,6 +1844,40 @@ def _render_transition():
         st.caption("• " + a)
     st.divider()
 
+    # ── RAID register ──
+    section_hdr("🧭 RAID Register")
+    st.caption("Risks · Assumptions · Issues · Dependencies — Risks/Dependencies are seeded from the "
+               "phase plan and Assumptions are listed; **Issues are logged during execution**. "
+               "Complete Owner, Likelihood/Impact, Response and Status during the transition.")
+    _raid_bg = {"Risk": "#FBEED9", "Dependency": "#EAF3F4", "Assumption": "#EDF3E6", "Issue": "#FDE7E7"}
+    rrows = ""
+    for i, item in enumerate(plan["raid_register"], start=1):
+        bg = _raid_bg.get(item["type"], "")
+        rrows += (f"<tr><td class='r'>{i}</td>"
+                  f"<td style='background:{bg};font-size:.76rem'>{item['type']}</td>"
+                  f"<td style='font-size:.8rem'>{item['description']}</td>"
+                  f"<td style='font-size:.76rem'>{item['phase']}</td>"
+                  f"<td></td><td></td><td></td><td></td></tr>")
+    st.markdown('<table class="styled-table"><thead><tr>'
+                + "".join(f"<th>{h}</th>" for h in plan["raid_columns"])
+                + f"</tr></thead><tbody>{rrows}</tbody></table>", unsafe_allow_html=True)
+    st.divider()
+
+    # ── Governance & communications ──
+    section_hdr("🗣️ Governance & Communications")
+    st.caption("Cadence of transition forums — attendees and purpose. Escalation & communication "
+               "protocols per skill are in the Skill-wise plan above.")
+    grows = ""
+    for g in plan["governance_cadence"]:
+        grows += (f"<tr><td><strong>{g['forum']}</strong></td>"
+                  f"<td class='r' style='font-size:.78rem'>{g['cadence']}</td>"
+                  f"<td style='font-size:.78rem'>{g['participants']}</td>"
+                  f"<td style='font-size:.78rem'>{g['purpose']}</td></tr>")
+    st.markdown('<table class="styled-table"><thead><tr>'
+                + "".join(f"<th>{h}</th>" for h in plan["governance_columns"])
+                + f"</tr></thead><tbody>{grows}</tbody></table>", unsafe_allow_html=True)
+    st.divider()
+
     # ── Advisories ──
     if plan["advisories"]:
         section_hdr("⚠️ Advisories")

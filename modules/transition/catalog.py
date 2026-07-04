@@ -383,11 +383,46 @@ RACI = [
 ]
 
 # ── Best-practice artifacts (enterprise RFP extras; lightweight) ───────────────
-BEST_PRACTICE_ARTIFACTS = [
-    "Transition governance & communication cadence (SteerCo / weekly / daily standups)",
-    "Risk, Assumptions, Issues & Dependencies (RAID) register",
+BEST_PRACTICE_ARTIFACTS = [   # RAID + governance cadence are now realised as structured tables below
     "Access & tooling provisioning checklist",
     "KT tracker with per-session sign-off",
     "Production readiness / Go/No-Go checklist per milestone",
     "Stabilization KPI/SLA baseline & exit report",
+]
+
+# ── RAID register (Risks · Assumptions · Issues · Dependencies) ────────────────
+# Risks & Dependencies are seeded by the builder from each included phase's detail; Assumptions
+# are these engagement-wide entries; Issues emerge during execution (logged into the register).
+RAID_COLUMNS = ["#", "Type", "Description", "Phase", "Likelihood / Impact",
+                "Owner", "Response / Mitigation", "Status"]
+TRANSITION_ASSUMPTIONS = [
+    "Customer provides timely access to systems, tools, environments and SMEs",
+    "Incumbent / outgoing vendor cooperates and supports Knowledge Transition and Shadow",
+    "Existing documentation, runbooks and CMDB are available and reasonably current",
+    "In-scope services, volumes and coverage are as per the agreed estimate",
+    "Required licences, accounts and tooling are provisioned before the phase that needs them",
+    "Customer stakeholders are available for governance forums and milestone gate sign-offs",
+]
+
+# ── Governance & communication cadence ────────────────────────────────────────
+GOVERNANCE_COLUMNS = ["Forum", "Cadence", "Participants", "Purpose / Agenda"]
+GOVERNANCE_CADENCE = [
+    {"forum": "Daily transition stand-up", "cadence": "Daily",
+     "participants": "Nagarro transition team (+ Customer SPOC as needed)",
+     "purpose": "Progress, blockers, next-24h plan; KT / shadow tracking"},
+    {"forum": "Weekly transition status review", "cadence": "Weekly",
+     "participants": "Transition Mgr, Delivery Mgr/SDM, Customer PM, workstream leads",
+     "purpose": "Plan vs actual, upcoming milestones, decisions & actions"},
+    {"forum": "RAID review", "cadence": "Weekly",
+     "participants": "Transition Mgr, workstream leads, Customer PM",
+     "purpose": "Review & update Risks/Assumptions/Issues/Dependencies and owners"},
+    {"forum": "Milestone / gate review (M1–M4, Go-Live)", "cadence": "At each gate",
+     "participants": "Both-party leadership + Service Owner",
+     "purpose": "Verify exit / quality-gate criteria; Go / Conditional-Go / No-Go decision"},
+    {"forum": "Steering Committee (SteerCo)", "cadence": "Fortnightly / Monthly",
+     "participants": "Customer & Nagarro leadership, Service Owner, PMO",
+     "purpose": "Governance, escalations, scope/commercial decisions, risk acceptance"},
+    {"forum": "Executive review", "cadence": "Monthly",
+     "participants": "Executive sponsors (both parties)",
+     "purpose": "Overall health, strategic risks, sign-off on transition completion"},
 ]

@@ -233,6 +233,43 @@ def test_steady_state_not_in_transition():
     assert all(r["key"] != "steady_state" for r in plan2["timeline"])
 
 
+def test_raid_register_seeded():
+    """RAID is seeded from included phases (Risks/Dependencies) + engagement Assumptions; deduped;
+    Issues are not seeded (logged during execution); excluded phases don't contribute."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_transition_plan(model, _cfg())
+    raid = plan["raid_register"]
+    types = {r["type"] for r in raid}
+    assert {"Risk", "Dependency", "Assumption"} <= types
+    assert "Issue" not in types                                   # emerge during execution
+    assert plan["raid_columns"] == C.RAID_COLUMNS
+    # Assumptions are the catalog list, tagged phase "All".
+    assump = [r for r in raid if r["type"] == "Assumption"]
+    assert len(assump) == len(C.TRANSITION_ASSUMPTIONS) and all(r["phase"] == "All" for r in assump)
+    # Deduped: no duplicate (type, description) pair.
+    pairs = [(r["type"], r["description"]) for r in raid]
+    assert len(pairs) == len(set(pairs))
+    # A risk seeded from a phase carries that phase's name.
+    assert any(r["type"] == "Risk" and r["phase"] for r in raid)
+
+    # Excluding a phase removes its risks/dependencies from the register.
+    phases = default_phase_config()
+    for p in phases:
+        if p["key"] == "assessment":
+            p["included"] = False
+    plan2 = build_transition_plan(model, _cfg(phases=phases))
+    assert all(r["phase"] != "Assessment & Discovery" for r in plan2["raid_register"])
+
+
+def test_governance_cadence_present():
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_transition_plan(model, _cfg())
+    assert plan["governance_columns"] == C.GOVERNANCE_COLUMNS
+    forums = {g["forum"] for g in plan["governance_cadence"]}
+    assert any("Steering Committee" in f for f in forums)
+    assert all({"forum", "cadence", "participants", "purpose"} <= set(g) for g in plan["governance_cadence"])
+
+
 def test_excluded_phase_drops_from_plan():
     phases = default_phase_config()
     for p in phases:

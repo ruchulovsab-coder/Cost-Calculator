@@ -2,8 +2,9 @@
 
 Sheets: Timeline (phase Gantt-style bands + milestones), Phase Activities, Skill-wise Plan,
 Acceptance & Sign-off (per-skill exit/sign-off gates + fillable open-items/risk register + named
-sign-off block), RACI, Deliverables. Presentation values (not a recalc model), app theme, no logo
-(parity with the other formula-driven exports)."""
+sign-off block), RACI, Deliverables, RAID Register (seeded R/A/D + Issue rows), Governance & Comms.
+Presentation values (not a recalc model), app theme, no logo (parity with the other formula-driven
+exports)."""
 from __future__ import annotations
 
 import io
@@ -182,6 +183,47 @@ def build_transition_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
         ws.cell(r, 1, "• " + a).font = Font(size=10); r += 1
     for j, w in enumerate([22, 44, 40, 12], start=1):
         ws.column_dimensions[get_column_letter(j)].width = w
+
+    # ── RAID Register ──
+    ws = wb.create_sheet("RAID Register"); ws.sheet_view.showGridLines = False
+    r = 1; _title(ws, r, "RAID Register — Risks · Assumptions · Issues · Dependencies"); r += 1
+    ws.cell(r, 1, "Risks/Dependencies seeded from the phase plan; Assumptions listed; Issues logged "
+                  "during execution. Complete Owner / Likelihood-Impact / Response / Status during "
+                  "the transition.").font = Font(size=9, italic=True, color=MUTED); r += 2
+    raid_cols = plan.get("raid_columns", [])
+    _hdr(ws, r, raid_cols); r += 1
+    raid_fill = {"Risk": "FBEED9", "Dependency": "EAF3F4", "Assumption": "EDF3E6", "Issue": "FDE7E7"}
+    for i, item in enumerate(plan.get("raid_register", []), start=1):
+        _cell(ws, r, 1, i, center=True)
+        _cell(ws, r, 2, item["type"], fill=raid_fill.get(item["type"]))
+        _cell(ws, r, 3, item["description"], wrap=True)
+        _cell(ws, r, 4, item["phase"], wrap=True)
+        for j in range(5, len(raid_cols) + 1):
+            _cell(ws, r, j, "")
+        r += 1
+    for i in range(3):                       # blank rows for Issues logged during execution
+        _cell(ws, r, 1, "")
+        for j in range(2, len(raid_cols) + 1):
+            _cell(ws, r, j, "")
+        r += 1
+    for j, w in enumerate([4, 14, 52, 20, 16, 18, 34, 12], start=1):
+        if j <= len(raid_cols):
+            ws.column_dimensions[get_column_letter(j)].width = w
+
+    # ── Governance & Comms ──
+    ws = wb.create_sheet("Governance & Comms"); ws.sheet_view.showGridLines = False
+    r = 1; _title(ws, r, "Governance & Communication Cadence"); r += 1
+    gov_cols = plan.get("governance_columns", [])
+    _hdr(ws, r, gov_cols); r += 1
+    for g in plan.get("governance_cadence", []):
+        _cell(ws, r, 1, g["forum"], bold=True, wrap=True)
+        _cell(ws, r, 2, g["cadence"], center=True)
+        _cell(ws, r, 3, g["participants"], wrap=True)
+        _cell(ws, r, 4, g["purpose"], wrap=True)
+        r += 1
+    for j, w in enumerate([30, 20, 40, 46], start=1):
+        if j <= len(gov_cols):
+            ws.column_dimensions[get_column_letter(j)].width = w
 
     # ── Advisories (if any) appended to Timeline sheet ──
     if plan.get("advisories"):

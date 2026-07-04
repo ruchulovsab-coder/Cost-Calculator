@@ -74,6 +74,28 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
     return plans
 
 
+def _raid_register(phase_activities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Seed a RAID register from the included phases' risks & dependencies + engagement-wide
+    assumptions. Deduped by (type, description); Issues are added during execution (not seeded)."""
+    raid: List[Dict[str, Any]] = []
+    seen = set()
+
+    def add(kind: str, desc: str, phase: str):
+        key = (kind, desc)
+        if key not in seen:
+            seen.add(key)
+            raid.append({"type": kind, "description": desc, "phase": phase})
+
+    for p in phase_activities:
+        for risk in p.get("risks", []):
+            add("Risk", risk, p["name"])
+        for dep in p.get("dependencies", []):
+            add("Dependency", dep, p["name"])
+    for a in C.TRANSITION_ASSUMPTIONS:
+        add("Assumption", a, "All")
+    return raid
+
+
 def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
     """model = compute_multi_skill_model(...) output; config = TransitionConfig dict.
     Deterministic: same model + config → identical plan."""
@@ -111,6 +133,11 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
         "raci": raci, "roles_customer": C.ROLES_CUSTOMER, "roles_nagarro": C.ROLES_NAGARRO,
         "deliverables": deliverables,
         "best_practice_artifacts": C.BEST_PRACTICE_ARTIFACTS,
+        # RAID register (seeded from included phases + assumptions) + governance/comms cadence.
+        "raid_register": _raid_register(phase_activities),
+        "raid_columns": C.RAID_COLUMNS,
+        "governance_cadence": C.GOVERNANCE_CADENCE,
+        "governance_columns": C.GOVERNANCE_COLUMNS,
         # Acceptance-gate templates (same for every skill; rendered per skill).
         "open_items_columns": C.OPEN_ITEMS_RISK_COLUMNS,
         "signoff_signatories": C.SIGNOFF_SIGNATORIES,
