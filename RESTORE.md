@@ -16,8 +16,34 @@ to that exact snapshot, so you can always return to it no matter what changes la
   (repo Variable `RATECARD_BLOB`); it is **not** stored in git.
 
 ## Stable versions (latest first)
-- **`v1.61`** — *current restore point (on `testing`, not yet in production).* **Transition Strategy
-  tab — first cut (deterministic, ITIL-aligned).** New multi-skill tab **7 · Transition** derives a
+- **`v1.62`** — *current stable (production).* **Transition Strategy tab — full (deterministic,
+  ITIL-aligned; P2 complete).** Promotes the whole Transition feature (v1.61 first cut + P2.1–P2.3 +
+  fixes) to production. Tab **8 · Transition** derives a proposal-ready plan **read-only** from
+  `compute_multi_skill_model` + start/Go-Live dates:
+  - **Gantt** with a **top date axis** (month ticks + gridlines) that is **Go-Live-driven** — the
+    start→Go-Live window scales the phases so Reverse-Shadow ends exactly on the Go-Live date
+    (`timeline.fit_phases_to_go_live`; whole-day solver). **6 transition phases** — Steady-State is
+    BAU (shown as a note after M4, not a phase).
+  - **Skill-wise plan**: family-aware technical detail (Compute/Network/Database/Storage/Cloud/
+    Platform/Security/Monitoring, from `config.SKILL_CANONICAL_KEYWORDS`) **+ the full ITIL
+    operational process framework woven into every stage** (Incident/MIM/Problem/Change/Service
+    Request/Access/Monitoring&Event/Patching/Escalation&Comms/CMDB/Reporting — understood→observed→
+    performed→owned across KT/Shadow/Reverse-Shadow/Stabilization).
+  - **Acceptance gate per skill**: detailed Exit & Sign-off criteria + a **family-specific critical
+    check** + a fillable **open-items/residual-risk register** and a **named sign-off block** (both
+    parties, Go/Conditional-Go/No-Go).
+  - **RACI**, **Deliverables & quality gates**, a seeded **RAID register** (Risks/Dependencies from
+    the phase plan + Assumptions; Issues logged during execution), a **Governance & Communications
+    cadence** table, and **advisories**.
+  - **Excel appendix** (`transition_excel.py`): Timeline · Phase Activities · Skill-wise Plan ·
+    Acceptance & Sign-off · RACI · Deliverables · RAID Register · Governance & Comms.
+  Deterministic, read-only projection (enforced by `test_engine_does_not_import_transition`), **no
+  LLM**, additive; RACI validity enforced. Also **multi-skill tabs reordered**: 1 Skills · 2 Workload ·
+  3 Effort & FTE · 4 Rates & Cost · 5 Optimize (AI) · 6 Approve & Export · 7 Versions & Compare ·
+  8 Transition · 9 Shift Plan. Design: `docs/transition-strategy-approach.md`. 163 tests pass.
+- **`v1.61`** — **Transition Strategy tab — first cut** (deterministic, ITIL-aligned). The initial
+  checkpoint of the Transition tab; **superseded by `v1.62`** (which adds P2.1–P2.3 + the Gantt/date
+  fixes). New multi-skill tab derives a
   proposal-ready transition plan **read-only** from `compute_multi_skill_model` + a few date inputs:
   a dynamic **Gantt** (7 ITIL-aligned phases + M1–M4 + Go-Live), **phase activities** (objectives/
   deliverables/entry-exit/risks/dependencies/RACI responsibilities), a **skill-wise plan**
@@ -31,7 +57,7 @@ to that exact snapshot, so you can always return to it no matter what changes la
   `test_engine_does_not_import_transition`; RACI validity (exactly one Accountable) enforced.
   Design: `docs/transition-strategy-approach.md`. 152 tests pass. **Next: P2** (family-aware skill
   detail → readiness checklists → RAID + governance tables).
-- **`v1.60`** — *current stable (production).* **SDM as a fixed allocation of one SDM FTE (Option A)
+- **`v1.60`** — **SDM as a fixed allocation of one SDM FTE (Option A)
   + Shift Plan roster.** SDM cost = a fixed *fraction of one SDM FTE* (not a % of engagement effort),
   carried unrounded through cost/price. New multi-skill tab **6 · Shift Plan** derives a
   deterministic coverage/shift plan from the estimate: **P1** coverage design (⌈FTE⌉ seats per
@@ -752,6 +778,7 @@ git tag -a v1.58 -m "v1.58: docs/restore checkpoint through v1.57 + rate-card gi
 git tag -a v1.59 -m "v1.59: estimate Lock + Approve & Export basis tables (RFP name/Skills/Workload/Cost-by-Skill)"; git push origin v1.59
 git tag -a v1.60 -m "v1.60: SDM Option A (fixed SDM FTE) + Shift Plan roster (P1 coverage + P2 rotational calendar)"; git push origin v1.60
 git tag -a v1.61 -m "v1.61: Transition Strategy tab — first cut (deterministic, ITIL-aligned)"; git push origin v1.61
+git tag -a v1.62 -m "v1.62: Transition Strategy full (P2.1–P2.3: family-aware + woven ITIL process coverage, per-skill acceptance gate, RAID+governance) + Go-Live-driven Gantt + Steady-State=BAU + tab reorder"; git push origin v1.62
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
