@@ -1696,22 +1696,44 @@ def _render_transition():
     section_hdr("📅 Transition Timeline")
     rows = plan["timeline"]
     if rows:
-        start = plan["start"]; span = max((rows[-1]["end"] - start).days, 1)
-        gantt = ""
+        start = plan["start"]; end = rows[-1]["end"]
+        span = max((end - start).days, 1)
+        # Month-boundary ticks (as % across the timeline) for the top date axis + gridlines.
+        ticks = []
+        d = date(start.year + 1, 1, 1) if start.month == 12 else date(start.year, start.month + 1, 1)
+        while d < end:
+            ticks.append(((d - start).days / span * 100, d))
+            d = date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
+        grid = "".join(f"<div style='position:absolute;left:{p:.1f}%;top:0;bottom:0;width:1px;"
+                       f"background:#E6ECEF'></div>" for p, _ in ticks)
+        LABELW = "200px"
+        # Top date axis: start & end anchored to the edges, month ticks in between.
+        axis = (f"<div style='position:absolute;left:0;top:0;font-size:.68rem;color:#7A8A99'>{start:%d-%b}</div>"
+                f"<div style='position:absolute;right:0;top:0;font-size:.68rem;color:#7A8A99'>{end:%d-%b}</div>"
+                + "".join(f"<div style='position:absolute;left:{p:.1f}%;top:0;transform:translateX(-50%);"
+                          f"font-size:.68rem;color:#7A8A99;white-space:nowrap'>{dt:%d-%b}</div>"
+                          for p, dt in ticks))
+        html = (f"<div style='font-size:.8rem'>"
+                f"<div style='display:flex;align-items:flex-end;margin-bottom:3px'>"
+                f"<div style='width:{LABELW};flex:none'></div>"
+                f"<div style='flex:1;position:relative;height:15px'>{axis}</div></div>")
         for row in rows:
             l = (row["start"] - start).days / span * 100
             w = max((row["end"] - row["start"]).days / span * 100, 1.5)
             col = _BAND_COLOR.get(row["band"], "#3E9AA6")
             ms = f" <strong>◆ {row['milestone']}</strong>" if row["milestone"] else ""
-            bar = (f"<div style='position:relative;height:20px;background:#EEF2F4;border-radius:3px'>"
-                   f"<div style='position:absolute;left:{l:.1f}%;width:{w:.1f}%;height:20px;"
-                   f"background:{col};border-radius:3px'></div></div>")
-            gantt += (f"<tr><td style='white-space:nowrap;font-size:.8rem;padding-right:8px'>{row['name']}{ms}</td>"
-                      f"<td style='width:68%'>{bar}</td>"
-                      f"<td style='white-space:nowrap;font-size:.72rem;color:#7A8A99;padding-left:8px'>"
-                      f"{row['start']:%d-%b}→{row['end']:%d-%b} · {row['duration_weeks']:g}w</td></tr>")
-        st.markdown(f"<table style='width:100%;border-collapse:collapse'>{gantt}</table>",
-                    unsafe_allow_html=True)
+            dur = f"{row['duration_weeks']:g}w"
+            title = f"{row['start']:%d-%b-%Y} → {row['end']:%d-%b-%Y} · {dur}"
+            bar = (f"<div style='position:relative;height:22px'>{grid}"
+                   f"<div title='{title}' style='position:absolute;left:{l:.1f}%;width:{w:.1f}%;height:22px;"
+                   f"background:{col};border-radius:3px;color:#fff;font-size:.68rem;line-height:22px;"
+                   f"text-align:center;overflow:hidden'>{dur}</div></div>")
+            html += (f"<div style='display:flex;align-items:center;margin:2px 0'>"
+                     f"<div style='width:{LABELW};flex:none;white-space:nowrap;overflow:hidden;"
+                     f"text-overflow:ellipsis;padding-right:8px'>{row['name']}{ms}</div>"
+                     f"<div style='flex:1'>{bar}</div></div>")
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
         st.caption(f"Start **{start:%d-%b-%Y}** · span **{plan['span_weeks']:g} weeks** · foundation "
                    f"throughout: *{plan['foundation']}*.")
         # Milestone chips
