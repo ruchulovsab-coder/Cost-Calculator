@@ -121,27 +121,82 @@ PHASE_DETAIL = {
 }
 
 # ── Per-skill activity templates ({skill} is filled by the builder) ───────────
+# Each skill's stage plan = a COMMON operational-process backbone (PROCESS_STAGE_ACTIVITIES,
+# woven into every stage so every skill covers the same ITIL processes) + a TECHNICAL layer
+# (FAMILY_STAGE_TEMPLATES per technology family, or this generic set for unmapped skills).
+STAGE_KEYS = ("knowledge_transition", "shadow", "reverse_shadow", "stabilization")
+
+# Generic technical layer — fallback when a skill name maps to no known family.
 SKILL_STAGE_TEMPLATES = {
     "knowledge_transition": [
-        "Functional knowledge transfer for {skill}",
-        "Technical knowledge transfer for {skill}",
-        "Documentation review for {skill}",
-        "SOP / runbook validation for {skill}",
-        "Access provisioning for {skill} tooling",
-        "Tool familiarization for {skill}",
+        "Functional & technical knowledge transfer for {skill}",
+        "Review {skill} documentation, SOPs and runbooks",
+        "Inventory {skill} components and configuration baselines",
     ],
     "shadow": [
-        "Observe incumbent handling {skill} incidents & service requests",
-        "Analyse {skill} recurring issues and process gaps",
+        "Analyse recurring {skill} technical issues and process gaps",
     ],
     "reverse_shadow": [
-        "Perform {skill} operations with incumbent review",
-        "{skill} production readiness checks",
+        "{skill} production readiness checks and validation",
     ],
     "stabilization": [
-        "Independent {skill} operations",
-        "Monitor & report {skill} KPIs/SLAs (penalties waived)",
-        "Operational handover of {skill}",
+        "Operational handover of {skill} technical runbooks and known errors",
+    ],
+}
+
+# ── Operational process framework (ITIL) — the SAME set is covered for every skill ────
+# Reference list (labels shown for documentation/tests); the actual activities are woven
+# into the stages via PROCESS_STAGE_ACTIVITIES below.
+OPERATIONAL_PROCESS_AREAS = [
+    ("processes", "Service processes & workflows"),
+    ("incident", "Incident Management"),
+    ("mim", "Major Incident Management"),
+    ("problem", "Problem Management"),
+    ("change", "Change Management"),
+    ("request", "Service Request Fulfilment"),
+    ("access", "Access Management"),
+    ("monitoring", "Monitoring & Event Management"),
+    ("patching", "Patching & Maintenance"),
+    ("escalation", "Escalation & Communication"),
+    ("cmdb", "Configuration / Asset (CMDB)"),
+    ("reporting", "Reporting & Governance"),
+]
+
+# Common operational-process backbone, woven into each stage (understand → observe → perform
+# → own). {skill}-templated so it reads domain-specific for each team's KT.
+PROCESS_STAGE_ACTIVITIES = {
+    "knowledge_transition": [
+        "Understand the customer's {skill} service processes & workflows (as-is operating model, roles, hand-offs)",
+        "Understand {skill} incident management — categories, priorities, SLAs and the customer's incident landscape",
+        "Understand {skill} major incident management (MIM) — triggers, bridge/war-room, roles and communications",
+        "Understand {skill} problem management — RCA approach and known-error database",
+        "Understand {skill} change management — RFC/CAB, approvals and change/maintenance windows",
+        "Understand {skill} service request catalogue and fulfilment workflow",
+        "Understand {skill} access management — joiners/movers/leavers and privileged-access approvals",
+        "Understand {skill} monitoring & event management — tooling, alerts and event-to-incident flow",
+        "Understand {skill} patching & maintenance process — cycle, approvals and rollback",
+        "Understand {skill} escalation & communication protocols — functional/hierarchical paths and contacts",
+        "Understand {skill} configuration/asset data (CMDB) — records, ownership and update process",
+        "Understand {skill} reporting & governance — KPIs/SLAs, cadence and review forums",
+    ],
+    "shadow": [
+        "Observe incumbent handling {skill} incidents, service requests and access requests",
+        "Observe a {skill} major incident (or MIM dry-run) — bridge, escalation and stakeholder comms",
+        "Observe {skill} change execution and a patch/maintenance cycle in a live window",
+        "Observe {skill} problem management / RCA and the resulting CMDB & known-error updates",
+        "Observe {skill} monitoring/event triage and reporting/governance forums",
+    ],
+    "reverse_shadow": [
+        "Perform {skill} incident, service-request and change handling with incumbent review",
+        "Lead/participate in a {skill} major incident with review — exercise escalation & communication",
+        "Execute a {skill} patch/maintenance cycle and access-management requests with review",
+        "Perform {skill} problem RCA, update the CMDB and produce a service report",
+    ],
+    "stabilization": [
+        "Independently run {skill} incident, problem, change, request, access and patching processes",
+        "Own {skill} MIM, escalation & communication; run monitoring/event management end-to-end",
+        "Maintain {skill} CMDB/asset accuracy; deliver reporting & governance to the agreed cadence",
+        "Monitor & report {skill} KPIs/SLAs (penalties waived) and drive early continuous improvement",
     ],
 }
 SKILL_EXIT_CRITERIA = [
@@ -154,12 +209,11 @@ SKILL_SIGNOFF_CRITERIA = [
     "{skill} steady-state KPIs/SLAs baselined",
 ]
 
-# ── Family-aware per-skill activity detail ────────────────────────────────────
-# The generic SKILL_STAGE_TEMPLATES above is the fallback. When a skill's free-text
-# name maps to a canonical technology family, the builder swaps in the richer,
-# family-specific activities below (still {skill}-templated). Families are derived
-# from config.SKILL_CANONICAL_KEYWORDS tokens via SKILL_TOKEN_TO_FAMILY, so the
-# classification stays consistent with the AI Team Optimizer's adjacency map.
+# ── Family-aware TECHNICAL layer ──────────────────────────────────────────────
+# The builder merges the common PROCESS_STAGE_ACTIVITIES backbone (same ITIL processes
+# for every skill) with the technology-specific technical activities below. A skill's
+# free-text name maps to a family via config.SKILL_CANONICAL_KEYWORDS + SKILL_TOKEN_TO_FAMILY
+# (same classification as the AI Team Optimizer); unmapped names use SKILL_STAGE_TEMPLATES.
 SKILL_TOKEN_TO_FAMILY = {
     "cloud": "cloud", "devops": "platform",
     "vmware": "compute", "windows": "compute", "linux": "compute",
@@ -174,178 +228,83 @@ FAMILY_LABELS = {
 FAMILY_STAGE_TEMPLATES = {
     "compute": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (OS builds, roles, dependencies)",
-            "Walk through {skill} patching & maintenance windows and rollback procedures",
+            "Technical KT for {skill}: OS builds, server/VM roles, dependencies and hardening baselines",
             "Validate {skill} backup, restore and DR runbooks",
-            "Review {skill} monitoring, alert thresholds and escalation paths",
-            "Inventory {skill} estate (hosts/VMs), config baselines and hardening standards",
-            "Access provisioning: {skill} admin/jump-hosts and privileged accounts (PAM)",
+            "Inventory the {skill} estate (hosts/VMs) and configuration baselines",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents, service requests and patch cycles",
-            "Analyse recurring {skill} issues (capacity, performance, patch failures)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} incident/SR handling and a patch cycle with incumbent review",
-            "{skill} production readiness: backup/restore drill and failover check",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. scheduled maintenance windows",
-            "Monitor & report {skill} availability & patch-compliance KPIs (penalties waived)",
-            "Operational handover of {skill} runbooks and known-error records",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (capacity, performance, patch failures)"],
+        "reverse_shadow": ["{skill} production readiness: backup/restore drill and host failover check"],
+        "stabilization": ["Operational handover of {skill} technical runbooks and known errors"],
     },
     "network": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (topology, routing, firewall rule-base)",
-            "Walk through {skill} change-window procedures and rollback plans",
+            "Technical KT for {skill}: topology, routing and firewall rule-base",
             "Review {skill} device inventory, firmware levels and configuration backups",
-            "Validate {skill} monitoring (SNMP/flow), alerting and escalation",
-            "Access provisioning: {skill} device management, TACACS/RADIUS and jump-hosts",
+            "Validate {skill} config-backup and rollback procedures",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents and change requests",
-            "Analyse recurring {skill} issues (link flaps, rule conflicts, capacity)",
-        ],
-        "reverse_shadow": [
-            "Perform a {skill} change and incident handling with incumbent review",
-            "{skill} production readiness: config-backup restore and failover validation",
-        ],
-        "stabilization": [
-            "Independent {skill} operations and change execution in maintenance windows",
-            "Monitor & report {skill} availability/latency KPIs (penalties waived)",
-            "Operational handover of {skill} configs and known-error database",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (link flaps, rule conflicts, capacity)"],
+        "reverse_shadow": ["{skill} production readiness: config-backup restore and failover validation"],
+        "stabilization": ["Operational handover of {skill} device configs and known-error database"],
     },
     "database": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (instances, schemas, HA/replication)",
+            "Technical KT for {skill}: instances, schemas and HA/replication topology",
             "Validate {skill} backup, restore, PITR and DR runbooks",
-            "Walk through {skill} patching/upgrade and maintenance procedures",
-            "Review {skill} performance baselines, scheduled jobs and monitoring thresholds",
-            "Access provisioning: {skill} privileged DB accounts and PAM",
+            "Review {skill} performance baselines and scheduled jobs",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents, SRs and backup/restore",
-            "Analyse recurring {skill} issues (blocking, capacity, failed jobs)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} operations and a restore drill with incumbent review",
-            "{skill} production readiness: backup/restore + HA/DR failover validation",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. backups, jobs and maintenance",
-            "Monitor & report {skill} availability & RPO/RTO KPIs (penalties waived)",
-            "Operational handover of {skill} runbooks and known errors",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (blocking, capacity, failed jobs)"],
+        "reverse_shadow": ["{skill} production readiness: restore drill and HA/DR failover validation"],
+        "stabilization": ["Operational handover of {skill} runbooks; track RPO/RTO adherence"],
     },
     "storage": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (arrays, LUNs/shares, replication)",
+            "Technical KT for {skill}: arrays, LUNs/shares and replication",
             "Validate {skill} backup schedules, retention and restore runbooks",
-            "Review {skill} capacity, firmware and monitoring thresholds",
-            "Access provisioning: {skill} management consoles and privileged accounts",
+            "Review {skill} capacity and firmware baselines",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents, SRs and backup/restore jobs",
-            "Analyse recurring {skill} issues (capacity, failed backups, latency)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} provisioning and a restore drill with incumbent review",
-            "{skill} production readiness: backup restore and replication failover check",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. capacity and backup management",
-            "Monitor & report {skill} capacity & backup-success KPIs (penalties waived)",
-            "Operational handover of {skill} runbooks and known errors",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (capacity, failed backups, latency)"],
+        "reverse_shadow": ["{skill} production readiness: restore drill and replication failover check"],
+        "stabilization": ["Operational handover of {skill} runbooks; track capacity & backup success"],
     },
     "cloud": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (accounts/subscriptions, landing zones)",
-            "Review {skill} IaC repos, tagging, guardrails and cost baselines",
-            "Validate {skill} backup/DR, resiliency and monitoring/alerting setup",
-            "Walk through {skill} change/release and cost-optimisation procedures",
-            "Access provisioning: {skill} IAM roles, break-glass and PAM",
+            "Technical KT for {skill}: accounts/subscriptions and landing-zone architecture",
+            "Review {skill} IaC repos, tagging and guardrails",
+            "Validate {skill} backup/DR and resiliency setup",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents, SRs and change/release",
-            "Analyse recurring {skill} issues (cost spikes, quota limits, config drift)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} operations and a change/deployment with incumbent review",
-            "{skill} production readiness: DR/backup validation and guardrail checks",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. cost and guardrail governance",
-            "Monitor & report {skill} availability/cost/security-posture KPIs (penalties waived)",
-            "Operational handover of {skill} IaC, runbooks and known errors",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (cost spikes, quota limits, config drift)"],
+        "reverse_shadow": ["{skill} production readiness: DR/backup validation and guardrail checks"],
+        "stabilization": ["Own {skill} cost & guardrail governance; hand over IaC and runbooks"],
     },
     "platform": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (pipelines, IaC, container/K8s platform)",
-            "Review {skill} CI/CD, release and rollback procedures",
-            "Validate {skill} platform monitoring, SLOs and on-call runbooks",
-            "Walk through {skill} secrets/artifact management and access model",
-            "Access provisioning: {skill} repos, pipelines, registries and clusters",
+            "Technical KT for {skill}: CI/CD pipelines, IaC and container/K8s platform",
+            "Review {skill} release, rollback and secrets/artifact management",
+            "Validate {skill} platform SLOs and on-call runbooks",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} incidents, deployments and pipeline issues",
-            "Analyse recurring {skill} issues (build/deploy failures, drift, SLO breaches)",
-        ],
-        "reverse_shadow": [
-            "Perform a {skill} release/deployment and incident handling with incumbent review",
-            "{skill} production readiness: pipeline, rollback and DR validation",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. releases and platform maintenance",
-            "Monitor & report {skill} deployment & SLO KPIs (penalties waived)",
-            "Operational handover of {skill} pipelines, runbooks and known errors",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (build/deploy failures, drift, SLO breaches)"],
+        "reverse_shadow": ["{skill} production readiness: pipeline, rollback and DR validation"],
+        "stabilization": ["Operational handover of {skill} pipelines and runbooks; track SLOs"],
     },
     "security": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (SIEM, controls, IAM, policies)",
-            "Review {skill} detection use-cases, playbooks and escalation matrix",
-            "Validate {skill} vulnerability/patch-compliance and incident-response runbooks",
-            "Walk through {skill} change and exception/approval procedures",
-            "Access provisioning: {skill} consoles, privileged access and PAM",
+            "Technical KT for {skill}: SIEM, security controls, IAM and policies",
+            "Review {skill} detection use-cases and response playbooks",
+            "Validate {skill} vulnerability/patch-compliance posture",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} alerts, incidents and service requests",
-            "Analyse recurring {skill} issues (false positives, tuning, open findings)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} alert triage and incident response with incumbent review",
-            "{skill} production readiness: playbook execution and control-coverage validation",
-        ],
-        "stabilization": [
-            "Independent {skill} operations incl. detection tuning and compliance",
-            "Monitor & report {skill} MTTD/MTTR and compliance KPIs (penalties waived)",
-            "Operational handover of {skill} playbooks and known errors",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (false positives, tuning, open findings)"],
+        "reverse_shadow": ["{skill} production readiness: playbook execution and control-coverage validation"],
+        "stabilization": ["Own {skill} detection tuning & compliance; track MTTD/MTTR"],
     },
     "monitoring": {
         "knowledge_transition": [
-            "Functional & technical KT for {skill} (tooling, dashboards, alert rules)",
-            "Review {skill} alert catalogue, thresholds and escalation/runbook mapping",
-            "Validate {skill} event-to-incident correlation and notification workflows",
-            "Access provisioning: {skill} monitoring consoles and integrations",
+            "Technical KT for {skill}: monitoring tooling, dashboards and alert rules",
+            "Review {skill} alert catalogue, thresholds and runbook mapping",
+            "Validate {skill} event correlation and notification workflows",
         ],
-        "shadow": [
-            "Observe incumbent handling {skill} alerts, triage and escalation",
-            "Analyse recurring {skill} issues (alert noise, missed alerts, coverage gaps)",
-        ],
-        "reverse_shadow": [
-            "Perform {skill} alert triage and escalation with incumbent review",
-            "{skill} production readiness: alert-coverage and runbook validation",
-        ],
-        "stabilization": [
-            "Independent {skill} monitoring, triage and alert tuning",
-            "Monitor & report {skill} alert-to-noise and coverage KPIs (penalties waived)",
-            "Operational handover of {skill} runbooks and alert catalogue",
-        ],
+        "shadow": ["Analyse recurring {skill} technical issues (alert noise, missed alerts, coverage gaps)"],
+        "reverse_shadow": ["{skill} production readiness: alert-coverage and runbook validation"],
+        "stabilization": ["Own {skill} alert tuning; track alert-to-noise and coverage"],
     },
 }
 

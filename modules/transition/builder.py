@@ -53,9 +53,13 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
         levels = [l for l in ("L1", "L2", "L3", "Architect")
                   if float((ps.get("fte_by_level", {}) or {}).get(l, 0) or 0) > 0]
         family = _skill_family(name)
-        templates = C.FAMILY_STAGE_TEMPLATES.get(family, C.SKILL_STAGE_TEMPLATES)
-        stages = {stage: [t.format(skill=name) for t in tmpls]
-                  for stage, tmpls in templates.items()}
+        technical = C.FAMILY_STAGE_TEMPLATES.get(family, C.SKILL_STAGE_TEMPLATES)
+        # Each stage = the common ITIL process backbone (same for every skill) + the
+        # technology-specific technical activities for this skill's family.
+        stages = {stage: [t.format(skill=name)
+                          for t in (C.PROCESS_STAGE_ACTIVITIES.get(stage, [])
+                                    + technical.get(stage, []))]
+                  for stage in C.STAGE_KEYS}
         plans.append({
             "skill": name, "levels": levels, "coverage": ps.get("coverage_model", ""),
             "family": family, "family_label": C.FAMILY_LABELS.get(family, "General"),

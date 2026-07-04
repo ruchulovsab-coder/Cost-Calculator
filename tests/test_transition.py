@@ -103,12 +103,46 @@ def test_family_aware_skill_detail():
     assert "Oracle Database" in kt
     assert "PITR" in kt or "HA/replication" in kt   # DB-specific, absent from the generic template
 
-    # Unmapped name → generic template + "General" label.
+    # Unmapped name → generic technical layer + "General" label (still gets the process backbone).
     model["per_skill"][sid]["name"] = "Zzz Unmapped Skill"
     gen = build_transition_plan(model, _cfg())["skill_plans"][0]
     assert gen["family"] is None and gen["family_label"] == "General"
-    assert any("Functional knowledge transfer for Zzz Unmapped Skill" in x
+    assert any("Functional & technical knowledge transfer for Zzz Unmapped Skill" in x
                for x in gen["knowledge_transition"])
+    # …and the common process backbone is present even for an unmapped skill.
+    assert any("incident management" in x.lower() for x in gen["knowledge_transition"])
+
+
+def test_operational_process_backbone_covered_for_every_skill():
+    """Every skill's woven plan covers the full ITIL process framework (same set for all)."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    sp = build_transition_plan(model, _cfg())["skill_plans"][0]
+    kt = " ".join(sp["knowledge_transition"]).lower()
+    # one representative keyword per OPERATIONAL_PROCESS_AREAS entry
+    for kw in ("workflow", "incident management", "major incident", "problem management",
+               "change management", "service request", "access management",
+               "monitoring & event", "patching", "escalation & communication",
+               "cmdb", "reporting & governance"):
+        assert kw in kt, f"KT missing process area keyword: {kw!r}"
+    # process discipline is also exercised downstream, not only understood in KT
+    assert any("major incident" in x.lower() for x in sp["reverse_shadow"])
+    assert any("independently run" in x.lower() for x in sp["stabilization"])
+
+
+def test_new_skill_reflects_in_skill_plans():
+    """Adding a skill to the estimate surfaces it (with full woven detail) in the plan —
+    the plan is derived live from the model, so it is never static."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    base = build_transition_plan(model, _cfg())
+    assert len(base["skill_plans"]) == len(model["per_skill"])
+    # Simulate the user adding a new skill to the estimate.
+    src = next(iter(model["per_skill"].values()))
+    model["per_skill"]["new_sid"] = {**src, "name": "Cloud Operations"}
+    grown = build_transition_plan(model, _cfg())
+    assert len(grown["skill_plans"]) == len(base["skill_plans"]) + 1
+    added = next(sp for sp in grown["skill_plans"] if sp["skill"] == "Cloud Operations")
+    assert added["family"] == "cloud" and added["knowledge_transition"]
+    assert any("landing-zone" in x for x in added["knowledge_transition"])
 
 
 def test_excluded_phase_drops_from_plan():
