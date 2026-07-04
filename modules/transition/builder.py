@@ -54,10 +54,12 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
     """model = compute_multi_skill_model(...) output; config = TransitionConfig dict.
     Deterministic: same model + config → identical plan."""
     phases = config.get("phases") or default_phase_config()
+    # Overall duration is derived from start→Go-Live in the UI (not an independent input), so we do
+    # NOT re-check the full phase span against it here — the Go-Live gate advisory (Reverse-Shadow
+    # end vs configured Go-Live) is the meaningful reconciliation.
     tl = solve_timeline(
         config.get("start_date"), phases,
         sequencing=config.get("sequencing", "Sequential"),
-        overall_weeks=config.get("duration_weeks"),
         go_live=config.get("go_live_date"),
         incumbent_present=config.get("incumbent_present", True))
 

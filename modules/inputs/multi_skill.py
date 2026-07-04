@@ -1606,13 +1606,15 @@ def _render_transition():
     st.session_state["transition_start"] = c1.date_input(
         "Transition start", value=st.session_state.get("transition_start") or (date.today() + timedelta(days=30)),
         key="transition_start_w")
-    st.session_state["transition_duration_weeks"] = c2.number_input(
-        "Overall duration (weeks)", min_value=1, max_value=104,
-        value=int(st.session_state.get("transition_duration_weeks", 20) or 20), step=1,
-        key="transition_dur_w")
-    st.session_state["transition_go_live"] = c3.date_input(
+    st.session_state["transition_go_live"] = c2.date_input(
         "Customer Go-Live", value=st.session_state.get("transition_go_live") or (date.today() + timedelta(days=140)),
         key="transition_gl_w")
+    # Overall duration is derived from the two dates (window to Go-Live) — not an editable input.
+    _tstart = st.session_state.get("transition_start")
+    _tgl = st.session_state.get("transition_go_live")
+    _dur_weeks = round((_tgl - _tstart).days / 7.0, 1) if (_tstart and _tgl and _tgl > _tstart) else 0.0
+    st.session_state["transition_duration_weeks"] = _dur_weeks
+    c3.metric("Duration → Go-Live", f"{_dur_weeks:g} weeks")
 
     c4, c5, c6 = st.columns(3)
     st.session_state["transition_customer_tz"] = c4.selectbox(
