@@ -1645,9 +1645,32 @@ def _render_transition():
     st.session_state["_transition_seq_prev"] = seq
 
     with st.expander("Phase durations & sequencing", expanded=overlap):
-        st.caption("Durations in weeks. Uncheck a phase to exclude it. "
-                   + ("**Overlap lead** = weeks a phase starts *before* the previous ends "
-                      "(set 0 for no overlap on that phase)." if overlap else ""))
+        st.markdown(
+            "**What this is** — the length of each transition phase (in weeks) and how phases are "
+            "scheduled relative to each other. This shapes the Gantt and where Go-Live lands.\n\n"
+            "**How to use**\n"
+            "- **Weeks** — set each phase's duration. Leave a phase at its default if unsure.\n"
+            "- **Incl.** — uncheck to *exclude* a phase (e.g. skip **Reverse Shadow** for a small, "
+            "low-risk scope, or **Shadow** for a greenfield build with no incumbent to observe).\n"
+            "- **Lead** (Overlap mode only) — how many weeks a phase starts *before* the previous one "
+            "ends. `0` = no overlap for that phase.\n\n"
+            "**Sequential vs Overlap**\n"
+            "- **Sequential** — each phase starts when the previous finishes. Lowest risk, cleanest "
+            "sign-offs. Use as the default and for regulated / complex / high-risk transitions.\n"
+            "- **Overlap** — phases run partly in parallel to *compress the timeline* and hit an "
+            "earlier Go-Live. Use when the customer's Go-Live is tight and you have the bench to run "
+            "activities concurrently. Trade-off: more coordination, tighter dependencies.\n\n"
+            "**Example** — Knowledge Transition 4 wks → Shadow 4 wks. Sequential: Shadow starts week 5. "
+            "Set Shadow's **lead = 2** in Overlap: Shadow starts in week 3 (KT still finishing), pulling "
+            "Go-Live ~2 weeks earlier. Do the same across phases and the whole plan compresses.")
+        st.caption("Tip: watch the **Duration → Go-Live** metric and the Gantt above update as you edit; "
+                   "the advisories below flag if your phases overshoot or undershoot the Go-Live date.")
+        st.markdown("---")
+        hdr = st.columns([3, 1.3, 1.2, 1.6])
+        hdr[0].caption("**Phase**")
+        hdr[1].caption("**Weeks**")
+        hdr[2].caption("**Incl.**")
+        hdr[3].caption("**Lead**" if overlap else "")
         for ph in phases:
             cols = st.columns([3, 1.3, 1.2, 1.6])
             cols[0].markdown(f"**{ph['name']}**  \n<span style='color:#7A8A99;font-size:.78rem'>{ph['band']}</span>",
