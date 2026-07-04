@@ -2,10 +2,25 @@
 TransitionPlan. PURE read-only over the estimate model; never mutates it."""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from config.settings import SKILL_CANONICAL_KEYWORDS
 
 from . import catalog as C
 from .timeline import solve_timeline
+
+
+def _skill_family(name: str) -> Optional[str]:
+    """Map a free-text skill name → a transition technology family (else None).
+
+    Reuses config.SKILL_CANONICAL_KEYWORDS (the AI Team Optimizer's classification) so
+    family detection stays consistent across features; unknown names fall back to the
+    generic activity templates."""
+    s = (name or "").lower()
+    for token, kws in SKILL_CANONICAL_KEYWORDS.items():
+        if token in s or any(kw in s for kw in kws):
+            return C.SKILL_TOKEN_TO_FAMILY.get(token)
+    return None
 
 
 def default_phase_config() -> List[Dict[str, Any]]:
@@ -37,10 +52,13 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
         name = ps.get("name") or sid
         levels = [l for l in ("L1", "L2", "L3", "Architect")
                   if float((ps.get("fte_by_level", {}) or {}).get(l, 0) or 0) > 0]
+        family = _skill_family(name)
+        templates = C.FAMILY_STAGE_TEMPLATES.get(family, C.SKILL_STAGE_TEMPLATES)
         stages = {stage: [t.format(skill=name) for t in tmpls]
-                  for stage, tmpls in C.SKILL_STAGE_TEMPLATES.items()}
+                  for stage, tmpls in templates.items()}
         plans.append({
             "skill": name, "levels": levels, "coverage": ps.get("coverage_model", ""),
+            "family": family, "family_label": C.FAMILY_LABELS.get(family, "General"),
             "knowledge_transition": stages["knowledge_transition"],
             "shadow": stages["shadow"], "reverse_shadow": stages["reverse_shadow"],
             "stabilization": stages["stabilization"],

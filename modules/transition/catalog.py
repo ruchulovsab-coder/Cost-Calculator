@@ -154,6 +154,201 @@ SKILL_SIGNOFF_CRITERIA = [
     "{skill} steady-state KPIs/SLAs baselined",
 ]
 
+# ── Family-aware per-skill activity detail ────────────────────────────────────
+# The generic SKILL_STAGE_TEMPLATES above is the fallback. When a skill's free-text
+# name maps to a canonical technology family, the builder swaps in the richer,
+# family-specific activities below (still {skill}-templated). Families are derived
+# from config.SKILL_CANONICAL_KEYWORDS tokens via SKILL_TOKEN_TO_FAMILY, so the
+# classification stays consistent with the AI Team Optimizer's adjacency map.
+SKILL_TOKEN_TO_FAMILY = {
+    "cloud": "cloud", "devops": "platform",
+    "vmware": "compute", "windows": "compute", "linux": "compute",
+    "network": "network", "security": "security", "monitoring": "monitoring",
+    "database": "database", "storage": "storage",
+}
+FAMILY_LABELS = {
+    "compute": "Compute (servers / VMs / OS)", "network": "Network",
+    "database": "Database", "storage": "Storage & Backup", "cloud": "Cloud",
+    "platform": "Platform / DevOps", "security": "Security", "monitoring": "Monitoring",
+}
+FAMILY_STAGE_TEMPLATES = {
+    "compute": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (OS builds, roles, dependencies)",
+            "Walk through {skill} patching & maintenance windows and rollback procedures",
+            "Validate {skill} backup, restore and DR runbooks",
+            "Review {skill} monitoring, alert thresholds and escalation paths",
+            "Inventory {skill} estate (hosts/VMs), config baselines and hardening standards",
+            "Access provisioning: {skill} admin/jump-hosts and privileged accounts (PAM)",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents, service requests and patch cycles",
+            "Analyse recurring {skill} issues (capacity, performance, patch failures)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} incident/SR handling and a patch cycle with incumbent review",
+            "{skill} production readiness: backup/restore drill and failover check",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. scheduled maintenance windows",
+            "Monitor & report {skill} availability & patch-compliance KPIs (penalties waived)",
+            "Operational handover of {skill} runbooks and known-error records",
+        ],
+    },
+    "network": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (topology, routing, firewall rule-base)",
+            "Walk through {skill} change-window procedures and rollback plans",
+            "Review {skill} device inventory, firmware levels and configuration backups",
+            "Validate {skill} monitoring (SNMP/flow), alerting and escalation",
+            "Access provisioning: {skill} device management, TACACS/RADIUS and jump-hosts",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents and change requests",
+            "Analyse recurring {skill} issues (link flaps, rule conflicts, capacity)",
+        ],
+        "reverse_shadow": [
+            "Perform a {skill} change and incident handling with incumbent review",
+            "{skill} production readiness: config-backup restore and failover validation",
+        ],
+        "stabilization": [
+            "Independent {skill} operations and change execution in maintenance windows",
+            "Monitor & report {skill} availability/latency KPIs (penalties waived)",
+            "Operational handover of {skill} configs and known-error database",
+        ],
+    },
+    "database": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (instances, schemas, HA/replication)",
+            "Validate {skill} backup, restore, PITR and DR runbooks",
+            "Walk through {skill} patching/upgrade and maintenance procedures",
+            "Review {skill} performance baselines, scheduled jobs and monitoring thresholds",
+            "Access provisioning: {skill} privileged DB accounts and PAM",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents, SRs and backup/restore",
+            "Analyse recurring {skill} issues (blocking, capacity, failed jobs)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} operations and a restore drill with incumbent review",
+            "{skill} production readiness: backup/restore + HA/DR failover validation",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. backups, jobs and maintenance",
+            "Monitor & report {skill} availability & RPO/RTO KPIs (penalties waived)",
+            "Operational handover of {skill} runbooks and known errors",
+        ],
+    },
+    "storage": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (arrays, LUNs/shares, replication)",
+            "Validate {skill} backup schedules, retention and restore runbooks",
+            "Review {skill} capacity, firmware and monitoring thresholds",
+            "Access provisioning: {skill} management consoles and privileged accounts",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents, SRs and backup/restore jobs",
+            "Analyse recurring {skill} issues (capacity, failed backups, latency)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} provisioning and a restore drill with incumbent review",
+            "{skill} production readiness: backup restore and replication failover check",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. capacity and backup management",
+            "Monitor & report {skill} capacity & backup-success KPIs (penalties waived)",
+            "Operational handover of {skill} runbooks and known errors",
+        ],
+    },
+    "cloud": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (accounts/subscriptions, landing zones)",
+            "Review {skill} IaC repos, tagging, guardrails and cost baselines",
+            "Validate {skill} backup/DR, resiliency and monitoring/alerting setup",
+            "Walk through {skill} change/release and cost-optimisation procedures",
+            "Access provisioning: {skill} IAM roles, break-glass and PAM",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents, SRs and change/release",
+            "Analyse recurring {skill} issues (cost spikes, quota limits, config drift)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} operations and a change/deployment with incumbent review",
+            "{skill} production readiness: DR/backup validation and guardrail checks",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. cost and guardrail governance",
+            "Monitor & report {skill} availability/cost/security-posture KPIs (penalties waived)",
+            "Operational handover of {skill} IaC, runbooks and known errors",
+        ],
+    },
+    "platform": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (pipelines, IaC, container/K8s platform)",
+            "Review {skill} CI/CD, release and rollback procedures",
+            "Validate {skill} platform monitoring, SLOs and on-call runbooks",
+            "Walk through {skill} secrets/artifact management and access model",
+            "Access provisioning: {skill} repos, pipelines, registries and clusters",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} incidents, deployments and pipeline issues",
+            "Analyse recurring {skill} issues (build/deploy failures, drift, SLO breaches)",
+        ],
+        "reverse_shadow": [
+            "Perform a {skill} release/deployment and incident handling with incumbent review",
+            "{skill} production readiness: pipeline, rollback and DR validation",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. releases and platform maintenance",
+            "Monitor & report {skill} deployment & SLO KPIs (penalties waived)",
+            "Operational handover of {skill} pipelines, runbooks and known errors",
+        ],
+    },
+    "security": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (SIEM, controls, IAM, policies)",
+            "Review {skill} detection use-cases, playbooks and escalation matrix",
+            "Validate {skill} vulnerability/patch-compliance and incident-response runbooks",
+            "Walk through {skill} change and exception/approval procedures",
+            "Access provisioning: {skill} consoles, privileged access and PAM",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} alerts, incidents and service requests",
+            "Analyse recurring {skill} issues (false positives, tuning, open findings)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} alert triage and incident response with incumbent review",
+            "{skill} production readiness: playbook execution and control-coverage validation",
+        ],
+        "stabilization": [
+            "Independent {skill} operations incl. detection tuning and compliance",
+            "Monitor & report {skill} MTTD/MTTR and compliance KPIs (penalties waived)",
+            "Operational handover of {skill} playbooks and known errors",
+        ],
+    },
+    "monitoring": {
+        "knowledge_transition": [
+            "Functional & technical KT for {skill} (tooling, dashboards, alert rules)",
+            "Review {skill} alert catalogue, thresholds and escalation/runbook mapping",
+            "Validate {skill} event-to-incident correlation and notification workflows",
+            "Access provisioning: {skill} monitoring consoles and integrations",
+        ],
+        "shadow": [
+            "Observe incumbent handling {skill} alerts, triage and escalation",
+            "Analyse recurring {skill} issues (alert noise, missed alerts, coverage gaps)",
+        ],
+        "reverse_shadow": [
+            "Perform {skill} alert triage and escalation with incumbent review",
+            "{skill} production readiness: alert-coverage and runbook validation",
+        ],
+        "stabilization": [
+            "Independent {skill} monitoring, triage and alert tuning",
+            "Monitor & report {skill} alert-to-noise and coverage KPIs (penalties waived)",
+            "Operational handover of {skill} runbooks and alert catalogue",
+        ],
+    },
+}
+
 # ── RACI ──────────────────────────────────────────────────────────────────────
 ROLES_CUSTOMER = ["Business/Service Owner", "Application Owner", "Infrastructure",
                   "Security", "Network", "SMEs", "Customer PM"]

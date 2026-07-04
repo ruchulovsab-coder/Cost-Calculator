@@ -94,17 +94,19 @@ def build_transition_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
     # ── Skill-wise Plan ──
     ws = wb.create_sheet("Skill-wise Plan"); ws.sheet_view.showGridLines = False
     r = 1; _title(ws, r, "Skill-wise Transition Plan"); r += 1
-    _hdr(ws, r, ["Skill", "Levels", "Knowledge Transition", "Shadow", "Reverse Shadow",
+    _hdr(ws, r, ["Skill", "Family", "Levels", "Knowledge Transition", "Shadow", "Reverse Shadow",
                  "Stabilization", "Exit Criteria", "Sign-off Criteria"]); r += 1
     for sp in plan.get("skill_plans", []):
         _cell(ws, r, 1, sp["skill"], bold=True, wrap=True)
-        _cell(ws, r, 2, ", ".join(sp["levels"]) or "—", wrap=True)
+        _cell(ws, r, 2, sp.get("family_label", "General"), wrap=True)
+        _cell(ws, r, 3, ", ".join(sp["levels"]) or "—", wrap=True)
         for j, k in enumerate(["knowledge_transition", "shadow", "reverse_shadow", "stabilization",
-                               "exit_criteria", "signoff_criteria"], start=3):
+                               "exit_criteria", "signoff_criteria"], start=4):
             _cell(ws, r, j, _bullets(sp.get(k, [])), wrap=True)
         r += 1
-    ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 14
-    for j in range(3, 9):
+    ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 14
+    for j in range(4, 10):
         ws.column_dimensions[get_column_letter(j)].width = 32
 
     # ── RACI ──

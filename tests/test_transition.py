@@ -8,7 +8,8 @@ from datetime import date
 import pytest
 
 from modules.calculations.engine import compute_multi_skill_model
-from modules.transition.builder import (build_transition_plan, default_phase_config, validate_raci)
+from modules.transition.builder import (build_transition_plan, default_phase_config,
+                                        validate_raci, _skill_family)
 from modules.transition.timeline import solve_timeline
 from modules.transition import catalog as C
 from tests.test_multi_skill import _multi_1skill_state
@@ -76,6 +77,38 @@ def test_deterministic_and_covers_skills():
     assert a == b
     assert a["skill_plans"] and all(sp["knowledge_transition"] for sp in a["skill_plans"])
     assert not any("Accountable" in adv for adv in a["advisories"])
+
+
+def test_skill_family_classification():
+    assert _skill_family("Linux Administration") == "compute"
+    assert _skill_family("Windows / Active Directory") == "compute"
+    assert _skill_family("Network & Firewall") == "network"
+    assert _skill_family("Oracle DBA") == "database"
+    assert _skill_family("Cloud Operations (Azure)") == "cloud"
+    assert _skill_family("DevOps / SRE") == "platform"
+    assert _skill_family("Something Unmapped") is None
+
+
+def test_family_aware_skill_detail():
+    """A DB skill gets DB-specific activities; an unmapped skill falls back to the generic set."""
+    model = compute_multi_skill_model(_multi_1skill_state())
+    # Rename the single skill to a Database skill so classification fires.
+    sid = next(iter(model["per_skill"]))
+    model["per_skill"][sid]["name"] = "Oracle Database"
+    plan = build_transition_plan(model, _cfg())
+    sp = plan["skill_plans"][0]
+    assert sp["family"] == "database"
+    assert sp["family_label"] == C.FAMILY_LABELS["database"]
+    kt = " ".join(sp["knowledge_transition"])
+    assert "Oracle Database" in kt
+    assert "PITR" in kt or "HA/replication" in kt   # DB-specific, absent from the generic template
+
+    # Unmapped name → generic template + "General" label.
+    model["per_skill"][sid]["name"] = "Zzz Unmapped Skill"
+    gen = build_transition_plan(model, _cfg())["skill_plans"][0]
+    assert gen["family"] is None and gen["family_label"] == "General"
+    assert any("Functional knowledge transfer for Zzz Unmapped Skill" in x
+               for x in gen["knowledge_transition"])
 
 
 def test_excluded_phase_drops_from_plan():

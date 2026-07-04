@@ -1742,7 +1742,8 @@ def _render_transition():
     # ── Skill-wise plan ──
     section_hdr("🧩 Skill-wise Transition Plan")
     for sp in plan["skill_plans"]:
-        with st.expander(f"{sp['skill']}  ({', '.join(sp['levels']) or '—'} · {sp['coverage']})",
+        with st.expander(f"{sp['skill']}  ·  {sp.get('family_label', 'General')}  "
+                         f"({', '.join(sp['levels']) or '—'} · {sp['coverage']})",
                          expanded=False):
             s1, s2 = st.columns(2)
             s1.markdown("**Knowledge Transition**\n" + "\n".join("- " + x for x in sp["knowledge_transition"]))
