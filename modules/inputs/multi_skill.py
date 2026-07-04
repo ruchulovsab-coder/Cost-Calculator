@@ -1630,11 +1630,24 @@ def _render_transition():
         key="transition_inc_w", help="Shadow & Reverse-Shadow assume live operations to shadow.")
 
     # ── Per-phase duration / include / overlap editor ──
-    overlap = st.session_state.get("transition_sequencing") == "Overlap"
+    seq = st.session_state.get("transition_sequencing")
+    overlap = seq == "Overlap"
     phases = st.session_state.get("transition_phase_cfg") or default_phase_config()
-    with st.expander("Phase durations & sequencing", expanded=False):
+    # Overlap only changes the timeline via each phase's lead (weeks). Those default to 0, and
+    # overlap-with-0-lead == sequential — so on the first switch to Overlap, seed a visible default
+    # (1 wk) on non-first phases so the Gantt actually moves. (Only when all leads are still 0, so
+    # we never clobber the user's own leads.)
+    if overlap and st.session_state.get("_transition_seq_prev") != "Overlap" \
+            and all(int(p.get("overlap_lead_weeks", 0) or 0) == 0 for p in phases[1:]):
+        for p in phases[1:]:
+            p["overlap_lead_weeks"] = 1
+            st.session_state.pop(f"tr_lead_{p['key']}", None)   # let the widget pick up the seed
+    st.session_state["_transition_seq_prev"] = seq
+
+    with st.expander("Phase durations & sequencing", expanded=overlap):
         st.caption("Durations in weeks. Uncheck a phase to exclude it. "
-                   + ("Overlap lead = weeks a phase starts before the previous ends." if overlap else ""))
+                   + ("**Overlap lead** = weeks a phase starts *before* the previous ends "
+                      "(set 0 for no overlap on that phase)." if overlap else ""))
         for ph in phases:
             cols = st.columns([3, 1.3, 1.2, 1.6])
             cols[0].markdown(f"**{ph['name']}**  \n<span style='color:#7A8A99;font-size:.78rem'>{ph['band']}</span>",
