@@ -48,10 +48,15 @@ Plan (KT/Shadow/Reverse-Shadow/Stabilization + exit/sign-off per estimated skill
 Nagarro) · Deliverables & Quality Gates · Best-practice artifacts · Advisories.
 
 ## Phased roadmap
-- **P0+P1 (done, this cut)** — timeline solver + framework catalog + tab (Gantt, phase activities,
-  skill-wise plan, RACI, deliverables, advisories) + Excel appendix. No LLM.
-- **P2** — richer per-skill detail, readiness checklists/quality gates, RAID register & comms/
-  governance artifacts; refine content per real RFPs.
+- **P0+P1 (done — tagged `v1.61` on `testing`)** — timeline solver + framework catalog + tab (Gantt,
+  phase activities, skill-wise plan, RACI, deliverables, advisories) + Excel appendix. No LLM.
+- **P2 (next, in this order)** — (1) **family-aware per-skill detail** (KT/Shadow/etc. activities vary
+  by skill family — Network/Compute/DB/Platform/Cloud/Security — falling back to the generic template),
+  then (2) **readiness checklists / quality gates** (each milestone M1–M4 + Go-Live becomes a
+  structured Go/No-Go checklist), then (3) **RAID register & comms/governance artifacts** (promote the
+  flat best-practice list into structured RAID + governance-cadence tables, seeded from the per-phase
+  risks/dependencies already in the catalog). Additive, deterministic, neutral migration; refine
+  content per real RFPs.
 - **P3** — PowerPoint proposal appendix.
 - **P4** — optional LLM prose enrichment (validator-gated).
 - **P5 (no redesign)** — transition costing (separate priced line, never perturbs run-rate),

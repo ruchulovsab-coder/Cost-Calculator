@@ -16,7 +16,35 @@ to that exact snapshot, so you can always return to it no matter what changes la
   (repo Variable `RATECARD_BLOB`); it is **not** stored in git.
 
 ## Stable versions (latest first)
-- **`v1.57`** — *current stable (production).* **Multi-skill classification-driven estimation +
+- **`v1.61`** — *current restore point (on `testing`, not yet in production).* **Transition Strategy
+  tab — first cut (deterministic, ITIL-aligned).** New multi-skill tab **7 · Transition** derives a
+  proposal-ready transition plan **read-only** from `compute_multi_skill_model` + a few date inputs:
+  a dynamic **Gantt** (7 ITIL-aligned phases + M1–M4 + Go-Live), **phase activities** (objectives/
+  deliverables/entry-exit/risks/dependencies/RACI responsibilities), a **skill-wise plan**
+  (KT→Shadow→Reverse-Shadow→Stabilization per estimated skill), a Customer+Nagarro **RACI**,
+  **deliverables & quality gates**, best-practice artifacts and **advisories**. The framework is
+  encoded **as data** in `modules/transition/catalog.py`; a pure **timeline solver**
+  (`modules/transition/timeline.py`) resolves dates from per-phase durations + sequencing
+  (Sequential/Overlap) and flags conflicts vs configured overall-duration/Go-Live as advisories
+  (never silently corrects); `builder.py` composes; `modules/outputs/transition_excel.py` adds an
+  Excel appendix. Deterministic-first, **no LLM** in this cut. Read-only projection enforced by
+  `test_engine_does_not_import_transition`; RACI validity (exactly one Accountable) enforced.
+  Design: `docs/transition-strategy-approach.md`. 152 tests pass. **Next: P2** (family-aware skill
+  detail → readiness checklists → RAID + governance tables).
+- **`v1.60`** — *current stable (production).* **SDM as a fixed allocation of one SDM FTE (Option A)
+  + Shift Plan roster.** SDM cost = a fixed *fraction of one SDM FTE* (not a % of engagement effort),
+  carried unrounded through cost/price. New multi-skill tab **6 · Shift Plan** derives a
+  deterministic coverage/shift plan from the estimate: **P1** coverage design (⌈FTE⌉ seats per
+  skill×level, mapped to Morning/Evening/Night/Day/On-Call windows; L2/L3 24×7 ⇒ On-Call) and **P2**
+  a person×weekday rotational calendar in the sample roster format (anonymous seats, no rate),
+  dual-clock aware, AI-optional. Read-only projection of the engine (same architecture as Transition).
+- **`v1.59`** — **Estimate-level Lock + Approve & Export basis tables.** A single `ms_locked` flag
+  (persisted in initial state) with a header Lock/Unlock toggle + banner; when locked, value inputs
+  and structural buttons are disabled (exports/nav/downloads stay usable, calcs visible). Approve &
+  Export gains the RFP name, a Skills table, a Workload Summary and the Cost-by-Skill table.
+- **`v1.58`** — **Docs/restore checkpoint + rate-card gitignore.** RESTORE.md brought current through
+  v1.57; the real rate card (`genus_rate_card.xlsx`) confirmed gitignored (blob-loaded at runtime).
+- **`v1.57`** — **Multi-skill classification-driven estimation +
   CloudOps grades + Raw/Rounded transparency.** Workload is classification-driven (incidents P1–P4,
   alerts incl. Informational=0 effort, ITIL change types) with per-class AHT + recommended L1/L2/L3
   routing (deterministic defaults, editable); `modules/recommend.py` routing/architect/pyramid
@@ -720,6 +748,10 @@ git tag -a v1.54 -m "v1.54: multi-skill parity P3a — Approve & Export tab"; gi
 git tag -a v1.55 -m "v1.55: demo-seed — pre-fill newly added skills (TEMPORARY testing aid)"; git push origin v1.55
 git tag -a v1.56 -m "v1.56: parity P3b + active-levels fix + staging + demo-seed no-alerts"; git push origin v1.56
 git tag -a v1.57 -m "v1.57: classification-driven estimation + CloudOps grades + Raw/Rounded transparency"; git push origin v1.57
+git tag -a v1.58 -m "v1.58: docs/restore checkpoint through v1.57 + rate-card gitignore"; git push origin v1.58
+git tag -a v1.59 -m "v1.59: estimate Lock + Approve & Export basis tables (RFP name/Skills/Workload/Cost-by-Skill)"; git push origin v1.59
+git tag -a v1.60 -m "v1.60: SDM Option A (fixed SDM FTE) + Shift Plan roster (P1 coverage + P2 rotational calendar)"; git push origin v1.60
+git tag -a v1.61 -m "v1.61: Transition Strategy tab — first cut (deterministic, ITIL-aligned)"; git push origin v1.61
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.
