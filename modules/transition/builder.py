@@ -78,6 +78,9 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
     """model = compute_multi_skill_model(...) output; config = TransitionConfig dict.
     Deterministic: same model + config → identical plan."""
     phases = config.get("phases") or default_phase_config()
+    # Steady State is BAU, not a transition phase — drop any 'ongoing' phase a legacy saved
+    # config might still carry, so it never lands on the Gantt.
+    phases = [p for p in phases if not p.get("ongoing")]
     seq = config.get("sequencing", "Sequential")
     # The start→Go-Live window drives the schedule: scale the phases up to Go-Live so Reverse-Shadow
     # ends on the configured Go-Live date (phases after Go-Live keep their durations). So changing

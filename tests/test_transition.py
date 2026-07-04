@@ -212,6 +212,27 @@ def test_acceptance_gate_per_skill():
     assert "Go" in plan["signoff_decision"]
 
 
+def test_steady_state_not_in_transition():
+    """Steady State is BAU — it must not be a transition phase (Gantt/activities/deliverables/RACI),
+    and the transition ends at Stabilization (M4)."""
+    assert all(p["key"] != "steady_state" for p in C.PHASES)
+    assert C.PHASES[-1]["key"] == "stabilization" and C.PHASES[-1]["milestone"] == "M4"
+    model = compute_multi_skill_model(_multi_1skill_state())
+    plan = build_transition_plan(model, _cfg())
+    assert all(r["key"] != "steady_state" for r in plan["timeline"])
+    assert all(p["key"] != "steady_state" for p in plan["phase_activities"])
+    assert all(row["phase"] != "steady_state" for row in plan["raci"])
+    assert plan["timeline"][-1]["key"] == "stabilization"
+
+    # A legacy saved config that still carries an 'ongoing' steady_state phase is dropped.
+    legacy = default_phase_config() + [
+        {"key": "steady_state", "name": "Steady State", "band": "Service Operations",
+         "duration_weeks": 4, "included": True, "overlap_lead_weeks": 0,
+         "milestone": None, "ongoing": True}]
+    plan2 = build_transition_plan(model, _cfg(phases=legacy))
+    assert all(r["key"] != "steady_state" for r in plan2["timeline"])
+
+
 def test_excluded_phase_drops_from_plan():
     phases = default_phase_config()
     for p in phases:

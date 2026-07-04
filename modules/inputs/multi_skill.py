@@ -1746,6 +1746,9 @@ def _render_transition():
             for m in plan["milestones"])
         if chips:
             st.markdown("<div style='margin-top:6px'>" + chips + "</div>", unsafe_allow_html=True)
+        st.caption("▸ Transition completes at **M4** (end of Stabilization). The engagement then "
+                   "enters **Steady-State Service Delivery & Continuous Improvement** (BAU) — governed "
+                   "by the AMS contract, not part of this transition timeline.")
     st.divider()
 
     # ── Phase activities ──

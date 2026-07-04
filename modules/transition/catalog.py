@@ -1,15 +1,17 @@
 """The transition framework encoded as data (not code).
 
 Transcribes assets/transition framework.png — "Operational Establishment & Stabilization":
-7 ITIL-aligned phases (Service Strategy → Design → Transition → Operations), milestones M1–M4 +
-Go-Live, per-phase objectives/deliverables/entry-exit/risks/dependencies/responsibilities, a
+6 ITIL-aligned TRANSITION phases (Service Strategy → Design → Transition → Operations), milestones
+M1–M4 + Go-Live, per-phase objectives/deliverables/entry-exit/risks/dependencies/responsibilities, a
 Customer/Nagarro RACI, and per-skill KT→Shadow→Reverse-Shadow→Stabilization activity templates.
-Everything downstream (builder, UI, Excel) reads from here, so the methodology stays faithful and
-editable in one place."""
+Steady-State Service Delivery & CSI is BAU — it begins AFTER the transition completes (M4), so it is
+NOT a transition phase and is not on the Gantt. Everything downstream (builder, UI, Excel) reads from
+here, so the methodology stays faithful and editable in one place."""
 from __future__ import annotations
 
-# ── Phases (ordered) ──────────────────────────────────────────────────────────
-# milestone marks the GATE at the end of the phase; ongoing = continuous (steady state).
+# ── Transition phases (ordered) ───────────────────────────────────────────────
+# milestone marks the GATE at the end of the phase. Transition ends at Stabilization (M4); the
+# engagement then enters Steady-State Service Delivery & CSI (BAU — deliberately NOT a phase here).
 PHASES = [
     {"key": "assessment", "name": "Assessment & Discovery", "band": "Service Strategy",
      "default_weeks": 2, "milestone": None},
@@ -23,9 +25,11 @@ PHASES = [
      "default_weeks": 4, "milestone": "Go-Live"},
     {"key": "stabilization", "name": "Stabilization", "band": "Service Operations",
      "default_weeks": 4, "milestone": "M4"},
-    {"key": "steady_state", "name": "Steady State Service Delivery & Continuous Improvement",
-     "band": "Service Operations", "default_weeks": 4, "milestone": None, "ongoing": True},
 ]
+
+# BAU destination after the transition completes (M4) — shown as a note, not a Gantt phase.
+POST_TRANSITION = {"name": "Steady State Service Delivery & Continuous Improvement",
+                   "band": "Service Operations"}
 
 MILESTONE_GATES = {
     "M1": "Transition Plan & Scope baselined",
@@ -106,17 +110,6 @@ PHASE_DETAIL = {
         "dependencies": ["Customer confirms KPI/SLA baselines"],
         "customer_resp": ["Review KPI/SLA reports", "Confirm stabilization exit"],
         "nagarro_resp": ["Run independent operations", "Baseline & report KPIs/SLAs"],
-    },
-    "steady_state": {
-        "objectives": ["Deliver SLA-based managed services", "Drive continuous improvement"],
-        "deliverables": ["SLA-based support (full penalties apply)", "ITIL V4/V3 support documentation",
-                         "CSI register"],
-        "entry": ["Stabilization exit approved (M4)"],
-        "exit": ["Ongoing — governed by the AMS contract"],
-        "risks": ["Scope creep", "Continuous-improvement backlog not prioritised"],
-        "dependencies": ["Customer governance participation"],
-        "customer_resp": ["Participate in service reviews", "Prioritise CSI initiatives"],
-        "nagarro_resp": ["Deliver to SLA", "Run helpdesk/SR management & application support"],
     },
 }
 
@@ -387,9 +380,6 @@ RACI = [
     {"activity": "KPI/SLA baselining & stabilization exit (M4)", "phase": "stabilization",
      "raci": {"Business/Service Owner": "A", "Customer PM": "C", "Delivery Mgr / SDM": "R",
               "PMO": "C", "L2": "I", "L3": "I"}},
-    {"activity": "Steady-state SLA delivery & CSI", "phase": "steady_state",
-     "raci": {"Business/Service Owner": "A", "Delivery Mgr / SDM": "R", "L1": "R", "L2": "R",
-              "L3": "R", "Architect": "C", "PMO": "C"}},
 ]
 
 # ── Best-practice artifacts (enterprise RFP extras; lightweight) ───────────────
