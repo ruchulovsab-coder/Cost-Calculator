@@ -1927,7 +1927,6 @@ def _render_transition_cost():
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
     from config.settings import TRANSITION_DEFAULT_UTILISATION, TRANSITION_DEFAULT_SDM_FTE
-    from modules.transition.builder import build_transition_plan
     from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_team,
                                             compute_transition_cost)
     callout("A one-time <strong>transition cost</strong> from a leaner, user-configurable transition "
@@ -1940,11 +1939,14 @@ def _render_transition_cost():
     steady = steady_state_seats(model)
     disabled = _locked()
 
-    # ── Config strip — duration comes from the Transition tab's calculated timeline (read-only) ──
-    weeks = float(build_transition_plan(model, _transition_config()).get("span_weeks", 0) or 0)
+    # ── Config strip — duration = the Transition tab's "Duration → Go-Live" (read-only) ──
+    _ts = st.session_state.get("transition_start")
+    _gl = st.session_state.get("transition_go_live")
+    weeks = (round((_gl - _ts).days / 7.0, 1) if (_ts and _gl and _gl > _ts)
+             else float(st.session_state.get("transition_duration_weeks", 0) or 0))
     c1, c2, c3 = st.columns(3)
     c1.metric("Transition duration", f"{weeks:g} wks")
-    c1.caption("From the **Transition** tab (calculated timeline). Change the start / Go-Live dates there.")
+    c1.caption("From the **Transition** tab (Duration → Go-Live). Change the start / Go-Live dates there.")
     util = c2.number_input("Utilisation %", min_value=10, max_value=100, step=5,
                            value=int(st.session_state.get("transition_cost_util", TRANSITION_DEFAULT_UTILISATION)),
                            key="tc_util_w", disabled=disabled,
