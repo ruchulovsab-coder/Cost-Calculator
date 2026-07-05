@@ -1926,7 +1926,8 @@ def _render_transition_cost():
     if not skills:
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
-    from config.settings import TRANSITION_DEFAULT_UTILISATION, TRANSITION_DEFAULT_SDM_FTE
+    from config.settings import TRANSITION_DEFAULT_SDM_FTE, TRANSITION_PHASE_UTILISATION
+    from modules.transition.builder import build_transition_plan
     from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_team,
                                             compute_transition_cost)
     callout("A one-time <strong>transition cost</strong> from a leaner, user-configurable transition "
@@ -1939,26 +1940,44 @@ def _render_transition_cost():
     steady = steady_state_seats(model)
     disabled = _locked()
 
-    # ── Config strip — duration = the Transition tab's "Duration → Go-Live" (read-only) ──
-    _ts = st.session_state.get("transition_start")
-    _gl = st.session_state.get("transition_go_live")
-    weeks = (round((_gl - _ts).days / 7.0, 1) if (_ts and _gl and _gl > _ts)
-             else float(st.session_state.get("transition_duration_weeks", 0) or 0))
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Transition duration", f"{weeks:g} wks")
-    c1.caption("From the **Transition** tab (Duration → Go-Live). Change the start / Go-Live dates there.")
-    util = c2.number_input("Utilisation %", min_value=10, max_value=100, step=5,
-                           value=int(st.session_state.get("transition_cost_util", TRANSITION_DEFAULT_UTILISATION)),
-                           key="tc_util_w", disabled=disabled,
-                           help="Share of a transition seat's time on the transition (leanness is mostly "
-                                "expressed by fewer seats).")
-    st.session_state["transition_cost_util"] = util
-    sdm_fte = c3.number_input("SDM transition FTE", min_value=0.0, max_value=5.0, step=0.25,
-                              value=float(st.session_state.get("transition_sdm_fte", TRANSITION_DEFAULT_SDM_FTE)),
-                              key="tc_sdm_w", disabled=disabled,
-                              help="Shared Service Delivery Manager effort for transition governance "
-                                   "(planning, reporting, customer coordination, sign-offs).")
+    # ── Phases & duration come from the Transition tab (pre-Go-Live; Stabilization excluded) ──
+    plan = build_transition_plan(model, _transition_config())
+    phases = [r for r in plan.get("timeline", []) if r.get("key") != "stabilization"]
+    total_weeks = round(sum(float(r.get("duration_weeks", 0) or 0) for r in phases), 1)
+
+    c1, c2 = st.columns(2)
+    c1.metric("Transition duration (to Go-Live)", f"{total_weeks:g} wks")
+    c1.caption("Phases & durations from the **Transition** tab (Stabilization excluded).")
+    sdm_fte = c2.number_input(
+        "SDM transition FTE", min_value=0.0, max_value=5.0, step=0.25,
+        value=float(st.session_state.get("transition_sdm_fte", TRANSITION_DEFAULT_SDM_FTE)),
+        key="tc_sdm_w", disabled=disabled,
+        help="Shared SDM effort for transition governance (planning, reporting, customer coordination, "
+             "sign-offs) across the full pre-Go-Live window.")
     st.session_state["transition_sdm_fte"] = sdm_fte
+
+    # ── Per-phase participation (utilisation %; 100% = a full 1 FTE/week) ──
+    section_hdr("📅 Phase Participation")
+    st.caption("Set each phase's utilisation — **100% = a full 1 FTE per week**. Phase weeks come from "
+               "the Transition tab. Transition effort = seats × Σ(phase weeks × utilisation) × 40h.")
+    saved_pu = st.session_state.get("transition_phase_util") or {}
+    phase_util, effective_weeks = {}, 0.0
+    if phases:
+        pcols = st.columns(len(phases))
+        for i, r in enumerate(phases):
+            key = r["key"]
+            dflt = int(saved_pu.get(key, TRANSITION_PHASE_UTILISATION.get(key, 100)))
+            with pcols[i]:
+                st.markdown(f"<div style='font-size:.78rem;line-height:1.2'><strong>{r['name']}</strong>"
+                            f"<br><span style='color:#7A8A99'>{r['duration_weeks']:g} wks</span></div>",
+                            unsafe_allow_html=True)
+                u = st.number_input("util", min_value=0, max_value=100, value=dflt, step=5,
+                                    key=f"tc_pu_{key}_w", label_visibility="collapsed", disabled=disabled)
+            phase_util[key] = int(u)
+            effective_weeks += float(r.get("duration_weeks", 0) or 0) * u / 100.0
+    st.session_state["transition_phase_util"] = phase_util
+    st.caption(f"Utilisation-weighted effort duration: **{effective_weeks:g} wks** of {total_weeks:g} wks.")
+    st.divider()
 
     # ── Per-skill transition team (capped by steady-state; active levels only) ──
     section_hdr("🧩 Transition Team per Skill")
@@ -2001,8 +2020,8 @@ def _render_transition_cost():
     st.divider()
 
     # ── Compute + outputs ──
-    res = compute_transition_cost(state, team=new_team, weeks=weeks, utilisation_pct=util,
-                                  sdm_fte=sdm_fte)
+    res = compute_transition_cost(state, team=new_team, effective_weeks=effective_weeks,
+                                  sdm_weeks=total_weeks, sdm_fte=sdm_fte)
     st.session_state["_transition_cost_res"] = res
 
     if res["total_cost"] <= 0 and res["total_hours"] > 0:

@@ -58,7 +58,8 @@ def test_cost_uses_capped_team_and_reconciles():
     steady = steady_state_seats(model)
     # Ask for more than steady on every level; it must cap.
     team = {sid: {lvl: 99 for lvl in cap} for sid, cap in steady.items()}
-    res = compute_transition_cost(state, team=team, weeks=10, utilisation_pct=100, sdm_fte=1.0)
+    # effective_weeks=10 (e.g. Σ phase weeks × util); SDM works the full window sdm_weeks=10.
+    res = compute_transition_cost(state, team=team, effective_weeks=10, sdm_weeks=10, sdm_fte=1.0)
 
     wh = 40
     exp_total_hours = exp_total_cost = 0.0
@@ -66,32 +67,33 @@ def test_cost_uses_capped_team_and_reconciles():
         cat = model["per_skill"][sid]["genus_category"]
         for lvl, mx in cap.items():
             seats = mx                                  # capped to steady
-            hrs = seats * 10 * wh * 1.0
+            hrs = seats * 10 * wh                        # seats × effective_weeks × 40
             rate = state["rates_by_category"][cat][lvl]
             exp_total_hours += hrs
             exp_total_cost += hrs * rate
             assert res["per_skill"][sid]["levels"][lvl]["seats"] == mx
-    # + SDM
+    # + SDM (full window)
     exp_total_hours += 1.0 * 10 * wh
     exp_total_cost += 1.0 * 10 * wh * state["sdm_rate_inr"]
     assert abs(res["total_hours"] - exp_total_hours) < 1e-6
     assert abs(res["total_cost"] - exp_total_cost) < 1e-6
-    # by-level + per-skill roll up to the totals
-    assert abs(sum(l["cost"] for lv in res["by_level"].values() for l in [lv]) + res["sdm"]["cost"]
+    # by-level + SDM roll up to the total cost
+    assert abs(sum(lv["cost"] for lv in res["by_level"].values()) + res["sdm"]["cost"]
                - res["total_cost"]) < 1e-6
 
 
-def test_utilisation_and_weeks_scale_linearly():
+def test_phase_participation_scales_effort():
+    """effective_weeks is the utilisation-weighted duration; halving it halves team effort."""
     state = _state()
-    a = compute_transition_cost(state, team=default_transition_seats(
-        steady_state_seats(compute_multi_skill_model({**state, "fte_basis": "rounded"}))),
-        weeks=10, utilisation_pct=100, sdm_fte=0)
-    b = compute_transition_cost(state, team=default_transition_seats(
-        steady_state_seats(compute_multi_skill_model({**state, "fte_basis": "rounded"}))),
-        weeks=20, utilisation_pct=50, sdm_fte=0)
-    # 20 weeks @ 50% == 10 weeks @ 100% (same seats, sdm=0)
-    assert abs(a["total_hours"] - b["total_hours"]) < 1e-6
-    assert abs(a["total_cost"] - b["total_cost"]) < 1e-6
+    team = default_transition_seats(steady_state_seats(
+        compute_multi_skill_model({**state, "fte_basis": "rounded"})))
+    full = compute_transition_cost(state, team=team, effective_weeks=10, sdm_weeks=10, sdm_fte=0)
+    half = compute_transition_cost(state, team=team, effective_weeks=5, sdm_weeks=10, sdm_fte=0)
+    assert abs(full["total_hours"] - 2 * half["total_hours"]) < 1e-6
+    assert abs(full["total_cost"] - 2 * half["total_cost"]) < 1e-6
+    # FTE is the average over the window: full window @ effective 10/10 → seats; @ 5/10 → half.
+    any_skill = next(iter(full["per_skill"].values()))
+    assert any_skill["fte"] > 0
 
 
 def test_deterministic_and_does_not_perturb_run_rate():
@@ -99,8 +101,8 @@ def test_deterministic_and_does_not_perturb_run_rate():
     before = compute_multi_skill_model(state)["total_fte"]
     team = default_transition_seats(steady_state_seats(
         compute_multi_skill_model({**state, "fte_basis": "rounded"})))
-    r1 = compute_transition_cost(state, team=team, weeks=12, utilisation_pct=100, sdm_fte=1.0)
-    r2 = compute_transition_cost(state, team=team, weeks=12, utilisation_pct=100, sdm_fte=1.0)
+    r1 = compute_transition_cost(state, team=team, effective_weeks=8, sdm_weeks=12, sdm_fte=1.0)
+    r2 = compute_transition_cost(state, team=team, effective_weeks=8, sdm_weeks=12, sdm_fte=1.0)
     assert r1 == r2                                     # deterministic
     after = compute_multi_skill_model(state)["total_fte"]
     assert before == after                              # run-rate untouched
@@ -111,6 +113,6 @@ def test_excel_builds():
     state = _state()
     team = default_transition_seats(steady_state_seats(
         compute_multi_skill_model({**state, "fte_basis": "rounded"})))
-    res = compute_transition_cost(state, team=team, weeks=12, utilisation_pct=100, sdm_fte=1.0)
+    res = compute_transition_cost(state, team=team, effective_weeks=9, sdm_weeks=12, sdm_fte=1.0)
     data = build_transition_cost_workbook(res, "Demo RFP")
     assert data[:2] == b"PK" and len(data) > 1500

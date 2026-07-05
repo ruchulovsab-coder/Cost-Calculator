@@ -60,26 +60,32 @@ def reconcile_team(team: Dict[str, Dict[str, int]],
 
 
 def compute_transition_cost(state: Dict[str, Any], *, team: Dict[str, Dict[str, int]],
-                            weeks: float, utilisation_pct: float, sdm_fte: float,
+                            effective_weeks: float, sdm_weeks: float, sdm_fte: float,
                             weekly_hours: float = TRANSITION_WEEKLY_HOURS) -> Dict[str, Any]:
-    """Transition cost breakdown. `team` = {skill_id: {level: seats}} (capped here defensively).
+    """Transition cost breakdown, phase-based. `team` = {skill_id: {level: seats}} (capped here).
 
-    hours(skill,level) = seats × weeks × weekly_hours × utilisation;  cost = hours × genus rate.
-    SDM is a shared, independent effort: hours = sdm_fte × weeks × weekly_hours (at full allocation);
-    cost = hours × SDM rate. Deterministic: same inputs → identical output.
+    The per-phase utilisation is collapsed by the caller into `effective_weeks`
+    (= Σ phase_weeks × phase_util%). Team hours(skill,level) = seats × effective_weeks × weekly_hours;
+    cost = hours × genus rate. The shared SDM works the full pre-Go-Live window (`sdm_weeks`) at its
+    configured FTE: hours = sdm_fte × sdm_weeks × weekly_hours. FTE is reported as the average over the
+    window (hours / (sdm_weeks × weekly_hours)). Deterministic: same inputs → identical output.
     """
     model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
     rates_by_cat = state.get("rates_by_category", {}) or {}
     sdm_rate = float(state.get("sdm_rate_inr", 0) or 0)
-    weeks = max(0.0, float(weeks or 0))
-    util = max(0.0, float(utilisation_pct or 0)) / 100.0
+    eff = max(0.0, float(effective_weeks or 0))
+    sdmw = max(0.0, float(sdm_weeks or 0))
     wh = max(0.0, float(weekly_hours or 0))
-    per_seat_hours = weeks * wh * util
+    per_seat_hours = eff * wh
+    denom = sdmw * wh
+
+    def _fte(hours):
+        return (hours / denom) if denom > 0 else 0.0
 
     steady = steady_state_seats(model)
     per_skill: Dict[str, Any] = {}
     by_level = {lvl: {"seats": 0, "hours": 0.0, "cost": 0.0} for lvl in LEVELS}
-    total_hours = total_cost = total_fte = 0.0
+    total_hours = total_cost = 0.0
 
     for sid, ps in (model.get("per_skill", {}) or {}).items():
         cat = ps.get("genus_category")
@@ -96,25 +102,25 @@ def compute_transition_cost(state: Dict[str, Any], *, team: Dict[str, Dict[str, 
             hrs = seats * per_seat_hours
             cost = hrs * rate
             levels_out[lvl] = {"seats": seats, "steady": cap[lvl], "rate_inr": rate,
-                               "hours": hrs, "cost": cost, "fte": seats * util}
+                               "hours": hrs, "cost": cost, "fte": _fte(hrs)}
             s_hours += hrs; s_cost += cost; s_seats += seats
             by_level[lvl]["seats"] += seats
             by_level[lvl]["hours"] += hrs
             by_level[lvl]["cost"] += cost
         per_skill[sid] = {"name": ps.get("name") or sid, "genus_category": cat,
                           "levels": levels_out, "seats": s_seats, "hours": s_hours,
-                          "cost": s_cost, "fte": s_seats * util}
-        total_hours += s_hours; total_cost += s_cost; total_fte += s_seats * util
+                          "cost": s_cost, "fte": _fte(s_hours)}
+        total_hours += s_hours; total_cost += s_cost
 
     sdm_fte = max(0.0, float(sdm_fte or 0))
-    sdm_hours = sdm_fte * weeks * wh
+    sdm_hours = sdm_fte * sdmw * wh
     sdm_cost = sdm_hours * sdm_rate
-    total_hours += sdm_hours; total_cost += sdm_cost; total_fte += sdm_fte
+    total_hours += sdm_hours; total_cost += sdm_cost
 
     return {
-        "weeks": weeks, "utilisation_pct": float(utilisation_pct or 0), "weekly_hours": wh,
+        "weeks": sdmw, "effective_weeks": eff, "weekly_hours": wh,
         "per_skill": per_skill, "by_level": by_level,
         "sdm": {"fte": sdm_fte, "hours": sdm_hours, "rate_inr": sdm_rate, "cost": sdm_cost},
-        "total_hours": total_hours, "total_cost": total_cost, "total_fte": total_fte,
+        "total_hours": total_hours, "total_cost": total_cost, "total_fte": _fte(total_hours),
         "steady_seats": steady,
     }
