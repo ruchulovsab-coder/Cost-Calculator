@@ -1693,14 +1693,20 @@ def _render_transition():
     st.divider()
 
     # ── Summary KPIs (at-a-glance) ──
+    _tx_weeks = round(sum(float(r.get("duration_weeks", 0) or 0)
+                          for r in plan["timeline"] if r.get("key") != "stabilization"), 1)
+    _stab_weeks = round(float(plan.get("span_weeks", 0) or 0) - _tx_weeks, 1)
     _k = st.columns(5)
-    _k[0].metric("Span", f"{plan['span_weeks']:g} wks")
+    _k[0].metric("Transition (to Go-Live)", f"{_tx_weeks:g} wks",
+                 help="Assessment → Reverse-Shadow — the transition period, and the basis for the "
+                      "Transition Cost. Stabilization is post-Go-Live hypercare, outside the transition.")
     _k[1].metric("Phases", f"{len(plan['timeline'])}")
     _k[2].metric("Milestones", f"{len(plan['milestones'])}")
     _k[3].metric("Skills", f"{len(plan['skill_plans'])}")
     _k[4].metric("RAID items", f"{len(plan['raid_register'])}")
-    st.caption("The timeline is always visible below; the detailed sections are collapsed — "
-               "expand what you need.")
+    st.caption(f"Transition period **{_tx_weeks:g} wks** (to Go-Live) — the basis for Transition Cost. "
+               f"Full timeline incl. **Stabilization** (post-Go-Live hypercare, {_stab_weeks:g} wks — "
+               f"outside the transition): {plan['span_weeks']:g} wks. Detailed sections below are collapsed.")
     st.divider()
 
     # ── Gantt ──
@@ -1757,9 +1763,9 @@ def _render_transition():
             for m in plan["milestones"])
         if chips:
             st.markdown("<div style='margin-top:6px'>" + chips + "</div>", unsafe_allow_html=True)
-        st.caption("▸ Transition completes at **M4** (end of Stabilization). The engagement then "
-                   "enters **Steady-State Service Delivery & Continuous Improvement** (BAU) — governed "
-                   "by the AMS contract, not part of this transition timeline.")
+        st.caption("▸ Services commence at **Go-Live** (Reverse-Shadow sign-off) — the end of the "
+                   "priced transition period. **Stabilization** (to M4) is post-Go-Live hypercare and "
+                   "**Steady-State** (BAU) follows — both **outside the transition cost**.")
     st.divider()
 
     # ── Phase activities ──
