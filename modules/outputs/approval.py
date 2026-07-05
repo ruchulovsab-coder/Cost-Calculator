@@ -24,8 +24,27 @@ def _email_artifacts(ref):
     body_html = dashboard_summary_html(model)
     attachments = []
     is_multi = st.session_state.get("estimation_mode") == "multi"
+    proj = (ref.get("project") or "estimate").replace(" ", "_")
+
+    # Multi-skill: append the one-time Transition Cost as a separate line item (body + summary).
+    tres = None
+    if is_multi:
+        try:
+            from modules.inputs.multi_skill import _transition_cost_result
+            from modules.notify.email_templates import transition_cost_summary_html
+            tres = _transition_cost_result()
+            if tres and float(tres.get("total_cost", 0) or 0) > 0:
+                body_html = (body_html or "") + transition_cost_summary_html(tres)
+                summary = (summary or "") + (
+                    "\n\nTransition Cost (one-time, billed separately): "
+                    f"duration {tres['weeks']:g} wks, effort {tres['total_hours']:,.0f} hrs, "
+                    f"cost ₹{tres['total_cost']:,.0f}, selling ₹{tres['total_selling']:,.0f}.")
+            else:
+                tres = None
+        except Exception:
+            tres = None
+
     try:
-        proj = (ref.get("project") or "estimate").replace(" ", "_")
         if is_multi:
             from modules.outputs.multi_excel_export import generate_multi_excel_report
             xbytes = generate_multi_excel_report()
@@ -39,6 +58,19 @@ def _email_artifacts(ref):
         })
     except Exception:
         pass
+
+    # Attach the Transition Cost workbook too (separate one-time line).
+    if tres:
+        try:
+            from modules.outputs.transition_excel import build_transition_cost_workbook
+            attachments.append({
+                "name": f"{proj}_v{ref.get('version')}_transition_cost.xlsx",
+                "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "bytes": build_transition_cost_workbook(tres, ref.get("project", "")),
+            })
+        except Exception:
+            pass
+
     return summary, body_html, attachments
 
 

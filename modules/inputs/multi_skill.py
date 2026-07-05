@@ -1159,6 +1159,47 @@ def _render_excel_export():
                            key="ms_ax_xlsx_dl")
 
 
+def _transition_cost_result():
+    """Compute the one-time Transition Cost from the current session, or None. Shared by the
+    Transition Cost tab, the Approve & Export summary, and the approval email so all three agree."""
+    if not st.session_state.get("skills"):
+        return None
+    try:
+        from modules.transition.builder import build_transition_plan
+        from modules.transition.costing import (steady_state_seats, reconcile_allocation,
+                                                reconcile_sdm, compute_transition_cost)
+        state = _build_multi_state()
+        model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+        plan = build_transition_plan(model, _transition_config())
+        phases = [r for r in plan.get("timeline", []) if r.get("key") != "stabilization"]
+        if not phases:
+            return None
+        pkeys = [r["key"] for r in phases]
+        pweeks = {r["key"]: float(r.get("duration_weeks", 0) or 0) for r in phases}
+        steady = steady_state_seats(model)
+        alloc = reconcile_allocation(st.session_state.get("transition_alloc") or {}, steady, pkeys)
+        sdm = reconcile_sdm(st.session_state.get("transition_sdm_alloc") or {}, pkeys)
+        return compute_transition_cost(state, alloc=alloc, sdm_alloc=sdm, phase_weeks=pweeks)
+    except Exception:
+        return None
+
+
+def _render_transition_cost_summary():
+    """Transition Cost as a one-time, separate line in the Approve & Export management summary."""
+    tres = _transition_cost_result()
+    if not tres or float(tres.get("total_cost", 0) or 0) <= 0:
+        return
+    section_hdr("💸 Transition Cost (one-time)")
+    tk = st.columns(4)
+    tk[0].metric("Duration", f"{tres['weeks']:g} wks")
+    tk[1].metric("Hours", f"{tres['total_hours']:,.0f}")
+    tk[2].metric("Transition cost", _inr(tres["total_cost"]))
+    tk[3].metric(f"Selling ({tres['margin_pct']:.0f}%)", _inr(tres["total_selling"]))
+    st.caption("A **separate one-time line item** — billed separately; it does **not** affect the "
+               "monthly run-rate. Configure it on the **Transition Cost** tab.")
+    st.divider()
+
+
 def _render_approve_export():
     section_hdr("✅ Approve & Export")
     skills = st.session_state.get("skills", [])
@@ -1195,6 +1236,9 @@ def _render_approve_export():
     # Management summary — per-skill effort/FTE by level, coverage, Raw & Rounded FTE.
     _render_management_summary(state)
     st.divider()
+
+    # Transition cost (one-time; separate line — never in the monthly run-rate).
+    _render_transition_cost_summary()
 
     # Raw vs Rounded comparison (folded in here from the former standalone tab).
     _render_raw_vs_rounded()
@@ -1236,6 +1280,7 @@ def render_multi_approve_export(review: bool = False):
         st.divider()
         _render_management_summary(state)
         st.divider()
+        _render_transition_cost_summary()
         _render_raw_vs_rounded()
         st.divider()
     from modules.outputs.approval import render_approval_panel

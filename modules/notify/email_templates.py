@@ -120,6 +120,23 @@ def dashboard_summary_html(model) -> str:
             + _table("Financial Summary", fin_rows))
 
 
+def transition_cost_summary_html(tres) -> str:
+    """Multi-skill Transition Cost as a separate one-time line block for the approval email.
+    Inline styles only. '' when there is no transition cost."""
+    if not tres or float(tres.get("total_cost", 0) or 0) <= 0:
+        return ""
+    rows = (
+        _sum_row("Transition Duration", f"{tres.get('weeks', 0):g} wks")
+        + _sum_row("Transition Effort", f"{float(tres.get('total_hours', 0) or 0):,.0f} hrs")
+        + _sum_row("Transition Cost (delivery)", _inr(tres.get("total_cost")), bold=True)
+        + _sum_row(f"Transition Selling ({float(tres.get('margin_pct', 0) or 0):.0f}% margin)",
+                   _inr(tres.get("total_selling")), bold=True))
+    return (f'<div style="font-weight:bold;color:{THEME["navy"]};margin:16px 0 6px">'
+            'Transition Cost (one-time — billed separately, not in the monthly run-rate)</div>'
+            '<table role="presentation" cellpadding="0" cellspacing="0" '
+            f'style="width:100%;border-collapse:collapse;font-size:14px">{rows}</table>')
+
+
 def review_request(project: str, version, link: str, requested_by: str = "",
                    summary=None, body_html: str = ""):
     """Build (subject, plain_text, html) for an approval-review request email.
