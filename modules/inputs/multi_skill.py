@@ -1926,13 +1926,13 @@ def _render_transition_cost():
     if not skills:
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
-    from config.settings import TRANSITION_DEFAULT_SDM_FTE, TRANSITION_PHASE_UTILISATION
     from modules.transition.builder import build_transition_plan
-    from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_team,
-                                            compute_transition_cost)
-    callout("A one-time <strong>transition cost</strong> from a leaner, user-configurable transition "
-            "team per skill — <strong>capped by the steady-state team</strong> — plus a shared SDM for "
-            "governance. This is a separate line and <strong>never changes the monthly run-rate</strong>.",
+    from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_allocation,
+                                            reconcile_sdm, compute_transition_cost)
+    callout("Enter, per <strong>transition phase</strong>, how much of each resource joins — as a "
+            "<strong>fraction of a full resource</strong> (0.25 = 25%, 0.5 = 50%, 1 = full) for "
+            "L1/L2/L3/Architect per skill, plus a shared <strong>SDM</strong>. Capped by the "
+            "steady-state team. This is a separate line and <strong>never changes the run-rate</strong>.",
             "info")
 
     state = _build_multi_state()
@@ -1940,134 +1940,137 @@ def _render_transition_cost():
     steady = steady_state_seats(model)
     disabled = _locked()
 
-    # ── Phases & duration come from the Transition tab (pre-Go-Live; Stabilization excluded) ──
+    # ── Phases & durations from the Transition tab (pre-Go-Live; Stabilization excluded) ──
     plan = build_transition_plan(model, _transition_config())
     phases = [r for r in plan.get("timeline", []) if r.get("key") != "stabilization"]
-    total_weeks = round(sum(float(r.get("duration_weeks", 0) or 0) for r in phases), 1)
+    phase_keys = [r["key"] for r in phases]
+    phase_weeks = {r["key"]: float(r.get("duration_weeks", 0) or 0) for r in phases}
+    total_weeks = round(sum(phase_weeks.values()), 1)
+    if not phases:
+        callout("Set the transition dates on the <strong>Transition</strong> tab first.", "warning")
+        return
 
-    c1, c2 = st.columns(2)
-    c1.metric("Transition duration (to Go-Live)", f"{total_weeks:g} wks")
-    c1.caption("Phases & durations from the **Transition** tab (Stabilization excluded).")
-    sdm_fte = c2.number_input(
-        "SDM transition FTE", min_value=0.0, max_value=5.0, step=0.25,
-        value=float(st.session_state.get("transition_sdm_fte", TRANSITION_DEFAULT_SDM_FTE)),
-        key="tc_sdm_w", disabled=disabled,
-        help="Shared SDM effort for transition governance (planning, reporting, customer coordination, "
-             "sign-offs) across the full pre-Go-Live window.")
-    st.session_state["transition_sdm_fte"] = sdm_fte
-
-    # ── Per-phase participation (utilisation %; 100% = a full 1 FTE/week) ──
-    section_hdr("📅 Phase Participation")
-    st.caption("Set each phase's utilisation — **100% = a full 1 FTE per week**. Phase weeks come from "
-               "the Transition tab. Transition effort = seats × Σ(phase weeks × utilisation) × 40h.")
-    saved_pu = st.session_state.get("transition_phase_util") or {}
-    phase_util, effective_weeks = {}, 0.0
-    if phases:
-        pcols = st.columns(len(phases))
-        for i, r in enumerate(phases):
-            key = r["key"]
-            dflt = int(saved_pu.get(key, TRANSITION_PHASE_UTILISATION.get(key, 100)))
-            with pcols[i]:
-                st.markdown(f"<div style='font-size:.78rem;line-height:1.2'><strong>{r['name']}</strong>"
-                            f"<br><span style='color:#7A8A99'>{r['duration_weeks']:g} wks</span></div>",
-                            unsafe_allow_html=True)
-                u = st.number_input("util", min_value=0, max_value=100, value=dflt, step=5,
-                                    key=f"tc_pu_{key}_w", label_visibility="collapsed", disabled=disabled)
-            phase_util[key] = int(u)
-            effective_weeks += float(r.get("duration_weeks", 0) or 0) * u / 100.0
-    st.session_state["transition_phase_util"] = phase_util
-    st.caption(f"Utilisation-weighted effort duration: **{effective_weeks:g} wks** of {total_weeks:g} wks.")
-    st.divider()
-
-    # ── Per-skill transition team (capped by steady-state; active levels only) ──
-    section_hdr("🧩 Transition Team per Skill")
-    tcap1, tcap2 = st.columns([4, 1])
-    tcap1.caption("The **steady-state team is the maximum**. Defaults follow AMS best practice "
-                  "(senior-weighted); adjust each level as needed.")
-    if tcap2.button("↺ AMS defaults", key="tc_reset", type="secondary", disabled=disabled):
-        for sid in steady:
-            for lvl in LEVELS:
-                st.session_state.pop(f"tc_{sid}_{lvl}_w", None)
-        st.session_state.pop("transition_team", None)
+    hcap1, hcap2 = st.columns([4, 1])
+    hcap1.caption(f"Duration **{total_weeks:g} wks** (to Go-Live) from the **Transition** tab · "
+                  "**100% of a resource = a full 1 FTE per week**. Effort = Σ(resource × phase weeks × 40h).")
+    if hcap2.button("↺ AMS defaults", key="tc_reset", type="secondary", disabled=disabled):
+        for kkey in [k for k in list(st.session_state.keys())
+                     if str(k).startswith("tc_a_") or str(k).startswith("tc_sdm_")]:
+            st.session_state.pop(kkey, None)
+        st.session_state.pop("transition_alloc", None)
+        st.session_state.pop("transition_sdm_alloc", None)
         st.rerun()
 
-    team0 = reconcile_team(st.session_state.get("transition_team") or {}, steady)
-    hdr = st.columns([2.4, 1, 1, 1, 1])
-    hdr[0].markdown("**Skill**")
-    for i, lvl in enumerate(LEVELS):
-        hdr[i + 1].markdown(f"**{lvl}**")
-    new_team = {}
+    alloc0 = reconcile_allocation(st.session_state.get("transition_alloc") or {}, steady, phase_keys)
+    sdm0 = reconcile_sdm(st.session_state.get("transition_sdm_alloc") or {}, phase_keys)
+    widths = [1.5] + [1] * len(phases)
+
+    def _phase_header():
+        h = st.columns(widths)
+        h[0].markdown("<span style='font-size:.78rem;color:#7A8A99'>Resource ↓ / Phase →</span>",
+                      unsafe_allow_html=True)
+        for i, r in enumerate(phases):
+            h[i + 1].markdown(f"<div style='font-size:.72rem;line-height:1.15'><strong>{r['name']}</strong>"
+                              f"<br><span style='color:#7A8A99'>{r['duration_weeks']:g} wks</span></div>",
+                              unsafe_allow_html=True)
+
+    # ── Per-skill allocation grids (levels × phases; fractional resources) ──
+    new_alloc = {}
     for sid, cap in steady.items():
         ps = model["per_skill"][sid]
-        row = st.columns([2.4, 1, 1, 1, 1])
-        steady_lbl = " · ".join(f"{lvl} {cap[lvl]}" for lvl in LEVELS if lvl in cap) or "—"
-        row[0].markdown(f"**{ps['name']}**  \n<span style='color:#7A8A99;font-size:.74rem'>"
-                        f"{ps.get('genus_category','')} · steady: {steady_lbl}</span>",
-                        unsafe_allow_html=True)
-        entry = {}
-        for i, lvl in enumerate(LEVELS):
-            if lvl in cap:
-                v = row[i + 1].number_input(
-                    f"{lvl} ≤{cap[lvl]}", min_value=0, max_value=int(cap[lvl]),
-                    value=int(team0.get(sid, {}).get(lvl, cap[lvl])), step=1,
-                    key=f"tc_{sid}_{lvl}_w", label_visibility="collapsed", disabled=disabled)
-                entry[lvl] = int(v)
-            else:
-                row[i + 1].markdown("<div style='color:#B8C2CC;text-align:center;padding-top:6px'>—</div>",
-                                    unsafe_allow_html=True)
-        new_team[sid] = entry
-    st.session_state["transition_team"] = new_team
+        with st.expander(f"🧩 {ps['name']}  ·  {ps.get('genus_category','')}", expanded=True):
+            _phase_header()
+            entry = {}
+            for lvl in LEVELS:
+                if lvl not in cap:
+                    continue
+                row = st.columns(widths)
+                row[0].markdown(f"**{lvl}** <span style='color:#7A8A99;font-size:.72rem'>≤{cap[lvl]}</span>",
+                                unsafe_allow_html=True)
+                prow = {}
+                for i, pk in enumerate(phase_keys):
+                    prow[pk] = float(row[i + 1].number_input(
+                        f"{sid}{lvl}{pk}", min_value=0.0, max_value=float(cap[lvl]),
+                        value=float(alloc0.get(sid, {}).get(lvl, {}).get(pk, 0.0)), step=0.25,
+                        format="%.2f", key=f"tc_a_{sid}_{lvl}_{pk}_w",
+                        label_visibility="collapsed", disabled=disabled))
+                entry[lvl] = prow
+            new_alloc[sid] = entry
+    st.session_state["transition_alloc"] = new_alloc
+
+    # ── SDM (engagement-shared) allocation per phase ──
+    with st.expander("🧑‍💼 SDM (engagement — shared governance)", expanded=True):
+        _phase_header()
+        srow = st.columns(widths)
+        srow[0].markdown("**SDM** <span style='color:#7A8A99;font-size:.72rem'>fraction</span>",
+                         unsafe_allow_html=True)
+        new_sdm = {}
+        for i, pk in enumerate(phase_keys):
+            new_sdm[pk] = float(srow[i + 1].number_input(
+                f"sdm{pk}", min_value=0.0, max_value=5.0,
+                value=float(sdm0.get(pk, 0.0)), step=0.25, format="%.2f",
+                key=f"tc_sdm_{pk}_w", label_visibility="collapsed", disabled=disabled))
+    st.session_state["transition_sdm_alloc"] = new_sdm
     st.divider()
 
     # ── Compute + outputs ──
-    res = compute_transition_cost(state, team=new_team, effective_weeks=effective_weeks,
-                                  sdm_weeks=total_weeks, sdm_fte=sdm_fte)
+    res = compute_transition_cost(state, alloc=new_alloc, sdm_alloc=new_sdm, phase_weeks=phase_weeks)
     st.session_state["_transition_cost_res"] = res
 
     if res["total_cost"] <= 0 and res["total_hours"] > 0:
         callout("Transition <strong>hours/FTE</strong> are computed, but cost is ₹0 — resolve genus "
                 "rates on the <strong>Rates &amp; Cost</strong> tab to price it.", "warning")
 
-    k = st.columns(4)
-    k[0].metric("Total transition hours", f"{res['total_hours']:,.0f}")
-    k[1].metric("Total transition FTE", f"{res['total_fte']:.2f}")
-    k[2].metric("Total transition cost", _inr(res["total_cost"]))
-    k[3].metric("Duration", f"{res['weeks']:g} wks")
+    k = st.columns(5)
+    k[0].metric("Total hours", f"{res['total_hours']:,.0f}")
+    k[1].metric("Total FTE", f"{res['total_fte']:.2f}")
+    k[2].metric("Total cost", _inr(res["total_cost"]))
+    k[3].metric(f"Selling ({res['margin_pct']:.0f}% margin)", _inr(res["total_selling"]))
+    k[4].metric("Duration", f"{res['weeks']:g} wks")
 
     # By skill
     section_hdr("📊 Transition Effort & Cost by Skill")
     body = ""
     for sid, sp in res["per_skill"].items():
-        team_lbl = " · ".join(f"{lvl} {sp['levels'][lvl]['seats']}" for lvl in LEVELS
-                              if lvl in sp["levels"]) or "—"
         body += (f"<tr><td><strong>{sp['name']}</strong></td><td>{sp.get('genus_category','')}</td>"
-                 f"<td>{team_lbl}</td><td class='r'>{sp['fte']:.2f}</td>"
-                 f"<td class='r'>{sp['hours']:,.0f}</td><td class='r'>{_inr(sp['cost'])}</td></tr>")
+                 f"<td class='r'>{sp['fte']:.2f}</td><td class='r'>{sp['hours']:,.0f}</td>"
+                 f"<td class='r'>{_inr(sp['cost'])}</td><td class='r'>{_inr(sp['selling'])}</td></tr>")
+    sdm = res["sdm"]
     body += (f"<tr><td><strong>SDM</strong> <span style='color:#7A8A99'>(engagement)</span></td>"
-             f"<td>—</td><td>{res['sdm']['fte']:.2f} FTE</td><td class='r'>{res['sdm']['fte']:.2f}</td>"
-             f"<td class='r'>{res['sdm']['hours']:,.0f}</td><td class='r'>{_inr(res['sdm']['cost'])}</td></tr>")
-    body += (f"<tr style='background:#EAF3F4;font-weight:700'><td>Total</td><td>—</td><td>—</td>"
+             f"<td>—</td><td class='r'>{sdm['fte']:.2f}</td><td class='r'>{sdm['hours']:,.0f}</td>"
+             f"<td class='r'>{_inr(sdm['cost'])}</td><td class='r'>{_inr(sdm['selling'])}</td></tr>")
+    body += (f"<tr style='background:#EAF3F4;font-weight:700'><td>Total</td><td>—</td>"
              f"<td class='r'>{res['total_fte']:.2f}</td><td class='r'>{res['total_hours']:,.0f}</td>"
-             f"<td class='r'>{_inr(res['total_cost'])}</td></tr>")
+             f"<td class='r'>{_inr(res['total_cost'])}</td><td class='r'>{_inr(res['total_selling'])}</td></tr>")
     st.markdown('<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>'
-                '<th>Transition Team</th><th class="r">FTE</th><th class="r">Hours</th>'
-                f'<th class="r">Cost</th></tr></thead><tbody>{body}</tbody></table>',
+                '<th class="r">FTE</th><th class="r">Hours</th><th class="r">Cost</th>'
+                f'<th class="r">Selling</th></tr></thead><tbody>{body}</tbody></table>',
                 unsafe_allow_html=True)
 
-    # By level
-    with st.expander("📈 Transition Effort & Cost by Level", expanded=False):
+    # By level + by phase
+    cby1, cby2 = st.columns(2)
+    with cby1.expander("📈 By Level", expanded=False):
         lb = ""
         for lvl in LEVELS:
             d = res["by_level"][lvl]
-            if d["seats"] <= 0:
+            if d["hours"] <= 0:
                 continue
-            lb += (f"<tr><td><strong>{lvl}</strong></td><td class='r'>{d['seats']}</td>"
-                   f"<td class='r'>{d['hours']:,.0f}</td><td class='r'>{_inr(d['cost'])}</td></tr>")
-        lb += (f"<tr><td><strong>SDM</strong></td><td class='r'>{res['sdm']['fte']:.2f}</td>"
-               f"<td class='r'>{res['sdm']['hours']:,.0f}</td><td class='r'>{_inr(res['sdm']['cost'])}</td></tr>")
-        st.markdown('<table class="styled-table"><thead><tr><th>Level</th><th class="r">Seats</th>'
+            lb += (f"<tr><td><strong>{lvl}</strong></td><td class='r'>{d['hours']:,.0f}</td>"
+                   f"<td class='r'>{_inr(d['cost'])}</td></tr>")
+        lb += (f"<tr><td><strong>SDM</strong></td><td class='r'>{sdm['hours']:,.0f}</td>"
+               f"<td class='r'>{_inr(sdm['cost'])}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr><th>Level</th><th class="r">Hours</th>'
+                    f'<th class="r">Cost</th></tr></thead><tbody>{lb}</tbody></table>',
+                    unsafe_allow_html=True)
+    with cby2.expander("📅 By Phase", expanded=False):
+        pb = ""
+        for r in phases:
+            d = res["by_phase"].get(r["key"], {})
+            pb += (f"<tr><td><strong>{r['name']}</strong></td><td class='r'>{r['duration_weeks']:g}</td>"
+                   f"<td class='r'>{d.get('hours',0):,.0f}</td><td class='r'>{_inr(d.get('cost',0))}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr><th>Phase</th><th class="r">Weeks</th>'
                     '<th class="r">Hours</th><th class="r">Cost</th></tr></thead>'
-                    f'<tbody>{lb}</tbody></table>', unsafe_allow_html=True)
+                    f'<tbody>{pb}</tbody></table>', unsafe_allow_html=True)
 
     # Export
     st.divider()
