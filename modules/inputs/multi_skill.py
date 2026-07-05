@@ -1951,8 +1951,9 @@ def _render_transition_cost():
         return
 
     hcap1, hcap2 = st.columns([4, 1])
-    hcap1.caption(f"Duration **{total_weeks:g} wks** (to Go-Live) from the **Transition** tab · "
-                  "**100% of a resource = a full 1 FTE per week**. Effort = Σ(resource × phase weeks × 40h).")
+    hcap1.caption(f"Transition duration **{total_weeks:g} wks** (start → Go-Live, from the **Transition** "
+                  "tab; Stabilization excluded) · **100% of a resource = a full 1 FTE per week**. "
+                  "Effort = Σ(resource × phase weeks × 40h).")
     if hcap2.button("↺ AMS defaults", key="tc_reset", type="secondary", disabled=disabled):
         for kkey in [k for k in list(st.session_state.keys())
                      if str(k).startswith("tc_a_") or str(k).startswith("tc_sdm_")]:
@@ -2026,7 +2027,7 @@ def _render_transition_cost():
     k[1].metric("Total FTE", f"{res['total_fte']:.2f}")
     k[2].metric("Total cost", _inr(res["total_cost"]))
     k[3].metric(f"Selling ({res['margin_pct']:.0f}% margin)", _inr(res["total_selling"]))
-    k[4].metric("Duration", f"{res['weeks']:g} wks")
+    k[4].metric("Transition duration", f"{res['weeks']:g} wks")
 
     # By skill
     section_hdr("📊 Transition Effort & Cost by Skill")
@@ -2113,7 +2114,7 @@ def _render_overview_strip():
     _ts = st.session_state.get("transition_start")
     _gl = st.session_state.get("transition_go_live")
     if _ts and _gl and _gl > _ts:
-        c[4].metric("Transition → Go-Live", f"{round((_gl - _ts).days / 7)} wks")
+        c[4].metric("Transition duration", f"{round((_gl - _ts).days / 7, 1):g} wks")
     else:
         c[4].metric("Gross profit / mo", _inr(pr.get("gross_profit", 0)))
     c[5].metric("Status", status)
