@@ -17,7 +17,7 @@ DEMO_SEED_DATA = True
 # ── Transition cost (multi-skill) ─────────────────────────────────────────────
 # A leaner transition team (per skill × level) is derived from — and capped by — the
 # steady-state team. Defaults are metadata-driven so new levels/towers need no code.
-TRANSITION_WEEKLY_HOURS         = 40      # working hours per transition week per seat
+# (Weekly hours reuse TRANSITION_WEEKLY_HOURS defined below — same 40h/week as single mode.)
 TRANSITION_DEFAULT_WEEKS        = 12      # fallback duration if no Transition Strategy dates set
 TRANSITION_DEFAULT_UTILISATION  = 100     # % of a transition seat's time on the transition
 TRANSITION_DEFAULT_SDM_FTE      = 1.0     # shared SDM effort (governance) for the transition
