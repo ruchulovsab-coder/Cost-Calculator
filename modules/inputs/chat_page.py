@@ -113,6 +113,11 @@ def render_chat():
             "(customer names, locations, contacts). I only handle managed-services effort &amp; "
             "cost estimation.", "warning")
 
+    from modules.inputs.feedback_widget import render_feedback_widget
+    _fc = st.columns([6, 1])
+    with _fc[1]:
+        render_feedback_widget("Chat mode", key="fb_chat")
+
     if not CA.llm_configured():
         callout("AI chat isn't configured in this environment yet. Please use manual entry.", "info")
         if st.button("✍️ Switch to manual entry", type="primary", key="chat_to_manual_nc"):

@@ -98,6 +98,11 @@ if os.path.exists(_sb_bg):
 from modules.state.session_manager import init_session_state
 init_session_state()
 
+# Toast after a feedback note was saved (survives the submit rerun).
+_fb_toast = st.session_state.pop("_fb_toast", None)
+if _fb_toast:
+    st.toast(_fb_toast)
+
 # TEMPORARY (TODO: remove before production) — pre-fill a representative multi-skill
 # AMS scenario into empty fields for testing. Gated by config.settings.DEMO_SEED_DATA.
 # See modules/demo_seed.py + the "demo-seed-temporary" memory note.
@@ -267,6 +272,18 @@ def _render_orphan_admin_page(back_key: str = "orph_back"):
     st.stop()
 
 
+def _render_feedback_admin_page(back_key: str = "fb_back"):
+    """Full-page captured-feedback viewer + CSV export. Shared by single (sidebar) and
+    multi-skill (header) entries. Ends the run via st.stop()."""
+    from modules.outputs.feedback_admin import render_feedback_admin
+    render_feedback_admin()
+    st.divider()
+    if st.button("← Back to estimate", key=back_key, type="secondary"):
+        st.session_state.pop("_show_feedback_admin", None)
+        st.rerun()
+    st.stop()
+
+
 # ── Identity gate: a valid Nagarro email unlocks the app ─────────────────────────
 # Token-link visitors (approval reviewer / orphan-deletion recipient) are identified
 # by their token, not an email, so they bypass the gate.
@@ -304,6 +321,8 @@ if not _token_mode:
         # reached from a header button that sets this flag. Render it here.
         if st.session_state.get("_show_orphan_admin"):
             _render_orphan_admin_page("orph_back_ms")
+        if st.session_state.get("_show_feedback_admin"):
+            _render_feedback_admin_page("fb_back_ms")
         render_multi_skill_app()
         _autosave_draft()   # tabbed page has no nav hook — autosave after render
         st.stop()
@@ -376,6 +395,11 @@ with st.sidebar:
             st.session_state["_show_orphan_admin"] = True
             st.rerun()
 
+    if st.button("🗒️ View feedback", key="btn_feedback_admin",
+                 use_container_width=True, type="secondary"):
+        st.session_state["_show_feedback_admin"] = True
+        st.rerun()
+
     st.divider()
     if st.button("💬 Switch to Chat mode", key="btn_switch_chat",
                  use_container_width=True, type="secondary"):
@@ -415,6 +439,9 @@ if st.session_state.get("_orphan_review"):
 
 if st.session_state.get("_show_orphan_admin"):
     _render_orphan_admin_page("orph_back")
+
+if st.session_state.get("_show_feedback_admin"):
+    _render_feedback_admin_page("fb_back")
 
 
 @st.dialog("Reset this page?")
@@ -457,6 +484,12 @@ if st.session_state.get("_chat_cooked") and current == 9:
     st.caption("Review and adjust any field via the steps on the left, then export or save "
                "as usual.")
     st.session_state.pop("_chat_cooked", None)
+
+# Global feedback control — present on every step page (top-right).
+from modules.inputs.feedback_widget import render_feedback_widget
+_fb_l, _fb_r = st.columns([6, 1])
+with _fb_r:
+    render_feedback_widget(f"Single · Step {current} · {dict(STEPS).get(current, '')}", key="fb_single")
 
 if render_fn:
     step_valid = render_fn()

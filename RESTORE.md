@@ -16,9 +16,32 @@ to that exact snapshot, so you can always return to it no matter what changes la
   (repo Variable `RATECARD_BLOB`); it is **not** stored in git.
 
 ## Stable versions (latest first)
-- **`v1.62`** — *current stable (production).* **Transition Strategy tab — full (deterministic,
-  ITIL-aligned; P2 complete).** Promotes the whole Transition feature (v1.61 first cut + P2.1–P2.3 +
-  fixes) to production. Tab **8 · Transition** derives a proposal-ready plan **read-only** from
+- **`v1.63`** — *current stable (production).* **Transition Cost tab + real-time feedback capture +
+  UX quick wins.**
+  - **Transition Cost** (new tab **9 · Transition Cost**; Shift Plan → 10): a one-time transition cost
+    on a separate line that **never perturbs the run-rate**. Per skill, a grid of levels
+    (L1/L2/L3/Architect) × the Transition Strategy's **pre-Go-Live phases** (Stabilization excluded);
+    each cell is a **fractional resource** (0.25 = 25% … capped at the steady-state team), plus a
+    shared engagement **SDM** per-phase row. Effort = Σ(resource × phase weeks × 40h); cost = hours ×
+    the same genus rate; **selling = cost / (1 − target margin)**. Outputs by skill / level / phase +
+    SDM + totals + Excel. Pure `modules/transition/costing.py` (steady_state_seats / default & reconcile
+    allocation / compute_transition_cost); AMS defaults, self-healing. Single mode's transition planner
+    is untouched.
+  - **Real-time feedback capture:** a 💬 Feedback popover on **every page/tab** (Category + Raised-by +
+    note) → one JSON blob per note in the estimates container (`__feedback__/`), auto-tagged with
+    stage/mode/user/project/version; a "🗒️ View feedback" viewer (single sidebar + multi header) with
+    filters + CSV export. `modules/state/feedback_store.py`, `modules/inputs/feedback_widget.py`,
+    `modules/outputs/feedback_admin.py`.
+  - **UX quick wins:** an at-a-glance **KPI overview band** above the multi-skill tabs (Skills · FTE ·
+    Selling price · Margin · **Transition duration** · Status); the **Transition tab is summary-first**
+    (KPI strip + open Gantt; RACI/Deliverables/RAID/Governance collapsed); Gantt is **Go-Live-driven**
+    with a top date axis; **Stabilization is post-Go-Live** (shown on the Gantt but outside the priced
+    transition — the headline duration everywhere is the to-Go-Live window).
+  - `config.APP_VERSION` added (stamped on feedback). 175 tests pass. ⚠️ demo-seed still True (revert
+    before real client use — see below).
+- **`v1.62`** — **Transition Strategy tab — full (deterministic, ITIL-aligned; P2 complete).**
+  Promotes the whole Transition feature (v1.61 first cut + P2.1–P2.3 + fixes) to production. Tab
+  **8 · Transition** derives a proposal-ready plan **read-only** from
   `compute_multi_skill_model` + start/Go-Live dates:
   - **Gantt** with a **top date axis** (month ticks + gridlines) that is **Go-Live-driven** — the
     start→Go-Live window scales the phases so Reverse-Shadow ends exactly on the Go-Live date
@@ -779,6 +802,7 @@ git tag -a v1.59 -m "v1.59: estimate Lock + Approve & Export basis tables (RFP n
 git tag -a v1.60 -m "v1.60: SDM Option A (fixed SDM FTE) + Shift Plan roster (P1 coverage + P2 rotational calendar)"; git push origin v1.60
 git tag -a v1.61 -m "v1.61: Transition Strategy tab — first cut (deterministic, ITIL-aligned)"; git push origin v1.61
 git tag -a v1.62 -m "v1.62: Transition Strategy full (P2.1–P2.3: family-aware + woven ITIL process coverage, per-skill acceptance gate, RAID+governance) + Go-Live-driven Gantt + Steady-State=BAU + tab reorder"; git push origin v1.62
+git tag -a v1.63 -m "v1.63: Transition Cost tab (per-phase fractional resource grid) + real-time feedback capture + UX overview/summary-first quick wins"; git push origin v1.63
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

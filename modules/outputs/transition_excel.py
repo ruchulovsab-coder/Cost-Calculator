@@ -237,3 +237,64 @@ def build_transition_workbook(plan: Dict[str, Any], project: str = "") -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def build_transition_cost_workbook(res: Dict[str, Any], project: str = "") -> bytes:
+    """Excel appendix for the multi-skill Transition Cost — effort & cost by skill, by level,
+    by phase, SDM, and totals (with selling amount). Presentation values from transition.costing."""
+    LV = ("L1", "L2", "L3", "Architect")
+    wb = openpyxl.Workbook()
+    ws = wb.active; ws.title = "Transition Cost"; ws.sheet_view.showGridLines = False
+    r = 1
+    _title(ws, r, f"Transition Cost{(' — ' + project) if project else ''}"); r += 1
+    ws.cell(r, 1, f"Duration {res.get('weeks', 0):g} weeks (to Go-Live) · {res.get('weekly_hours', 0):g} "
+                  "hrs/week per full resource · resources entered as a fraction per phase (0.25 = 25%) · "
+                  "separate one-time line (does not affect the monthly run-rate)."
+            ).font = Font(size=10, italic=True, color=MUTED); r += 2
+
+    _hdr(ws, r, ["Skill", "Family", "FTE", "Hours", "Cost", "Selling"]); r += 1
+    for sp in res.get("per_skill", {}).values():
+        _cell(ws, r, 1, sp["name"], bold=True)
+        _cell(ws, r, 2, sp.get("genus_category", ""))
+        _cell(ws, r, 3, round(sp["fte"], 2), center=True)
+        _cell(ws, r, 4, round(sp["hours"]), center=True)
+        _cell(ws, r, 5, round(sp["cost"]), center=True)
+        _cell(ws, r, 6, round(sp["selling"]), center=True)
+        r += 1
+    sdm = res.get("sdm", {})
+    _cell(ws, r, 1, "SDM (engagement)", bold=True); _cell(ws, r, 2, "—")
+    _cell(ws, r, 3, round(sdm.get("fte", 0), 2), center=True)
+    _cell(ws, r, 4, round(sdm.get("hours", 0)), center=True)
+    _cell(ws, r, 5, round(sdm.get("cost", 0)), center=True)
+    _cell(ws, r, 6, round(sdm.get("selling", 0)), center=True); r += 1
+    _cell(ws, r, 1, "Total", bold=True, fill=ACCENT); _cell(ws, r, 2, "", fill=ACCENT)
+    _cell(ws, r, 3, round(res.get("total_fte", 0), 2), center=True, bold=True, fill=ACCENT)
+    _cell(ws, r, 4, round(res.get("total_hours", 0)), center=True, bold=True, fill=ACCENT)
+    _cell(ws, r, 5, round(res.get("total_cost", 0)), center=True, bold=True, fill=ACCENT)
+    _cell(ws, r, 6, round(res.get("total_selling", 0)), center=True, bold=True, fill=ACCENT); r += 2
+
+    _title(ws, r, "By level", 11); r += 1
+    _hdr(ws, r, ["Level", "Hours", "Cost"]); r += 1
+    for lvl in LV:
+        d = res.get("by_level", {}).get(lvl, {})
+        if not d or d.get("hours", 0) <= 0:
+            continue
+        _cell(ws, r, 1, lvl, bold=True)
+        _cell(ws, r, 2, round(d["hours"]), center=True)
+        _cell(ws, r, 3, round(d["cost"]), center=True); r += 1
+    r += 1
+
+    _title(ws, r, "By phase", 11); r += 1
+    _hdr(ws, r, ["Phase", "Weeks", "Hours", "Cost"]); r += 1
+    pw = res.get("phase_weeks", {}) or {}
+    for pk, d in (res.get("by_phase", {}) or {}).items():
+        _cell(ws, r, 1, pk, bold=True)
+        _cell(ws, r, 2, round(float(pw.get(pk, 0) or 0), 2), center=True)
+        _cell(ws, r, 3, round(d.get("hours", 0)), center=True)
+        _cell(ws, r, 4, round(d.get("cost", 0)), center=True); r += 1
+
+    for j, w in enumerate([26, 16, 12, 12, 16, 16], start=1):
+        ws.column_dimensions[get_column_letter(j)].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

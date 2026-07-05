@@ -1692,6 +1692,23 @@ def _render_transition():
     plan = build_transition_plan(model, _transition_config())
     st.divider()
 
+    # ── Summary KPIs (at-a-glance) ──
+    _tx_weeks = round(sum(float(r.get("duration_weeks", 0) or 0)
+                          for r in plan["timeline"] if r.get("key") != "stabilization"), 1)
+    _stab_weeks = round(float(plan.get("span_weeks", 0) or 0) - _tx_weeks, 1)
+    _k = st.columns(5)
+    _k[0].metric("Transition (to Go-Live)", f"{_tx_weeks:g} wks",
+                 help="Assessment → Reverse-Shadow — the transition period, and the basis for the "
+                      "Transition Cost. Stabilization is post-Go-Live hypercare, outside the transition.")
+    _k[1].metric("Phases", f"{len(plan['timeline'])}")
+    _k[2].metric("Milestones", f"{len(plan['milestones'])}")
+    _k[3].metric("Skills", f"{len(plan['skill_plans'])}")
+    _k[4].metric("RAID items", f"{len(plan['raid_register'])}")
+    st.caption(f"Transition period **{_tx_weeks:g} wks** (to Go-Live) — the basis for Transition Cost. "
+               f"Full timeline incl. **Stabilization** (post-Go-Live hypercare, {_stab_weeks:g} wks — "
+               f"outside the transition): {plan['span_weeks']:g} wks. Detailed sections below are collapsed.")
+    st.divider()
+
     # ── Gantt ──
     section_hdr("📅 Transition Timeline")
     rows = plan["timeline"]
@@ -1746,9 +1763,9 @@ def _render_transition():
             for m in plan["milestones"])
         if chips:
             st.markdown("<div style='margin-top:6px'>" + chips + "</div>", unsafe_allow_html=True)
-        st.caption("▸ Transition completes at **M4** (end of Stabilization). The engagement then "
-                   "enters **Steady-State Service Delivery & Continuous Improvement** (BAU) — governed "
-                   "by the AMS contract, not part of this transition timeline.")
+        st.caption("▸ Services commence at **Go-Live** (Reverse-Shadow sign-off) — the end of the "
+                   "priced transition period. **Stabilization** (to M4) is post-Go-Live hypercare and "
+                   "**Steady-State** (BAU) follows — both **outside the transition cost**.")
     st.divider()
 
     # ── Phase activities ──
@@ -1807,75 +1824,75 @@ def _render_transition():
     st.divider()
 
     # ── RACI ──
-    section_hdr("👥 RACI Matrix")
-    st.caption("R = Responsible · A = Accountable · C = Consulted · I = Informed")
-    roles = plan["roles_customer"] + plan["roles_nagarro"]
-    raci_bg = {"R": "#D6F0ED", "A": "#A8DDD8", "C": "#EAF3F4", "I": "#F4F6F7"}
-    rhead = "".join(f"<th class='r' style='font-size:.68rem'>{ro}</th>" for ro in roles)
-    rbody = ""
-    for row in plan["raci"]:
-        cells = ""
-        for ro in roles:
-            v = row["raci"].get(ro, "")
-            bg = raci_bg.get(v, "")
-            cells += (f"<td class='r' style='background:{bg};font-weight:{'700' if v=='A' else '400'};"
-                      f"font-size:.72rem'>{v or ''}</td>")
-        rbody += f"<tr><td style='font-size:.76rem'>{row['activity']}</td>{cells}</tr>"
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Activity</th>{rhead}</tr></thead>
-        <tbody>{rbody}</tbody></table>""", unsafe_allow_html=True)
+    with st.expander("👥 RACI Matrix", expanded=False):
+        st.caption("R = Responsible · A = Accountable · C = Consulted · I = Informed")
+        roles = plan["roles_customer"] + plan["roles_nagarro"]
+        raci_bg = {"R": "#D6F0ED", "A": "#A8DDD8", "C": "#EAF3F4", "I": "#F4F6F7"}
+        rhead = "".join(f"<th class='r' style='font-size:.68rem'>{ro}</th>" for ro in roles)
+        rbody = ""
+        for row in plan["raci"]:
+            cells = ""
+            for ro in roles:
+                v = row["raci"].get(ro, "")
+                bg = raci_bg.get(v, "")
+                cells += (f"<td class='r' style='background:{bg};font-weight:{'700' if v=='A' else '400'};"
+                          f"font-size:.72rem'>{v or ''}</td>")
+            rbody += f"<tr><td style='font-size:.76rem'>{row['activity']}</td>{cells}</tr>"
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr><th>Activity</th>{rhead}</tr></thead>
+            <tbody>{rbody}</tbody></table>""", unsafe_allow_html=True)
     st.divider()
 
     # ── Deliverables & gates ──
-    section_hdr("📦 Deliverables & Quality Gates")
-    drows = ""
-    for d in plan["deliverables"]:
-        ms = f"◆ {d['milestone']}" if d.get("milestone") else "—"
-        dl = "<br>".join("• " + x for x in d.get("deliverables", []))
-        ex = "<br>".join("• " + x for x in d.get("exit", []))
-        drows += (f"<tr><td><strong>{d['phase']}</strong></td><td style='font-size:.8rem'>{dl}</td>"
-                  f"<td style='font-size:.8rem'>{ex}</td><td class='r'>{ms}</td></tr>")
-    st.markdown(
-        f"""<table class="styled-table"><thead><tr><th>Phase</th><th>Key Deliverables</th>
-        <th>Exit / Quality Gate</th><th class="r">Milestone</th></tr></thead>
-        <tbody>{drows}</tbody></table>""", unsafe_allow_html=True)
-    st.markdown("**Best-practice artifacts**")
-    for a in plan["best_practice_artifacts"]:
-        st.caption("• " + a)
+    with st.expander("📦 Deliverables & Quality Gates", expanded=False):
+        drows = ""
+        for d in plan["deliverables"]:
+            ms = f"◆ {d['milestone']}" if d.get("milestone") else "—"
+            dl = "<br>".join("• " + x for x in d.get("deliverables", []))
+            ex = "<br>".join("• " + x for x in d.get("exit", []))
+            drows += (f"<tr><td><strong>{d['phase']}</strong></td><td style='font-size:.8rem'>{dl}</td>"
+                      f"<td style='font-size:.8rem'>{ex}</td><td class='r'>{ms}</td></tr>")
+        st.markdown(
+            f"""<table class="styled-table"><thead><tr><th>Phase</th><th>Key Deliverables</th>
+            <th>Exit / Quality Gate</th><th class="r">Milestone</th></tr></thead>
+            <tbody>{drows}</tbody></table>""", unsafe_allow_html=True)
+        st.markdown("**Best-practice artifacts**")
+        for a in plan["best_practice_artifacts"]:
+            st.caption("• " + a)
     st.divider()
 
     # ── RAID register ──
-    section_hdr("🧭 RAID Register")
-    st.caption("Risks · Assumptions · Issues · Dependencies — Risks/Dependencies are seeded from the "
-               "phase plan and Assumptions are listed; **Issues are logged during execution**. "
-               "Complete Owner, Likelihood/Impact, Response and Status during the transition.")
-    _raid_bg = {"Risk": "#FBEED9", "Dependency": "#EAF3F4", "Assumption": "#EDF3E6", "Issue": "#FDE7E7"}
-    rrows = ""
-    for i, item in enumerate(plan["raid_register"], start=1):
-        bg = _raid_bg.get(item["type"], "")
-        rrows += (f"<tr><td class='r'>{i}</td>"
-                  f"<td style='background:{bg};font-size:.76rem'>{item['type']}</td>"
-                  f"<td style='font-size:.8rem'>{item['description']}</td>"
-                  f"<td style='font-size:.76rem'>{item['phase']}</td>"
-                  f"<td></td><td></td><td></td><td></td></tr>")
-    st.markdown('<table class="styled-table"><thead><tr>'
-                + "".join(f"<th>{h}</th>" for h in plan["raid_columns"])
-                + f"</tr></thead><tbody>{rrows}</tbody></table>", unsafe_allow_html=True)
+    with st.expander(f"🧭 RAID Register ({len(plan['raid_register'])})", expanded=False):
+        st.caption("Risks · Assumptions · Issues · Dependencies — Risks/Dependencies are seeded from the "
+                   "phase plan and Assumptions are listed; **Issues are logged during execution**. "
+                   "Complete Owner, Likelihood/Impact, Response and Status during the transition.")
+        _raid_bg = {"Risk": "#FBEED9", "Dependency": "#EAF3F4", "Assumption": "#EDF3E6", "Issue": "#FDE7E7"}
+        rrows = ""
+        for i, item in enumerate(plan["raid_register"], start=1):
+            bg = _raid_bg.get(item["type"], "")
+            rrows += (f"<tr><td class='r'>{i}</td>"
+                      f"<td style='background:{bg};font-size:.76rem'>{item['type']}</td>"
+                      f"<td style='font-size:.8rem'>{item['description']}</td>"
+                      f"<td style='font-size:.76rem'>{item['phase']}</td>"
+                      f"<td></td><td></td><td></td><td></td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr>'
+                    + "".join(f"<th>{h}</th>" for h in plan["raid_columns"])
+                    + f"</tr></thead><tbody>{rrows}</tbody></table>", unsafe_allow_html=True)
     st.divider()
 
     # ── Governance & communications ──
-    section_hdr("🗣️ Governance & Communications")
-    st.caption("Cadence of transition forums — attendees and purpose. Escalation & communication "
-               "protocols per skill are in the Skill-wise plan above.")
-    grows = ""
-    for g in plan["governance_cadence"]:
-        grows += (f"<tr><td><strong>{g['forum']}</strong></td>"
-                  f"<td class='r' style='font-size:.78rem'>{g['cadence']}</td>"
-                  f"<td style='font-size:.78rem'>{g['participants']}</td>"
-                  f"<td style='font-size:.78rem'>{g['purpose']}</td></tr>")
-    st.markdown('<table class="styled-table"><thead><tr>'
-                + "".join(f"<th>{h}</th>" for h in plan["governance_columns"])
-                + f"</tr></thead><tbody>{grows}</tbody></table>", unsafe_allow_html=True)
+    with st.expander("🗣️ Governance & Communications", expanded=False):
+        st.caption("Cadence of transition forums — attendees and purpose. Escalation & communication "
+                   "protocols per skill are in the Skill-wise plan above.")
+        grows = ""
+        for g in plan["governance_cadence"]:
+            grows += (f"<tr><td><strong>{g['forum']}</strong></td>"
+                      f"<td class='r' style='font-size:.78rem'>{g['cadence']}</td>"
+                      f"<td style='font-size:.78rem'>{g['participants']}</td>"
+                      f"<td style='font-size:.78rem'>{g['purpose']}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr>'
+                    + "".join(f"<th>{h}</th>" for h in plan["governance_columns"])
+                    + f"</tr></thead><tbody>{grows}</tbody></table>", unsafe_allow_html=True)
     st.divider()
 
     # ── Advisories ──
@@ -1904,6 +1921,210 @@ def _render_transition():
             file_name=f"transition_strategy_{_date.today():%Y%m%d}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="transition_xlsx_dl")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tab 9 — Transition Cost (leaner transition team per skill + shared SDM; separate line)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_transition_cost():
+    section_hdr("💸 Transition Cost")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    from modules.transition.builder import build_transition_plan
+    from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_allocation,
+                                            reconcile_sdm, compute_transition_cost)
+    callout("Enter, per <strong>transition phase</strong>, how much of each resource joins — as a "
+            "<strong>fraction of a full resource</strong> (0.25 = 25%, 0.5 = 50%, 1 = full) for "
+            "L1/L2/L3/Architect per skill, plus a shared <strong>SDM</strong>. Capped by the "
+            "steady-state team. This is a separate line and <strong>never changes the run-rate</strong>.",
+            "info")
+
+    state = _build_multi_state()
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    steady = steady_state_seats(model)
+    disabled = _locked()
+
+    # ── Phases & durations from the Transition tab (pre-Go-Live; Stabilization excluded) ──
+    plan = build_transition_plan(model, _transition_config())
+    phases = [r for r in plan.get("timeline", []) if r.get("key") != "stabilization"]
+    phase_keys = [r["key"] for r in phases]
+    phase_weeks = {r["key"]: float(r.get("duration_weeks", 0) or 0) for r in phases}
+    total_weeks = round(sum(phase_weeks.values()), 1)
+    if not phases:
+        callout("Set the transition dates on the <strong>Transition</strong> tab first.", "warning")
+        return
+
+    hcap1, hcap2 = st.columns([4, 1])
+    hcap1.caption(f"Transition duration **{total_weeks:g} wks** (start → Go-Live, from the **Transition** "
+                  "tab; Stabilization excluded) · **100% of a resource = a full 1 FTE per week**. "
+                  "Effort = Σ(resource × phase weeks × 40h).")
+    if hcap2.button("↺ AMS defaults", key="tc_reset", type="secondary", disabled=disabled):
+        for kkey in [k for k in list(st.session_state.keys())
+                     if str(k).startswith("tc_a_") or str(k).startswith("tc_sdm_")]:
+            st.session_state.pop(kkey, None)
+        st.session_state.pop("transition_alloc", None)
+        st.session_state.pop("transition_sdm_alloc", None)
+        st.rerun()
+
+    alloc0 = reconcile_allocation(st.session_state.get("transition_alloc") or {}, steady, phase_keys)
+    sdm0 = reconcile_sdm(st.session_state.get("transition_sdm_alloc") or {}, phase_keys)
+    widths = [1.5] + [1] * len(phases)
+
+    def _phase_header():
+        h = st.columns(widths)
+        h[0].markdown("<span style='font-size:.78rem;color:#7A8A99'>Resource ↓ / Phase →</span>",
+                      unsafe_allow_html=True)
+        for i, r in enumerate(phases):
+            h[i + 1].markdown(f"<div style='font-size:.72rem;line-height:1.15'><strong>{r['name']}</strong>"
+                              f"<br><span style='color:#7A8A99'>{r['duration_weeks']:g} wks</span></div>",
+                              unsafe_allow_html=True)
+
+    # ── Per-skill allocation grids (levels × phases; fractional resources) ──
+    new_alloc = {}
+    for sid, cap in steady.items():
+        ps = model["per_skill"][sid]
+        with st.expander(f"🧩 {ps['name']}  ·  {ps.get('genus_category','')}", expanded=True):
+            _phase_header()
+            entry = {}
+            for lvl in LEVELS:
+                if lvl not in cap:
+                    continue
+                row = st.columns(widths)
+                row[0].markdown(f"**{lvl}** <span style='color:#7A8A99;font-size:.72rem'>≤{cap[lvl]}</span>",
+                                unsafe_allow_html=True)
+                prow = {}
+                for i, pk in enumerate(phase_keys):
+                    prow[pk] = float(row[i + 1].number_input(
+                        f"{sid}{lvl}{pk}", min_value=0.0, max_value=float(cap[lvl]),
+                        value=float(alloc0.get(sid, {}).get(lvl, {}).get(pk, 0.0)), step=0.25,
+                        format="%.2f", key=f"tc_a_{sid}_{lvl}_{pk}_w",
+                        label_visibility="collapsed", disabled=disabled))
+                entry[lvl] = prow
+            new_alloc[sid] = entry
+    st.session_state["transition_alloc"] = new_alloc
+
+    # ── SDM (engagement-shared) allocation per phase ──
+    with st.expander("🧑‍💼 SDM (engagement — shared governance)", expanded=True):
+        _phase_header()
+        srow = st.columns(widths)
+        srow[0].markdown("**SDM** <span style='color:#7A8A99;font-size:.72rem'>fraction</span>",
+                         unsafe_allow_html=True)
+        new_sdm = {}
+        for i, pk in enumerate(phase_keys):
+            new_sdm[pk] = float(srow[i + 1].number_input(
+                f"sdm{pk}", min_value=0.0, max_value=5.0,
+                value=float(sdm0.get(pk, 0.0)), step=0.25, format="%.2f",
+                key=f"tc_sdm_{pk}_w", label_visibility="collapsed", disabled=disabled))
+    st.session_state["transition_sdm_alloc"] = new_sdm
+    st.divider()
+
+    # ── Compute + outputs ──
+    res = compute_transition_cost(state, alloc=new_alloc, sdm_alloc=new_sdm, phase_weeks=phase_weeks)
+    st.session_state["_transition_cost_res"] = res
+
+    if res["total_cost"] <= 0 and res["total_hours"] > 0:
+        callout("Transition <strong>hours/FTE</strong> are computed, but cost is ₹0 — resolve genus "
+                "rates on the <strong>Rates &amp; Cost</strong> tab to price it.", "warning")
+
+    k = st.columns(5)
+    k[0].metric("Total hours", f"{res['total_hours']:,.0f}")
+    k[1].metric("Total FTE", f"{res['total_fte']:.2f}")
+    k[2].metric("Total cost", _inr(res["total_cost"]))
+    k[3].metric(f"Selling ({res['margin_pct']:.0f}% margin)", _inr(res["total_selling"]))
+    k[4].metric("Transition duration", f"{res['weeks']:g} wks")
+
+    # By skill
+    section_hdr("📊 Transition Effort & Cost by Skill")
+    body = ""
+    for sid, sp in res["per_skill"].items():
+        body += (f"<tr><td><strong>{sp['name']}</strong></td><td>{sp.get('genus_category','')}</td>"
+                 f"<td class='r'>{sp['fte']:.2f}</td><td class='r'>{sp['hours']:,.0f}</td>"
+                 f"<td class='r'>{_inr(sp['cost'])}</td><td class='r'>{_inr(sp['selling'])}</td></tr>")
+    sdm = res["sdm"]
+    body += (f"<tr><td><strong>SDM</strong> <span style='color:#7A8A99'>(engagement)</span></td>"
+             f"<td>—</td><td class='r'>{sdm['fte']:.2f}</td><td class='r'>{sdm['hours']:,.0f}</td>"
+             f"<td class='r'>{_inr(sdm['cost'])}</td><td class='r'>{_inr(sdm['selling'])}</td></tr>")
+    body += (f"<tr style='background:#EAF3F4;font-weight:700'><td>Total</td><td>—</td>"
+             f"<td class='r'>{res['total_fte']:.2f}</td><td class='r'>{res['total_hours']:,.0f}</td>"
+             f"<td class='r'>{_inr(res['total_cost'])}</td><td class='r'>{_inr(res['total_selling'])}</td></tr>")
+    st.markdown('<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>'
+                '<th class="r">FTE</th><th class="r">Hours</th><th class="r">Cost</th>'
+                f'<th class="r">Selling</th></tr></thead><tbody>{body}</tbody></table>',
+                unsafe_allow_html=True)
+
+    # By level + by phase
+    cby1, cby2 = st.columns(2)
+    with cby1.expander("📈 By Level", expanded=False):
+        lb = ""
+        for lvl in LEVELS:
+            d = res["by_level"][lvl]
+            if d["hours"] <= 0:
+                continue
+            lb += (f"<tr><td><strong>{lvl}</strong></td><td class='r'>{d['hours']:,.0f}</td>"
+                   f"<td class='r'>{_inr(d['cost'])}</td></tr>")
+        lb += (f"<tr><td><strong>SDM</strong></td><td class='r'>{sdm['hours']:,.0f}</td>"
+               f"<td class='r'>{_inr(sdm['cost'])}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr><th>Level</th><th class="r">Hours</th>'
+                    f'<th class="r">Cost</th></tr></thead><tbody>{lb}</tbody></table>',
+                    unsafe_allow_html=True)
+    with cby2.expander("📅 By Phase", expanded=False):
+        pb = ""
+        for r in phases:
+            d = res["by_phase"].get(r["key"], {})
+            pb += (f"<tr><td><strong>{r['name']}</strong></td><td class='r'>{r['duration_weeks']:g}</td>"
+                   f"<td class='r'>{d.get('hours',0):,.0f}</td><td class='r'>{_inr(d.get('cost',0))}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr><th>Phase</th><th class="r">Weeks</th>'
+                    '<th class="r">Hours</th><th class="r">Cost</th></tr></thead>'
+                    f'<tbody>{pb}</tbody></table>', unsafe_allow_html=True)
+
+    # Export
+    st.divider()
+    if st.button("🚀 Prepare Transition Cost Excel", key="tcost_xlsx_prep", type="secondary"):
+        from modules.outputs.transition_excel import build_transition_cost_workbook
+        with st.spinner("Building transition cost…"):
+            st.session_state["_tcost_xlsx"] = build_transition_cost_workbook(
+                res, (st.session_state.get("project_name") or "").strip())
+    if st.session_state.get("_tcost_xlsx"):
+        from datetime import date as _date
+        st.download_button(
+            "⬇️ Download transition cost (.xlsx)", data=st.session_state["_tcost_xlsx"],
+            file_name=f"transition_cost_{_date.today():%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="tcost_xlsx_dl")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Overview KPI band — at-a-glance headline shown above the tabs (every screen)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_overview_strip():
+    """Executive at-a-glance band above the tabs: the key commercial & delivery numbers,
+    always visible so any persona can read the headline without opening a tab."""
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        return
+    try:
+        model = compute_multi_skill_model(_build_multi_state())
+    except Exception:
+        return
+    pr = model.get("price_result", {}) or {}
+    locked = _locked()
+    approved = bool(st.session_state.get("ms_approved"))
+    status = "🔒 Locked" if locked else ("✅ Approved" if approved else "✏️ Draft")
+    c = st.columns(6)
+    c[0].metric("Skills", f"{len(skills)}")
+    c[1].metric("Total FTE", f"{float(model.get('total_fte', 0) or 0):.1f}")
+    c[2].metric("Selling price / mo", _inr(pr.get("selling_price", 0)))
+    c[3].metric("Gross margin", f"{float(pr.get('margin_pct', 0) or 0):.0f}%")
+    _ts = st.session_state.get("transition_start")
+    _gl = st.session_state.get("transition_go_live")
+    if _ts and _gl and _gl > _ts:
+        c[4].metric("Transition duration", f"{round((_gl - _ts).days / 7, 1):g} wks")
+    else:
+        c[4].metric("Gross profit / mo", _inr(pr.get("gross_profit", 0)))
+    c[5].metric("Status", status)
+    st.divider()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1952,9 +2173,12 @@ def render_multi_skill_app():
             st.session_state["ms_locked"] = True
             st.rerun()
 
-    hc1, hc2 = st.columns([1.6, 1.6])
+    hc1, hc2, hc3 = st.columns([1.6, 1.6, 1.6])
     if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
         st.session_state["estimation_mode"] = "single"
+        st.rerun()
+    if hc3.button("🗒️ View feedback", key="ms_feedback_admin", type="secondary"):
+        st.session_state["_show_feedback_admin"] = True
         st.rerun()
     # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
     # renders in multi, so surface it here when there are abandoned drafts to clean up.
@@ -1967,24 +2191,19 @@ def render_multi_skill_app():
                                type="secondary"):
         st.session_state["_show_orphan_admin"] = True
         st.rerun()
-    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
-        ["1 · Skills", "2 · Workload", "3 · Effort & FTE", "4 · Rates & Cost", "5 · Optimize (AI)",
-         "6 · Approve & Export", "7 · Versions & Compare", "8 · Transition", "9 · Shift Plan"])
-    with t1:
-        _render_skill_setup()
-    with t2:
-        _render_workload()
-    with t3:
-        _render_dashboard()
-    with t4:
-        _render_rates_cost()
-    with t5:
-        _render_optimize()
-    with t6:
-        _render_approve_export()
-    with t7:
-        _render_versions_compare()
-    with t8:
-        _render_transition()
-    with t9:
-        _render_roster()
+    _render_overview_strip()
+
+    from modules.inputs.feedback_widget import render_feedback_widget
+    _tabs_meta = [
+        ("1 · Skills", _render_skill_setup), ("2 · Workload", _render_workload),
+        ("3 · Effort & FTE", _render_dashboard), ("4 · Rates & Cost", _render_rates_cost),
+        ("5 · Optimize (AI)", _render_optimize), ("6 · Approve & Export", _render_approve_export),
+        ("7 · Versions & Compare", _render_versions_compare), ("8 · Transition", _render_transition),
+        ("9 · Transition Cost", _render_transition_cost), ("10 · Shift Plan", _render_roster),
+    ]
+    for _i, (_tab, (_label, _fn)) in enumerate(zip(st.tabs([m[0] for m in _tabs_meta]), _tabs_meta)):
+        with _tab:
+            _fc = st.columns([6, 1])
+            with _fc[1]:
+                render_feedback_widget(f"Multi · {_label}", key=f"fb_ms_{_i}")
+            _fn()
