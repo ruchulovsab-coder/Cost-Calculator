@@ -1926,8 +1926,8 @@ def _render_transition_cost():
     if not skills:
         callout("Add a skill and its workload first (tabs 1–2).", "info")
         return
-    from config.settings import (TRANSITION_DEFAULT_WEEKS, TRANSITION_DEFAULT_UTILISATION,
-                                 TRANSITION_DEFAULT_SDM_FTE)
+    from config.settings import TRANSITION_DEFAULT_UTILISATION, TRANSITION_DEFAULT_SDM_FTE
+    from modules.transition.builder import build_transition_plan
     from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_team,
                                             compute_transition_cost)
     callout("A one-time <strong>transition cost</strong> from a leaner, user-configurable transition "
@@ -1940,16 +1940,11 @@ def _render_transition_cost():
     steady = steady_state_seats(model)
     disabled = _locked()
 
-    # ── Config strip (duration defaults to the Transition Strategy window) ──
-    _ts = st.session_state.get("transition_start")
-    _gl = st.session_state.get("transition_go_live")
-    _span = round((_gl - _ts).days / 7) if (_ts and _gl and _gl > _ts) else TRANSITION_DEFAULT_WEEKS
+    # ── Config strip — duration comes from the Transition tab's calculated timeline (read-only) ──
+    weeks = float(build_transition_plan(model, _transition_config()).get("span_weeks", 0) or 0)
     c1, c2, c3 = st.columns(3)
-    weeks = c1.number_input("Transition duration (weeks)", min_value=1, max_value=104,
-                            value=int(st.session_state.get("transition_cost_weeks", _span) or _span),
-                            step=1, key="tc_weeks_w", disabled=disabled,
-                            help="Defaults to the start→Go-Live window from the Transition Strategy tab.")
-    st.session_state["transition_cost_weeks"] = weeks
+    c1.metric("Transition duration", f"{weeks:g} wks")
+    c1.caption("From the **Transition** tab (calculated timeline). Change the start / Go-Live dates there.")
     util = c2.number_input("Utilisation %", min_value=10, max_value=100, step=5,
                            value=int(st.session_state.get("transition_cost_util", TRANSITION_DEFAULT_UTILISATION)),
                            key="tc_util_w", disabled=disabled,
@@ -2016,7 +2011,7 @@ def _render_transition_cost():
     k[0].metric("Total transition hours", f"{res['total_hours']:,.0f}")
     k[1].metric("Total transition FTE", f"{res['total_fte']:.2f}")
     k[2].metric("Total transition cost", _inr(res["total_cost"]))
-    k[3].metric("Duration", f"{int(res['weeks'])} wks")
+    k[3].metric("Duration", f"{res['weeks']:g} wks")
 
     # By skill
     section_hdr("📊 Transition Effort & Cost by Skill")

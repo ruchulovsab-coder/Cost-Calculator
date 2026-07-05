@@ -247,7 +247,7 @@ def build_transition_cost_workbook(res: Dict[str, Any], project: str = "") -> by
     ws = wb.active; ws.title = "Transition Cost"; ws.sheet_view.showGridLines = False
     r = 1
     _title(ws, r, f"Transition Cost{(' — ' + project) if project else ''}"); r += 1
-    ws.cell(r, 1, f"Duration {int(res.get('weeks', 0))} weeks · utilisation "
+    ws.cell(r, 1, f"Duration {res.get('weeks', 0):g} weeks · utilisation "
                   f"{res.get('utilisation_pct', 0):g}% · {res.get('weekly_hours', 0):g} hrs/week/seat · "
                   "separate one-time line (does not affect the monthly run-rate)."
             ).font = Font(size=10, italic=True, color=MUTED); r += 2
