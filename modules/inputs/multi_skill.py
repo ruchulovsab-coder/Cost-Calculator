@@ -1918,6 +1918,158 @@ def _render_transition():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab 9 — Transition Cost (leaner transition team per skill + shared SDM; separate line)
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_transition_cost():
+    section_hdr("💸 Transition Cost")
+    skills = st.session_state.get("skills", [])
+    if not skills:
+        callout("Add a skill and its workload first (tabs 1–2).", "info")
+        return
+    from config.settings import (TRANSITION_DEFAULT_WEEKS, TRANSITION_DEFAULT_UTILISATION,
+                                 TRANSITION_DEFAULT_SDM_FTE)
+    from modules.transition.costing import (LEVELS, steady_state_seats, reconcile_team,
+                                            compute_transition_cost)
+    callout("A one-time <strong>transition cost</strong> from a leaner, user-configurable transition "
+            "team per skill — <strong>capped by the steady-state team</strong> — plus a shared SDM for "
+            "governance. This is a separate line and <strong>never changes the monthly run-rate</strong>.",
+            "info")
+
+    state = _build_multi_state()
+    model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    steady = steady_state_seats(model)
+    disabled = _locked()
+
+    # ── Config strip (duration defaults to the Transition Strategy window) ──
+    _ts = st.session_state.get("transition_start")
+    _gl = st.session_state.get("transition_go_live")
+    _span = round((_gl - _ts).days / 7) if (_ts and _gl and _gl > _ts) else TRANSITION_DEFAULT_WEEKS
+    c1, c2, c3 = st.columns(3)
+    weeks = c1.number_input("Transition duration (weeks)", min_value=1, max_value=104,
+                            value=int(st.session_state.get("transition_cost_weeks", _span) or _span),
+                            step=1, key="tc_weeks_w", disabled=disabled,
+                            help="Defaults to the start→Go-Live window from the Transition Strategy tab.")
+    st.session_state["transition_cost_weeks"] = weeks
+    util = c2.number_input("Utilisation %", min_value=10, max_value=100, step=5,
+                           value=int(st.session_state.get("transition_cost_util", TRANSITION_DEFAULT_UTILISATION)),
+                           key="tc_util_w", disabled=disabled,
+                           help="Share of a transition seat's time on the transition (leanness is mostly "
+                                "expressed by fewer seats).")
+    st.session_state["transition_cost_util"] = util
+    sdm_fte = c3.number_input("SDM transition FTE", min_value=0.0, max_value=5.0, step=0.25,
+                              value=float(st.session_state.get("transition_sdm_fte", TRANSITION_DEFAULT_SDM_FTE)),
+                              key="tc_sdm_w", disabled=disabled,
+                              help="Shared Service Delivery Manager effort for transition governance "
+                                   "(planning, reporting, customer coordination, sign-offs).")
+    st.session_state["transition_sdm_fte"] = sdm_fte
+
+    # ── Per-skill transition team (capped by steady-state; active levels only) ──
+    section_hdr("🧩 Transition Team per Skill")
+    tcap1, tcap2 = st.columns([4, 1])
+    tcap1.caption("The **steady-state team is the maximum**. Defaults follow AMS best practice "
+                  "(senior-weighted); adjust each level as needed.")
+    if tcap2.button("↺ AMS defaults", key="tc_reset", type="secondary", disabled=disabled):
+        for sid in steady:
+            for lvl in LEVELS:
+                st.session_state.pop(f"tc_{sid}_{lvl}_w", None)
+        st.session_state.pop("transition_team", None)
+        st.rerun()
+
+    team0 = reconcile_team(st.session_state.get("transition_team") or {}, steady)
+    hdr = st.columns([2.4, 1, 1, 1, 1])
+    hdr[0].markdown("**Skill**")
+    for i, lvl in enumerate(LEVELS):
+        hdr[i + 1].markdown(f"**{lvl}**")
+    new_team = {}
+    for sid, cap in steady.items():
+        ps = model["per_skill"][sid]
+        row = st.columns([2.4, 1, 1, 1, 1])
+        steady_lbl = " · ".join(f"{lvl} {cap[lvl]}" for lvl in LEVELS if lvl in cap) or "—"
+        row[0].markdown(f"**{ps['name']}**  \n<span style='color:#7A8A99;font-size:.74rem'>"
+                        f"{ps.get('genus_category','')} · steady: {steady_lbl}</span>",
+                        unsafe_allow_html=True)
+        entry = {}
+        for i, lvl in enumerate(LEVELS):
+            if lvl in cap:
+                v = row[i + 1].number_input(
+                    f"{lvl} ≤{cap[lvl]}", min_value=0, max_value=int(cap[lvl]),
+                    value=int(team0.get(sid, {}).get(lvl, cap[lvl])), step=1,
+                    key=f"tc_{sid}_{lvl}_w", label_visibility="collapsed", disabled=disabled)
+                entry[lvl] = int(v)
+            else:
+                row[i + 1].markdown("<div style='color:#B8C2CC;text-align:center;padding-top:6px'>—</div>",
+                                    unsafe_allow_html=True)
+        new_team[sid] = entry
+    st.session_state["transition_team"] = new_team
+    st.divider()
+
+    # ── Compute + outputs ──
+    res = compute_transition_cost(state, team=new_team, weeks=weeks, utilisation_pct=util,
+                                  sdm_fte=sdm_fte)
+    st.session_state["_transition_cost_res"] = res
+
+    if res["total_cost"] <= 0 and res["total_hours"] > 0:
+        callout("Transition <strong>hours/FTE</strong> are computed, but cost is ₹0 — resolve genus "
+                "rates on the <strong>Rates &amp; Cost</strong> tab to price it.", "warning")
+
+    k = st.columns(4)
+    k[0].metric("Total transition hours", f"{res['total_hours']:,.0f}")
+    k[1].metric("Total transition FTE", f"{res['total_fte']:.2f}")
+    k[2].metric("Total transition cost", _inr(res["total_cost"]))
+    k[3].metric("Duration", f"{int(res['weeks'])} wks")
+
+    # By skill
+    section_hdr("📊 Transition Effort & Cost by Skill")
+    body = ""
+    for sid, sp in res["per_skill"].items():
+        team_lbl = " · ".join(f"{lvl} {sp['levels'][lvl]['seats']}" for lvl in LEVELS
+                              if lvl in sp["levels"]) or "—"
+        body += (f"<tr><td><strong>{sp['name']}</strong></td><td>{sp.get('genus_category','')}</td>"
+                 f"<td>{team_lbl}</td><td class='r'>{sp['fte']:.2f}</td>"
+                 f"<td class='r'>{sp['hours']:,.0f}</td><td class='r'>{_inr(sp['cost'])}</td></tr>")
+    body += (f"<tr><td><strong>SDM</strong> <span style='color:#7A8A99'>(engagement)</span></td>"
+             f"<td>—</td><td>{res['sdm']['fte']:.2f} FTE</td><td class='r'>{res['sdm']['fte']:.2f}</td>"
+             f"<td class='r'>{res['sdm']['hours']:,.0f}</td><td class='r'>{_inr(res['sdm']['cost'])}</td></tr>")
+    body += (f"<tr style='background:#EAF3F4;font-weight:700'><td>Total</td><td>—</td><td>—</td>"
+             f"<td class='r'>{res['total_fte']:.2f}</td><td class='r'>{res['total_hours']:,.0f}</td>"
+             f"<td class='r'>{_inr(res['total_cost'])}</td></tr>")
+    st.markdown('<table class="styled-table"><thead><tr><th>Skill</th><th>Family</th>'
+                '<th>Transition Team</th><th class="r">FTE</th><th class="r">Hours</th>'
+                f'<th class="r">Cost</th></tr></thead><tbody>{body}</tbody></table>',
+                unsafe_allow_html=True)
+
+    # By level
+    with st.expander("📈 Transition Effort & Cost by Level", expanded=False):
+        lb = ""
+        for lvl in LEVELS:
+            d = res["by_level"][lvl]
+            if d["seats"] <= 0:
+                continue
+            lb += (f"<tr><td><strong>{lvl}</strong></td><td class='r'>{d['seats']}</td>"
+                   f"<td class='r'>{d['hours']:,.0f}</td><td class='r'>{_inr(d['cost'])}</td></tr>")
+        lb += (f"<tr><td><strong>SDM</strong></td><td class='r'>{res['sdm']['fte']:.2f}</td>"
+               f"<td class='r'>{res['sdm']['hours']:,.0f}</td><td class='r'>{_inr(res['sdm']['cost'])}</td></tr>")
+        st.markdown('<table class="styled-table"><thead><tr><th>Level</th><th class="r">Seats</th>'
+                    '<th class="r">Hours</th><th class="r">Cost</th></tr></thead>'
+                    f'<tbody>{lb}</tbody></table>', unsafe_allow_html=True)
+
+    # Export
+    st.divider()
+    if st.button("🚀 Prepare Transition Cost Excel", key="tcost_xlsx_prep", type="secondary"):
+        from modules.outputs.transition_excel import build_transition_cost_workbook
+        with st.spinner("Building transition cost…"):
+            st.session_state["_tcost_xlsx"] = build_transition_cost_workbook(
+                res, (st.session_state.get("project_name") or "").strip())
+    if st.session_state.get("_tcost_xlsx"):
+        from datetime import date as _date
+        st.download_button(
+            "⬇️ Download transition cost (.xlsx)", data=st.session_state["_tcost_xlsx"],
+            file_name=f"transition_cost_{_date.today():%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="tcost_xlsx_dl")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Overview KPI band — at-a-glance headline shown above the tabs (every screen)
 # ──────────────────────────────────────────────────────────────────────────────
 def _render_overview_strip():
@@ -2021,7 +2173,7 @@ def render_multi_skill_app():
         ("3 · Effort & FTE", _render_dashboard), ("4 · Rates & Cost", _render_rates_cost),
         ("5 · Optimize (AI)", _render_optimize), ("6 · Approve & Export", _render_approve_export),
         ("7 · Versions & Compare", _render_versions_compare), ("8 · Transition", _render_transition),
-        ("9 · Shift Plan", _render_roster),
+        ("9 · Transition Cost", _render_transition_cost), ("10 · Shift Plan", _render_roster),
     ]
     for _i, (_tab, (_label, _fn)) in enumerate(zip(st.tabs([m[0] for m in _tabs_meta]), _tabs_meta)):
         with _tab:
