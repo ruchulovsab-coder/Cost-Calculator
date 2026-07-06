@@ -16,7 +16,7 @@ to that exact snapshot, so you can always return to it no matter what changes la
   (repo Variable `RATECARD_BLOB`); it is **not** stored in git.
 
 ## Stable versions (latest first)
-- **`testing` (unreleased)** — **Global Save + Share (view/editor) + transition-config persistence.**
+- **`v1.64`** — *current stable (production).* **Global Save + Share (view/editor) + transition-config persistence.**
   - **Share an estimate** (multi mode): a global **🔗 Share** action (top of the estimate) sends a saved
     version to one or more recipients, each with a **read-only** or **editor** role, via a personal
     **capability link** (`?sh=<slug>&v=<version>&k=<token>`) — the same token pattern as approval links,
@@ -35,8 +35,12 @@ to that exact snapshot, so you can always return to it no matter what changes la
     registered in `_get_initial_state()`, so they **round-trip** through drafts, Saved Versions and Share
     (`serialize_inputs()`/`load_scenario()` only touch initial-state keys). Dates re-coerce from ISO on
     load; stale transition widget keys are cleared. Fixes the bug where a saved/shared estimate reopened
-    with the Transition tabs blank. 200 tests pass. ⚠️ demo-seed still True (revert before real client use).
-- **`v1.63`** — *current stable (production).* **Transition Cost tab + real-time feedback capture +
+    with the Transition tabs blank.
+  - Staging note: staging auto-sets `APP_BASE_URL` to its own FQDN, so share links are absolute/emailable
+    there without setup (email dispatch still needs `ACS_*`; else the panel shows copyable links). Includes
+    the fix for the share-email box (don't write a widget key after instantiation). 200 tests pass.
+    ⚠️ demo-seed still True (revert before real client use).
+- **`v1.63`** — **Transition Cost tab + real-time feedback capture +
   UX quick wins.**
   - **Transition Cost** (new tab **9 · Transition Cost**; Shift Plan → 10): a one-time transition cost
     on a separate line that **never perturbs the run-rate**. Per skill, a grid of levels
