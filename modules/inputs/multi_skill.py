@@ -34,10 +34,209 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
+def _share_session() -> dict:
+    """The active shared-estimate session (opened via a ?sh&v&k capability link), or {}."""
+    return st.session_state.get("_share_session") or {}
+
+
+def _share_role() -> str:
+    """'viewer' | 'editor' | '' — '' when this isn't a shared session."""
+    return (_share_session().get("role") or "") if not _share_session().get("error") else ""
+
+
+def _is_share_viewer() -> bool:
+    return _share_role() == "viewer"
+
+
+def _is_share_editor() -> bool:
+    return _share_role() == "editor"
+
+
 def _locked() -> bool:
     """Estimate-level read-only lock. When True, value inputs are disabled (via CSS in
-    render_multi_skill_app) and structural buttons (add/remove/apply) pass disabled=_locked()."""
+    render_multi_skill_app) and structural buttons (add/remove/apply) pass disabled=_locked().
+    A viewer share is always locked and cannot be unlocked (enforced here, not just via the
+    hidden Unlock button)."""
+    if _is_share_viewer():
+        return True
     return bool(st.session_state.get("ms_locked", False))
+
+
+def _apply_readonly_css():
+    """Disable all value inputs (buttons, tab nav and downloads stay usable). Testids
+    verified against Streamlit 1.58 (see modules/inputs/identity_gate.py)."""
+    st.markdown(
+        "<style>"
+        '[data-testid="stNumberInput"],[data-testid="stTextInput"],[data-testid="stTextArea"],'
+        '[data-testid="stSelectbox"],[data-testid="stMultiSelect"],[data-testid="stCheckbox"],'
+        '[data-testid="stRadio"],[data-testid="stToggle"],[data-testid="stFileUploader"],'
+        '[data-testid="stSlider"],[data-testid="stDateInput"]'
+        "{pointer-events:none!important;opacity:.55!important;}</style>", unsafe_allow_html=True)
+
+
+def _share_url(slug, version, token) -> str:
+    """Per-recipient capability link. Absolute when APP_BASE_URL is set (so it's
+    emailable), else a relative query string usable within the running app."""
+    import os
+    base = (os.environ.get("APP_BASE_URL", "") or "").rstrip("/")
+    qs = f"?sh={slug}&v={version}&k={token}"
+    return f"{base}/{qs}" if base else qs
+
+
+def _render_share_banner(sess: dict):
+    """Banner shown when the estimate was opened via a share link."""
+    if sess.get("error"):
+        callout(f"🔗 <strong>Shared estimate</strong> — {sess['error']}", "error")
+        return
+    by = sess.get("shared_by") or "the owner"
+    proj = sess.get("project") or "this estimate"
+    if sess.get("role") == "viewer":
+        callout(f"👁️ <strong>Read-only shared view</strong> — you're viewing <strong>{proj}</strong> "
+                f"shared by {by}. Inputs are locked; browse every tab and download exports, but you "
+                f"can't edit or save.", "info")
+    elif sess.get("role") == "editor":
+        callout(f"✏️ <strong>Editor access</strong> — you're editing <strong>{proj}</strong> shared by "
+                f"{by}. Your changes save as a <strong>new version</strong> (the original is never "
+                f"overwritten).", "info")
+
+
+def _render_global_actions():
+    """Top-of-page Save + Share. Save: owner and share-editors. Share: owner only.
+    A read-only viewer sees neither. Hidden when cloud storage isn't configured."""
+    from modules.state.estimate_store import store_configured
+    if _is_share_viewer() or not store_configured():
+        return
+    a1, a2, _rest = st.columns([1.2, 1.2, 4.6])
+    with a1:
+        with st.popover("💾 Save", use_container_width=True):
+            st.markdown("**💾 Save this estimate as a version**")
+            if not (st.session_state.get("project_name") or "").strip():
+                st.warning("Set a Customer / RFP name above before saving.")
+            else:
+                from modules.outputs.approval import inline_save_version
+                inline_save_version(key="ms_global_save", button_label="💾 Save version")
+    if not _is_share_editor():   # Share is an owner action
+        with a2:
+            with st.popover("🔗 Share", use_container_width=True):
+                _render_share_panel()
+
+
+def _render_share_panel():
+    """Recipient form + manage-access list. Requires a saved version to share."""
+    import re
+    from modules.state import share_store as SH
+    st.markdown("**🔗 Share this estimate**")
+    ref = st.session_state.get("_current_estimate_ref")
+    if not ref:
+        st.info("Save this estimate as a version first, then share the saved version.")
+        if (st.session_state.get("project_name") or "").strip():
+            from modules.outputs.approval import inline_save_version
+            inline_save_version(key="ms_share_firstsave", button_label="💾 Save version to share")
+        else:
+            st.warning("Set a Customer / RFP name above first.")
+        return
+
+    slug, ver = ref["slug"], ref["version"]
+    proj = ref.get("project", slug)
+    st.caption(f"Sharing **{proj} — v{ver}**. Each recipient gets a personal link — "
+               "read-only opens locked; editor can edit & save a new version.")
+    emails_raw = st.text_area("Recipient email(s)", key="ms_share_emails",
+                              placeholder="alice@nagarro.com, bob@client.com",
+                              help="Separate multiple addresses with commas, semicolons or new lines.")
+    role_label = st.radio("Access", ["Read-only", "Editor"], horizontal=True, key="ms_share_role")
+    role = SH.ROLE_EDITOR if role_label == "Editor" else SH.ROLE_VIEWER
+
+    if st.button("📧 Send invite(s)", type="primary", key="ms_share_send"):
+        emails = [e.strip() for e in re.split(r"[,\n;]+", emails_raw or "") if e.strip()]
+        if not emails:
+            st.error("Enter at least one recipient email.")
+        else:
+            shared_by = st.session_state.get("user_email") or st.session_state.get("prepared_by", "")
+            try:
+                _rec, added = SH.add_recipients(slug, ver, proj, ref["blob"], shared_by, emails, role)
+                st.session_state["ms_share_emails"] = ""   # clear the box after a successful add
+                _send_share_invites(ref, added, role_label)
+            except Exception as e:
+                st.error(f"Share failed: {e}")
+    st.divider()
+    _render_share_manage(ref)
+
+
+def _send_share_invites(ref, recipients, role_label):
+    """Email each newly added recipient their personal link; fall back to showing the
+    links when email isn't configured or APP_BASE_URL is unset."""
+    from modules.state import share_store as SH
+    from modules.notify.email_sender import email_configured, send_share_email
+    if not recipients:
+        return
+    slug, ver = ref["slug"], ref["version"]
+    proj = ref.get("project", slug)
+    shared_by = st.session_state.get("user_email") or st.session_state.get("prepared_by", "")
+    # Build the estimate summary + Excel once (best-effort) and reuse for every recipient.
+    summary = body_html = attachments = None
+    try:
+        from modules.outputs.approval import _email_artifacts
+        summary, body_html, attachments = _email_artifacts(ref)
+    except Exception:
+        pass
+    links = [(r["email"], r["role"], _share_url(slug, ver, r["token"])) for r in recipients]
+    is_abs = bool(links) and links[0][2].lower().startswith("http")
+    if email_configured() and is_abs:
+        sent, failed = [], []
+        for email, rrole, link in links:
+            try:
+                send_share_email(email, proj, ver, rrole, link, shared_by,
+                                 summary, body_html, attachments)
+                sent.append(email)
+            except Exception:
+                failed.append(email)
+        if sent:
+            st.success(f"Shared with {', '.join(sent)} ({role_label} access) — invite emailed "
+                       "(estimate summary + Excel model included).")
+        if failed:
+            st.warning(f"Share saved, but the email failed for: {', '.join(failed)}. "
+                       "Reach them via the links in **People with access** below.")
+    else:
+        st.success(f"Share created for {len(links)} recipient(s) ({role_label} access).")
+        st.caption("⚠️ Set APP_BASE_URL so links are absolute and emailable."
+                   if not is_abs else "Email isn't configured — copy each personal link:")
+        for email, rrole, link in links:
+            st.text_input(f"{email} · {SH.ROLE_LABEL.get(rrole, rrole)}",
+                          value=link, key=f"ms_share_newlink_{email}")
+
+
+def _render_share_manage(ref):
+    """List active recipients with role toggle, opened-status and revoke."""
+    from modules.state import share_store as SH
+    rec = SH.get_share(ref["slug"], ref["version"])
+    active = SH.active_recipients(rec) if rec else []
+    st.markdown("**People with access**")
+    if not active:
+        st.caption("No one yet — add recipients above.")
+        return
+    for r in active:
+        c = st.columns([2.8, 1.7, 1.0, 1.0])
+        opened = r.get("last_opened_at")
+        c[0].markdown(f"**{r['email']}**  \n<span style='color:#7A8A99;font-size:.72rem'>"
+                      f"{'opened ' + opened if opened else 'not opened yet'}</span>",
+                      unsafe_allow_html=True)
+        cur = r.get("role")
+        newrole = c[1].selectbox(
+            "role", [SH.ROLE_VIEWER, SH.ROLE_EDITOR],
+            index=0 if cur == SH.ROLE_VIEWER else 1,
+            format_func=lambda x: SH.ROLE_LABEL.get(x, x),
+            key=f"ms_share_role_{r['token']}", label_visibility="collapsed")
+        if newrole != cur:
+            SH.set_recipient_role(ref["slug"], ref["version"], r["token"], newrole)
+            st.rerun()
+        link = _share_url(ref["slug"], ref["version"], r["token"])
+        if link.lower().startswith("http"):
+            c[2].link_button("🔗 Link", link, use_container_width=True)
+        else:
+            c[2].caption("link")
+        if c[3].button("🚫 Revoke", key=f"ms_share_revoke_{r['token']}", use_container_width=True):
+            SH.revoke_recipient(ref["slug"], ref["version"], r["token"])
+            st.rerun()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2191,51 +2390,61 @@ def render_multi_skill_app():
     else:
         st.caption(f"👤 Prepared by **{st.session_state.get('user_email', '')}** — autosaves as you go.")
 
-    # ── Estimate-level Lock (read-only protection; calculations stay visible) ──
-    locked = _locked()
-    lk1, lk2 = st.columns([4.2, 1.3])
-    if locked:
-        lk1.markdown("<div style='background:#FBEED9;border-left:4px solid #B8860B;padding:8px 12px;"
-                     "border-radius:4px;font-size:0.9rem'>🔒 <strong>Locked (read-only)</strong> — inputs "
-                     "are protected from edits. Exports still work; <strong>Unlock</strong> to change "
-                     "anything or submit for approval.</div>", unsafe_allow_html=True)
-        if lk2.button("🔓 Unlock", key="ms_unlock", type="primary", use_container_width=True):
-            st.session_state["ms_locked"] = False
-            st.rerun()
-        # Disable all value inputs (buttons, tab nav and downloads stay usable). Testids
-        # verified against Streamlit 1.58 (see modules/inputs/identity_gate.py).
-        st.markdown(
-            "<style>"
-            '[data-testid="stNumberInput"],[data-testid="stTextInput"],[data-testid="stTextArea"],'
-            '[data-testid="stSelectbox"],[data-testid="stMultiSelect"],[data-testid="stCheckbox"],'
-            '[data-testid="stRadio"],[data-testid="stToggle"],[data-testid="stFileUploader"],'
-            '[data-testid="stSlider"],[data-testid="stDateInput"]'
-            "{pointer-events:none!important;opacity:.55!important;}</style>", unsafe_allow_html=True)
-    else:
-        lk1.caption("Estimate is editable. Lock it to protect inputs from accidental changes "
-                    "(calculations stay visible; exports still work).")
-        if lk2.button("🔒 Lock estimate", key="ms_lock", type="secondary", use_container_width=True):
-            st.session_state["ms_locked"] = True
-            st.rerun()
+    # ── Shared-estimate session banner (opened via a ?sh&v&k capability link) ──
+    sess = _share_session()
+    if sess:
+        _render_share_banner(sess)
 
-    hc1, hc2, hc3 = st.columns([1.6, 1.6, 1.6])
-    if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
-        st.session_state["estimation_mode"] = "single"
-        st.rerun()
-    if hc3.button("🗒️ View feedback", key="ms_feedback_admin", type="secondary"):
-        st.session_state["_show_feedback_admin"] = True
-        st.rerun()
-    # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
-    # renders in multi, so surface it here when there are abandoned drafts to clean up.
-    try:
-        from modules.outputs.orphan_admin import orphan_count_cached
-        _orphans = orphan_count_cached()
-    except Exception:
-        _orphans = 0
-    if _orphans and hc2.button(f"🧹 Clean up drafts ({_orphans})", key="ms_orphan_admin",
-                               type="secondary"):
-        st.session_state["_show_orphan_admin"] = True
-        st.rerun()
+    # ── Global actions: Save + Share (hidden for read-only viewers) ──
+    _render_global_actions()
+
+    # ── Estimate-level Lock (read-only protection; calculations stay visible) ──
+    # In a shared session the lock is dictated by the role, not by a user toggle:
+    # a viewer is read-only (locked, no Unlock control); an editor edits freely.
+    locked = _locked()
+    in_share = bool(sess) and not sess.get("error")
+    if in_share:
+        if locked:                       # viewer — enforce read-only, no unlock
+            _apply_readonly_css()
+    else:
+        lk1, lk2 = st.columns([4.2, 1.3])
+        if locked:
+            lk1.markdown("<div style='background:#FBEED9;border-left:4px solid #B8860B;padding:8px 12px;"
+                         "border-radius:4px;font-size:0.9rem'>🔒 <strong>Locked (read-only)</strong> — inputs "
+                         "are protected from edits. Exports still work; <strong>Unlock</strong> to change "
+                         "anything or submit for approval.</div>", unsafe_allow_html=True)
+            if lk2.button("🔓 Unlock", key="ms_unlock", type="primary", use_container_width=True):
+                st.session_state["ms_locked"] = False
+                st.rerun()
+            _apply_readonly_css()
+        else:
+            lk1.caption("Estimate is editable. Lock it to protect inputs from accidental changes "
+                        "(calculations stay visible; exports still work).")
+            if lk2.button("🔒 Lock estimate", key="ms_lock", type="secondary", use_container_width=True):
+                st.session_state["ms_locked"] = True
+                st.rerun()
+
+    # Internal owner tools (mode switch, feedback, draft clean-up) — hidden for a
+    # shared recipient, who should only see the estimate itself.
+    if not in_share:
+        hc1, hc2, hc3 = st.columns([1.6, 1.6, 1.6])
+        if hc1.button("← Switch to Single-skill mode", key="ms_to_single", type="secondary"):
+            st.session_state["estimation_mode"] = "single"
+            st.rerun()
+        if hc3.button("🗒️ View feedback", key="ms_feedback_admin", type="secondary"):
+            st.session_state["_show_feedback_admin"] = True
+            st.rerun()
+        # Orphan clean-up entry point — the sidebar (which hosts it in single mode) never
+        # renders in multi, so surface it here when there are abandoned drafts to clean up.
+        try:
+            from modules.outputs.orphan_admin import orphan_count_cached
+            _orphans = orphan_count_cached()
+        except Exception:
+            _orphans = 0
+        if _orphans and hc2.button(f"🧹 Clean up drafts ({_orphans})", key="ms_orphan_admin",
+                                   type="secondary"):
+            st.session_state["_show_orphan_admin"] = True
+            st.rerun()
     _render_overview_strip()
 
     from modules.inputs.feedback_widget import render_feedback_widget

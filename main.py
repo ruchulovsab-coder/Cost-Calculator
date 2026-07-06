@@ -142,6 +142,54 @@ def _maybe_load_review():
 _maybe_load_review()
 
 
+# ── Deep link: shared estimate  (?sh=<slug>&v=<version>&k=<token>) ──────────────
+def _maybe_load_share():
+    """Open a shared estimate from a per-recipient capability link. The token grants
+    a role: viewer = read-only (the estimate opens locked), editor = may edit and save
+    a NEW version. Mirrors _maybe_load_review but is role-aware."""
+    qp = st.query_params
+    if not (qp.get("sh") and qp.get("v") and qp.get("k")):
+        return
+    if st.session_state.get("_share_loaded"):
+        return
+    st.session_state["_share_loaded"] = True
+    slug, tok = qp.get("sh"), qp.get("k")
+    try:
+        ver = int(qp.get("v"))
+    except Exception:
+        ver = 0
+    try:
+        from modules.state import share_store as SH
+        from modules.state.estimate_store import load_estimate
+        from modules.state.session_manager import load_scenario, mark_saved_baseline
+        rec = SH.get_share(slug, ver)
+        recipient, err = SH.resolve(rec, tok)
+        if err or not (rec or {}).get("estimate_blob"):
+            st.session_state["_share_session"] = {
+                "error": err or "This share link is no longer valid.",
+                "slug": slug, "version": ver}
+            return
+        data = load_estimate(rec["estimate_blob"])
+        load_scenario({"inputs": data.get("inputs", {})})
+        role = SH.normalize_role(recipient.get("role"))
+        st.session_state["_current_estimate_ref"] = {
+            "slug": slug, "version": ver,
+            "project": rec.get("project", slug), "blob": rec["estimate_blob"]}
+        st.session_state["_share_session"] = {
+            "slug": slug, "version": ver, "token": tok, "role": role,
+            "project": rec.get("project", slug), "shared_by": rec.get("shared_by", ""),
+            "email": recipient.get("email", "")}
+        # Access follows the role, overriding whatever lock state was saved: a viewer is
+        # always locked; an editor is always editable (even if the owner saved it locked).
+        st.session_state["ms_locked"] = (role == SH.ROLE_VIEWER)
+        mark_saved_baseline()
+        SH.record_open(slug, ver, tok)
+    except Exception:
+        pass
+
+_maybe_load_share()
+
+
 # ── Deep link: orphan-deletion review  (?orphan=<token>) ─────────────────────────
 def _maybe_load_orphan_review():
     qp = st.query_params
@@ -207,6 +255,12 @@ def _autosave_draft():
     try:
         from modules.state.estimate_store import store_configured, slugify
         if not store_configured():
+            return
+        # A shared-estimate session (opened via a ?sh&v&k link) must never autosave a
+        # draft back over the owner's project. Viewers are read-only; editors commit
+        # explicitly via Save (which writes a new version, not the owner's draft).
+        _ss = st.session_state.get("_share_session")
+        if _ss and not _ss.get("error"):
             return
         project = (st.session_state.get("project_name") or "").strip()
         if not project:
@@ -285,9 +339,13 @@ def _render_feedback_admin_page(back_key: str = "fb_back"):
 
 
 # ── Identity gate: a valid Nagarro email unlocks the app ─────────────────────────
-# Token-link visitors (approval reviewer / orphan-deletion recipient) are identified
-# by their token, not an email, so they bypass the gate.
-_token_mode = bool(st.session_state.get("_review") or st.session_state.get("_orphan_review"))
+# Token-link visitors (approval reviewer / orphan-deletion recipient / shared-estimate
+# recipient) are identified by their token, not an email, so they bypass the gate.
+_share_sess = st.session_state.get("_share_session") or {}
+_share_active = bool(_share_sess and not _share_sess.get("error"))
+_share_error = bool(_share_sess.get("error"))
+_token_mode = bool(st.session_state.get("_review") or st.session_state.get("_orphan_review")
+                   or _share_active or _share_error)
 if not _token_mode:
     from modules.inputs.identity_gate import (
         valid_nagarro_email, render_email_gate, render_resume_modal, drafts_for_email,
@@ -326,6 +384,22 @@ if not _token_mode:
         render_multi_skill_app()
         _autosave_draft()   # tabbed page has no nav hook — autosave after render
         st.stop()
+
+
+# Shared-estimate visitor (opened via ?sh&v&k). Bypasses the Nagarro identity gate —
+# the per-recipient token is the credential — so external recipients can open it. An
+# invalid/revoked link shows a friendly notice; a valid one renders the full multi app
+# in the recipient's role (viewer=read-only/locked, editor=editable → saves a new
+# version). Shares are only ever created from multi mode.
+if _share_error:
+    from modules.inputs.steps_1_2 import callout
+    st.title("🔗 Shared estimate")
+    callout(_share_sess.get("error", "This share link is no longer valid."), "error")
+    st.stop()
+if _share_active:
+    from modules.inputs.multi_skill import render_multi_skill_app
+    render_multi_skill_app()
+    st.stop()
 
 
 # Reviewer opened a MULTI-skill estimate via the tokened link (bypasses the manual
