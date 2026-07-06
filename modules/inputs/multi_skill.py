@@ -154,7 +154,9 @@ def _render_share_panel():
             shared_by = st.session_state.get("user_email") or st.session_state.get("prepared_by", "")
             try:
                 _rec, added = SH.add_recipients(slug, ver, proj, ref["blob"], shared_by, emails, role)
-                st.session_state["ms_share_emails"] = ""   # clear the box after a successful add
+                # NB: don't clear ms_share_emails here — Streamlit forbids writing a widget's
+                # session_state key after it's instantiated, and keeping the box (and the
+                # link/success output below) visible is the better UX anyway.
                 _send_share_invites(ref, added, role_label)
             except Exception as e:
                 st.error(f"Share failed: {e}")
