@@ -57,6 +57,17 @@ def send_review_email(reviewer_email: str, project: str, version, link: str,
     return _send(reviewer_email, subject, text, html, attachments)
 
 
+def send_share_email(recipient_email: str, project: str, version, role: str, link: str,
+                     shared_by: str = "", summary=None, body_html: str = "",
+                     attachments=None):
+    """Send a share-invitation email (viewer/editor). Raises on failure; returns the
+    send result. `summary` → plain-text headline figures; `body_html` → rich dashboard
+    summary; `attachments` → e.g. the editable Excel model workbook."""
+    from modules.notify.email_templates import share_invite
+    subject, text, html = share_invite(project, version, role, link, shared_by, summary, body_html)
+    return _send(recipient_email, subject, text, html, attachments)
+
+
 def send_orphan_review_email(recipient_email: str, requested_by: str, count, link: str):
     """Send the orphan-cleanup deletion-request email. Raises on failure."""
     from modules.notify.email_templates import orphan_review_request

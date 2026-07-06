@@ -120,6 +120,23 @@ def dashboard_summary_html(model) -> str:
             + _table("Financial Summary", fin_rows))
 
 
+def transition_cost_summary_html(tres) -> str:
+    """Multi-skill Transition Cost as a separate one-time line block for the approval email.
+    Inline styles only. '' when there is no transition cost."""
+    if not tres or float(tres.get("total_cost", 0) or 0) <= 0:
+        return ""
+    rows = (
+        _sum_row("Transition Duration", f"{tres.get('weeks', 0):g} wks")
+        + _sum_row("Transition Effort", f"{float(tres.get('total_hours', 0) or 0):,.0f} hrs")
+        + _sum_row("Transition Cost (delivery)", _inr(tres.get("total_cost")), bold=True)
+        + _sum_row(f"Transition Selling ({float(tres.get('margin_pct', 0) or 0):.0f}% margin)",
+                   _inr(tres.get("total_selling")), bold=True))
+    return (f'<div style="font-weight:bold;color:{THEME["navy"]};margin:16px 0 6px">'
+            'Transition Cost (one-time — billed separately, not in the monthly run-rate)</div>'
+            '<table role="presentation" cellpadding="0" cellspacing="0" '
+            f'style="width:100%;border-collapse:collapse;font-size:14px">{rows}</table>')
+
+
 def review_request(project: str, version, link: str, requested_by: str = "",
                    summary=None, body_html: str = ""):
     """Build (subject, plain_text, html) for an approval-review request email.
@@ -134,6 +151,55 @@ def review_request(project: str, version, link: str, requested_by: str = "",
         text=THEME["text"], navy=THEME["navy"], primary=THEME["primary"],
         muted=THEME["text_muted"], org=ORG_NAME, app=APP_NAME_SHORT,
         project=project, version=version, by=by, link=link,
+        figures=(body_html or fig_html),
+    )
+    return subject, text, html
+
+
+# Share an estimate with a recipient (viewer / editor) via a capability link.
+_SHARE_HTML = """\
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:{text};font-size:15px;line-height:1.5">
+  <div style="background:{navy};color:#FFFFFF;padding:16px 20px;border-radius:8px 8px 0 0;font-weight:bold;font-size:16px">
+    {org} · {app}
+  </div>
+  <div style="background:#FFFFFF;padding:20px;border:1px solid #E0ECEC;border-top:none;border-radius:0 0 8px 8px">
+    <p style="margin:0 0 16px">{by} shared the estimate <b>{project} — v{version}</b> with you with <b>{role_label}</b> access.</p>
+    <p style="margin:0 0 16px;color:{muted};font-size:13px">{role_note}</p>
+    {figures}
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td style="border-radius:8px;background:{primary}">
+        <a href="{link}" style="display:inline-block;padding:14px 28px;color:#FFFFFF;text-decoration:none;font-weight:bold;font-size:15px">{cta} →</a>
+      </td>
+    </tr></table>
+    <p style="color:{muted};font-size:12px;margin:18px 0 0">If the button doesn't work, paste this link into your browser:<br>{link}</p>
+    <p style="color:{muted};font-size:12px;margin:10px 0 0">This link is personal to you — please don't forward it.</p>
+  </div>
+</div>"""
+
+
+def share_invite(project: str, version, role: str, link: str, shared_by: str = "",
+                 summary=None, body_html: str = ""):
+    """Build (subject, plain_text, html) for a share invitation. `role` is
+    'editor' or 'viewer'. `summary` gives plain-text headline figures; `body_html`
+    (when provided) is the rich dashboard summary rendered in the HTML body."""
+    is_editor = (role or "").strip().lower() == "editor"
+    role_label = "editor (can edit & save)" if is_editor else "read-only (view & export)"
+    role_note = ("You can edit this estimate; your changes are saved as a new version — "
+                 "the original is never overwritten."
+                 if is_editor else
+                 "You can browse every tab and download exports, but not change or save the estimate.")
+    cta = "Open & edit estimate" if is_editor else "Open estimate"
+    by = f"{shared_by}" if shared_by else "A colleague"
+    subject = f"{by} shared an estimate with you: {project} (v{version})"
+    fig_text, fig_html = _figures_blocks(summary)
+    text = (f"{by} shared the estimate '{project}' (version {version}) with you "
+            f"({'editor' if is_editor else 'read-only'} access).\n{role_note}\n{fig_text}\n"
+            f"Open it here:\n{link}\n\nThis link is personal to you — please don't forward it.\n")
+    html = _SHARE_HTML.format(
+        text=THEME["text"], navy=THEME["navy"], primary=THEME["primary"],
+        muted=THEME["text_muted"], org=ORG_NAME, app=APP_NAME_SHORT,
+        project=project, version=version, by=by, link=link,
+        role_label=role_label, role_note=role_note, cta=cta,
         figures=(body_html or fig_html),
     )
     return subject, text, html

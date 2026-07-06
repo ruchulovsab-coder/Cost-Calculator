@@ -174,6 +174,23 @@ def _build_initial_state():
         "ms_enforce_min_shift":  False, # optimizer realism knob (off by default)
         "ms_locked":             False, # estimate-level read-only lock (protects inputs)
 
+        # ── Multi-skill Transition Strategy + Transition Cost (tabs 8 & 9) ─────
+        # These round-trip with the estimate: serialize_inputs()/load_scenario()
+        # only touch initial-state keys, so registering them here is what makes the
+        # Transition setup and the Transition-Cost grid survive save/resume and Share.
+        # Derived/ephemeral keys (transition_duration_weeks, _transition_seq_prev,
+        # *_result, *_workbook, widget *_w keys) are intentionally NOT persisted —
+        # they recompute on render. Dates are stored as date objects here and
+        # re-coerced from ISO strings on load (see load_scenario()).
+        "transition_start":       None,          # date — transition kickoff
+        "transition_go_live":     None,          # date — customer Go-Live
+        "transition_customer_tz": "EST",         # customer time zone
+        "transition_sequencing":  "Sequential",  # "Sequential" | "Overlap"
+        "transition_incumbent":   True,          # incumbent/outgoing vendor present
+        "transition_phase_cfg":   [],            # per-phase [{key,name,band,duration_weeks,included,overlap_lead_weeks}]
+        "transition_alloc":       {},            # cost grid {skill_id: {level: {phase_key: fraction}}}
+        "transition_sdm_alloc":   {},            # SDM (engagement) per-phase {phase_key: fraction}
+
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
         "prepared_by":  "",     # Author / estimator
@@ -588,5 +605,44 @@ def load_scenario(data: dict):
             st.session_state[key] = pd.DataFrame(val) if val else None
         elif key in _get_initial_state():
             st.session_state[key] = val
+    _coerce_transition_dates()
+    _clear_transition_widget_state()
     sanitize_additional_activities()
     st.session_state["current_step"] = 9  # land on Results Dashboard
+
+
+def _clear_transition_widget_state():
+    """The Transition/Transition-Cost widgets mirror into plain state keys via separate
+    widget keys (transition_*_w, tr_*, tc_*). When loading a version into an existing
+    session, a stale widget key makes Streamlit ignore the restored value=. Drop them so
+    the freshly restored transition_* state re-seeds the widgets on the next render."""
+    _exact = {"transition_start_w", "transition_gl_w", "transition_tz_w",
+              "transition_seq_w", "transition_inc_w"}
+    _prefixes = ("tr_dur_", "tr_inc_", "tr_lead_", "tc_a_", "tc_sdm_")
+    for k in [kk for kk in list(st.session_state.keys())
+              if kk in _exact or str(kk).startswith(_prefixes)]:
+        st.session_state.pop(k, None)
+    st.session_state.pop("_transition_seq_prev", None)
+
+
+def coerce_transition_date(v):
+    """Pure: normalise a stored transition date to a date object or None. Transition
+    dates serialize to ISO strings (json default=str) when an estimate is saved; the
+    date_input widgets need real date objects on resume. Tolerates already-date values
+    (in-session compare path), datetimes, and unparseable/blank strings."""
+    from datetime import date, datetime
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str):
+        try:
+            return datetime.fromisoformat(v).date()
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_transition_dates():
+    for dk in ("transition_start", "transition_go_live"):
+        st.session_state[dk] = coerce_transition_date(st.session_state.get(dk))
