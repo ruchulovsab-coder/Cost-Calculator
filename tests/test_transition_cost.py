@@ -26,6 +26,20 @@ def _state():
 PW = {"knowledge_transition": 4.0, "shadow": 2.0}   # phase_key -> weeks
 
 
+def test_zero_workload_skill_excluded_from_transition_cost():
+    """A skill with no workload has no steady-state team → it must not produce a (zero) cost
+    line. Guards the skills-hygiene fix alongside the transition-plan exclusion."""
+    st = _state()
+    st["skills"][1]["workload"] = {}          # s2 (Monitoring) → no workload
+    model = compute_multi_skill_model({**st, "fte_basis": "rounded"})
+    steady = steady_state_seats(model)
+    alloc = reconcile_allocation({}, steady, list(PW))
+    sdm = reconcile_sdm({}, list(PW))
+    res = compute_transition_cost(st, alloc=alloc, sdm_alloc=sdm, phase_weeks=PW)
+    assert "s1" in res["per_skill"]
+    assert "s2" not in res["per_skill"]
+
+
 def test_steady_seats_are_ceil_of_fte_active_only():
     model = compute_multi_skill_model({**_state(), "fte_basis": "rounded"})
     seats = steady_state_seats(model)

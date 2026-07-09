@@ -16,7 +16,8 @@ from config.settings import (COVERAGE_MODELS, DEFAULT_ROLE_BUFFER_PCT, GRADE_ELI
                              PATCHING_EFFORT_DEFAULTS, DEFAULT_NUM_SERVERS, ACTIVITY_FORMULAS)
 from modules.inputs.steps_1_2 import section_hdr, callout, page_header
 from modules.calculations.engine import (compute_multi_skill_model, resolve_role_rates,
-                                         calc_patching_effort, derive_activity_hours)
+                                         calc_patching_effort, derive_activity_hours,
+                                         split_skills_by_workload)
 from modules.state.multi_state import (build_multi_model_state as _build_multi_state,
                                        refresh_auto_activities as _refresh_auto_activities,
                                        skill_volumes as _skill_volumes)
@@ -1216,7 +1217,7 @@ def _render_optimize():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tab 6 — Approve & Export (end-of-journey lifecycle; parity with single Step 10)
+# Tab 8 — Approve & Export (end-of-journey lifecycle; parity with single Step 10)
 # ──────────────────────────────────────────────────────────────────────────────
 def _render_multi_summary_metrics(model):
     """Headline metrics row shared by the preparer tab and the reviewer view."""
@@ -1489,7 +1490,7 @@ def render_multi_approve_export(review: bool = False):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tab 7 — Versions & Compare (parity with single-mode Saved Calculations + Compare)
+# Tab 9 — Versions & Compare (parity with single-mode Saved Calculations + Compare)
 # ──────────────────────────────────────────────────────────────────────────────
 def _fmt_version(it) -> str:
     ts = (it.get("saved_at") or "")
@@ -1723,6 +1724,10 @@ def _render_roster():
     state = _build_multi_state()
     model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
     plan = build_roster(model, _roster_config())
+    _active_ids, _excluded = split_skills_by_workload(model)
+    if _excluded:
+        callout("Excluded from the roster — <strong>no workload</strong> (no delivered team): "
+                + ", ".join(_excluded) + ".", "info")
 
     tot = plan["totals"]
     m1, m2, m3 = st.columns(3)
@@ -1936,6 +1941,9 @@ def _render_transition():
     state = _build_multi_state()
     model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
     plan = build_transition_plan(model, _transition_config())
+    if plan.get("excluded_skills"):
+        callout("Excluded from the transition plan — <strong>no workload</strong> (add volume on the "
+                "Workload tab to include): " + ", ".join(plan["excluded_skills"]) + ".", "info")
     st.divider()
 
     # ── Summary KPIs (at-a-glance) ──
@@ -2170,7 +2178,7 @@ def _render_transition():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tab 9 — Transition Cost (leaner transition team per skill + shared SDM; separate line)
+# Tab 7 — Transition Cost (leaner transition team per skill + shared SDM; separate line)
 # ──────────────────────────────────────────────────────────────────────────────
 def _render_transition_cost():
     section_hdr("💸 Transition Cost")
@@ -2189,6 +2197,10 @@ def _render_transition_cost():
 
     state = _build_multi_state()
     model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+    _active_ids, _excluded = split_skills_by_workload(model)
+    if _excluded:
+        callout("Excluded from transition cost — <strong>no workload</strong> (no steady-state team): "
+                + ", ".join(_excluded) + ".", "info")
     steady = steady_state_seats(model)
     disabled = _locked()
 
@@ -2450,12 +2462,15 @@ def render_multi_skill_app():
     _render_overview_strip()
 
     from modules.inputs.feedback_widget import render_feedback_widget
+    # Journey order: the estimate is built (1–5), the delivery story is planned (Transition →
+    # Transition Cost), THEN Approve & Export captures the full commercials (run-rate + one-time
+    # transition), with Versions & Compare and the Shift-Plan appendix after the approval gate.
     _tabs_meta = [
         ("1 · Skills", _render_skill_setup), ("2 · Workload", _render_workload),
         ("3 · Effort & FTE", _render_dashboard), ("4 · Rates & Cost", _render_rates_cost),
-        ("5 · Optimize (AI)", _render_optimize), ("6 · Approve & Export", _render_approve_export),
-        ("7 · Versions & Compare", _render_versions_compare), ("8 · Transition", _render_transition),
-        ("9 · Transition Cost", _render_transition_cost), ("10 · Shift Plan", _render_roster),
+        ("5 · Optimize (AI)", _render_optimize), ("6 · Transition", _render_transition),
+        ("7 · Transition Cost", _render_transition_cost), ("8 · Approve & Export", _render_approve_export),
+        ("9 · Versions & Compare", _render_versions_compare), ("10 · Shift Plan", _render_roster),
     ]
     for _i, (_tab, (_label, _fn)) in enumerate(zip(st.tabs([m[0] for m in _tabs_meta]), _tabs_meta)):
         with _tab:

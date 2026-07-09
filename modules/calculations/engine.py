@@ -1076,3 +1076,23 @@ def compute_multi_skill_model(state: Dict[str, Any]) -> Dict[str, Any]:
         "cost_result": cost_result,
         "price_result": price_result,
     }
+
+
+def split_skills_by_workload(model: Dict[str, Any]) -> tuple:
+    """Partition a computed model's skills into (active_ids, empty_names).
+
+    A skill is *active* when it carries a delivered team (Σ fte_by_level > 0) and *empty*
+    when it has no workload → no team. The proposal artifacts derived from the estimate —
+    Transition Strategy, Transition Cost and the Shift-Plan roster — should only include
+    active skills, so an empty/placeholder skill never produces a phantom KT plan, a zero
+    transition-cost line or an empty roster block. The estimate itself still keeps every
+    skill in per_skill (this only governs the downstream artifacts). Pure & deterministic."""
+    active_ids: List[str] = []
+    empty_names: List[str] = []
+    for sid, ps in (model.get("per_skill", {}) or {}).items():
+        fbl = ps.get("fte_by_level", {}) or {}
+        if sum(float(v or 0) for v in fbl.values()) > 1e-9:
+            active_ids.append(sid)
+        else:
+            empty_names.append(ps.get("name") or sid)
+    return active_ids, empty_names
