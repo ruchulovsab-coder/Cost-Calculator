@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from modules.calculations.engine import compute_multi_skill_model
+from modules.calculations.engine import compute_multi_skill_model, split_skills_by_workload
 from modules.transition.builder import (build_transition_plan, default_phase_config,
                                         validate_raci, _skill_family)
 from modules.transition.timeline import solve_timeline
@@ -64,6 +64,33 @@ def test_go_live_before_signoff_advisory():
 def test_greenfield_advisory():
     tl = solve_timeline("2026-08-03", default_phase_config(), incumbent_present=False)
     assert any("greenfield" in a.lower() for a in tl["advisories"])
+
+
+def _two_skill_model_one_empty():
+    """A model with one worked skill (s1) and one placeholder skill with NO workload."""
+    st = copy.deepcopy(_multi_1skill_state())
+    empty = copy.deepcopy(st["skills"][0])
+    empty.update({"id": "s_empty", "name": "Placeholder", "workload": {},
+                  "patching": None, "activities": []})
+    st["skills"].append(empty)
+    return compute_multi_skill_model({**st, "fte_basis": "rounded"})
+
+
+def test_split_skills_by_workload_partitions_empty():
+    active, empty = split_skills_by_workload(_two_skill_model_one_empty())
+    assert "s1" in active and "s_empty" not in active
+    assert empty == ["Placeholder"]
+
+
+def test_zero_workload_skill_excluded_from_transition_plan():
+    """The reported bug: a skill with no workload must NOT appear as a phantom transition
+    skill. It is dropped from skill_plans and surfaced via excluded_skills for the UI note."""
+    model = _two_skill_model_one_empty()
+    plan = build_transition_plan(model, _cfg())
+    names = [sp["skill"] for sp in plan["skill_plans"]]
+    assert "General" in names
+    assert "Placeholder" not in names
+    assert plan["excluded_skills"] == ["Placeholder"]
 
 
 def test_raci_is_valid():

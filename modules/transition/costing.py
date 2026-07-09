@@ -109,6 +109,8 @@ def compute_transition_cost(state: Dict[str, Any], *, alloc, sdm_alloc, phase_we
     for sid, ps in (model.get("per_skill", {}) or {}).items():
         cat = ps.get("genus_category")
         cap = steady.get(sid, {})
+        if not cap:
+            continue   # zero-workload skill → no steady-state team → excluded from transition cost
         acfg = (alloc or {}).get(sid, {}) or {}
         levels_out, s_hours, s_cost = {}, 0.0, 0.0
         for lvl in LEVELS:

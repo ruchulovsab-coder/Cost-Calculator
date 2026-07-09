@@ -174,7 +174,7 @@ def _build_initial_state():
         "ms_enforce_min_shift":  False, # optimizer realism knob (off by default)
         "ms_locked":             False, # estimate-level read-only lock (protects inputs)
 
-        # ── Multi-skill Transition Strategy + Transition Cost (tabs 8 & 9) ─────
+        # ── Multi-skill Transition Strategy + Transition Cost (tabs 6 & 7) ─────
         # These round-trip with the estimate: serialize_inputs()/load_scenario()
         # only touch initial-state keys, so registering them here is what makes the
         # Transition setup and the Transition-Cost grid survive save/resume and Share.
@@ -190,6 +190,20 @@ def _build_initial_state():
         "transition_phase_cfg":   [],            # per-phase [{key,name,band,duration_weeks,included,overlap_lead_weeks}]
         "transition_alloc":       {},            # cost grid {skill_id: {level: {phase_key: fraction}}}
         "transition_sdm_alloc":   {},            # SDM (engagement) per-phase {phase_key: fraction}
+
+        # ── Multi-skill Shift Plan / Roster (tab 10) ──────────────────
+        # Same round-trip contract as the transition keys above: serialize_inputs()/
+        # load_scenario() only touch initial-state keys, so registering the roster config
+        # here is what makes the Shift Plan setup survive Save / resume / Share. Widget
+        # keys (roster_*_w, roster_mode_/cs_/ce_<sid>) are ephemeral and cleared on load
+        # (see _clear_roster_widget_state) so the restored roster_* state re-seeds them.
+        "roster_strategy":    "Balanced",  # roster strategy
+        "roster_customer_tz": "EST",       # customer time zone
+        "roster_delivery_tz": "IST",       # delivery time zone
+        "roster_bh_start":    "09:00",     # business hours from (customer local, HH:MM)
+        "roster_bh_end":      "17:00",     # business hours to (customer local, HH:MM)
+        "roster_shift_len":   8,           # shift length (hours): 8 | 12
+        "roster_prefs":       {},          # per-skill coverage prefs {sid: {mode,start,end}}
 
         # ── Project / estimate identity ───────────────────────────────
         "project_name": "",     # Customer / RFP name (required to proceed)
@@ -607,6 +621,7 @@ def load_scenario(data: dict):
             st.session_state[key] = val
     _coerce_transition_dates()
     _clear_transition_widget_state()
+    _clear_roster_widget_state()
     sanitize_additional_activities()
     st.session_state["current_step"] = 9  # land on Results Dashboard
 
@@ -623,6 +638,19 @@ def _clear_transition_widget_state():
               if kk in _exact or str(kk).startswith(_prefixes)]:
         st.session_state.pop(k, None)
     st.session_state.pop("_transition_seq_prev", None)
+
+
+def _clear_roster_widget_state():
+    """Mirror of _clear_transition_widget_state for the Shift Plan. The roster widgets write
+    into plain roster_* state via separate widget keys (roster_*_w, roster_mode_/cs_/ce_<sid>).
+    On load, a stale widget key makes Streamlit ignore the restored value=, so drop them and let
+    the freshly restored roster_* state re-seed the widgets on the next render."""
+    _exact = {"roster_customer_tz_w", "roster_delivery_tz_w", "roster_bh_start_w",
+              "roster_bh_end_w", "roster_shift_len_w", "roster_strategy_w"}
+    _prefixes = ("roster_mode_", "roster_cs_", "roster_ce_")
+    for k in [kk for kk in list(st.session_state.keys())
+              if kk in _exact or str(kk).startswith(_prefixes)]:
+        st.session_state.pop(k, None)
 
 
 def coerce_transition_date(v):

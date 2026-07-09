@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from config.settings import SKILL_CANONICAL_KEYWORDS
 
+from modules.calculations.engine import split_skills_by_workload
+
 from . import catalog as C
 from .timeline import solve_timeline, fit_phases_to_go_live
 
@@ -52,6 +54,11 @@ def _skill_plans(model: Dict[str, Any]) -> List[Dict[str, Any]]:
         name = ps.get("name") or sid
         levels = [l for l in ("L1", "L2", "L3", "Architect")
                   if float((ps.get("fte_by_level", {}) or {}).get(l, 0) or 0) > 0]
+        # Exclude zero-workload skills: no delivered team → no transition plan for them
+        # (they'd otherwise appear as phantom skills with empty stages). See
+        # engine.split_skills_by_workload; surfaced as plan["excluded_skills"] for the UI note.
+        if not levels:
+            continue
         family = _skill_family(name)
         technical = C.FAMILY_STAGE_TEMPLATES.get(family, C.SKILL_STAGE_TEMPLATES)
         # Each stage = the common ITIL process backbone (same for every skill) + the
@@ -123,6 +130,7 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
                      "milestone": r["milestone"]} for r in tl["rows"]]
     raci = [row for row in C.RACI if row["phase"] in included_keys]
 
+    _active_ids, _excluded_skills = split_skills_by_workload(model)
     return {
         "customer_tz": config.get("customer_tz", "EST"),
         "foundation": C.FOUNDATION,
@@ -130,6 +138,8 @@ def build_transition_plan(model: Dict[str, Any], config: Dict[str, Any]) -> Dict
         "timeline": tl["rows"], "milestones": tl["milestones"],
         "phase_activities": phase_activities,
         "skill_plans": _skill_plans(model),
+        # Zero-workload skills excluded from the plan above (shown as a UI note, not an error).
+        "excluded_skills": _excluded_skills,
         "raci": raci, "roles_customer": C.ROLES_CUSTOMER, "roles_nagarro": C.ROLES_NAGARRO,
         "deliverables": deliverables,
         "best_practice_artifacts": C.BEST_PRACTICE_ARTIFACTS,
