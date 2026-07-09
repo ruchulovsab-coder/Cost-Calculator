@@ -115,9 +115,18 @@ def save_version(note: str):
         st.error("Set a Customer / RFP name on Step 1 before saving.")
         return None
     try:
+        summary = build_estimate_summary(run_model())
+        # Multi mode: fold in the one-time Transition Cost + roster headcount so the saved
+        # version's record carries the full picture, not just the monthly run-rate. Best-effort;
+        # single-mode saves are unaffected (returns {}).
+        try:
+            from modules.inputs.multi_skill import multi_version_extras
+            summary.update(multi_version_extras())
+        except Exception:
+            pass
         meta = save_estimate(
             proj, note.strip(), (st.session_state.get("prepared_by") or "").strip(),
-            serialize_inputs(), build_estimate_summary(run_model()))
+            serialize_inputs(), summary)
         list_estimates.clear()
         st.session_state["_current_estimate_ref"] = {
             "slug": meta["project_slug"], "version": meta["version"],

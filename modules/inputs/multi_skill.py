@@ -1386,6 +1386,31 @@ def _transition_cost_result():
         return None
 
 
+def multi_version_extras() -> dict:
+    """Extra headline figures stored alongside a saved MULTI-skill version's summary: the
+    one-time Transition Cost (cost + selling + weeks) and the roster's deployable headcount.
+    Session-aware (reads the Transition & Shift-Plan config, which the pure
+    build_estimate_summary(model) can't see). Returns {} in single mode or when nothing is
+    configured, so single-mode saves are untouched and the values only appear when meaningful."""
+    if st.session_state.get("estimation_mode") != "multi" or not st.session_state.get("skills"):
+        return {}
+    out: dict = {}
+    tres = _transition_cost_result()
+    if tres and float(tres.get("total_cost", 0) or 0) > 0:
+        out["transition_cost"] = round(float(tres.get("total_cost", 0) or 0), 0)
+        out["transition_selling"] = round(float(tres.get("total_selling", 0) or 0), 0)
+        out["transition_weeks"] = round(float(tres.get("weeks", 0) or 0), 1)
+    try:
+        from modules.roster.scheduler import build_roster
+        state = _build_multi_state()
+        model = compute_multi_skill_model({**state, "fte_basis": "rounded"})
+        totals = build_roster(model, _roster_config())["totals"]
+        out["roster_seats"] = int(totals.get("deployable_seats", 0) or 0)
+    except Exception:
+        pass
+    return out
+
+
 def _render_transition_cost_summary():
     """Transition Cost as a one-time, separate line in the Approve & Export management summary."""
     tres = _transition_cost_result()

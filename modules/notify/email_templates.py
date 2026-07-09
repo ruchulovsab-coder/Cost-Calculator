@@ -49,6 +49,19 @@ def _figures_blocks(summary):
         ("Gross Margin", f"{margin:.1f}%"),
         ("Total FTE", f"{fte:.1f}"),
     ]
+    # Multi-skill extras (one-time transition line + roster headcount), when present on the
+    # saved summary. Transition cost is a separate one-time item, NOT part of the run-rate above.
+    try:
+        tsell = float(summary.get("transition_selling", 0) or 0)
+        tcost = float(summary.get("transition_cost", 0) or 0)
+        seats = int(summary.get("roster_seats", 0) or 0)
+    except (TypeError, ValueError):
+        tsell = tcost = seats = 0
+    if tsell > 0 or tcost > 0:
+        rows.append(("Transition Cost (one-time)",
+                     f"INR {(tsell if tsell > 0 else tcost):,.0f}"))
+    if seats > 0:
+        rows.append(("Roster Headcount (seats)", f"{seats}"))
     text = "\nKey figures (INR):\n" + "\n".join(f"  - {k}: {v}" for k, v in rows) + "\n"
     cells = "".join(
         f'<tr><td style="padding:6px 10px;border-bottom:1px solid #E0ECEC;color:{THEME["text_muted"]}">{k}</td>'

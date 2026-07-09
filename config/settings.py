@@ -29,7 +29,7 @@ TRANSITION_PHASE_UTILISATION    = {"assessment": 25, "initiation": 50, "knowledg
                                    "shadow": 100, "reverse_shadow": 100}
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-APP_VERSION    = "1.64"   # bump on each promotion to prod; stamped onto captured feedback
+APP_VERSION    = "1.65"   # bump on each promotion to prod; stamped onto captured feedback
 APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Tool"
 APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
 ORG_NAME       = "Nagarro"
