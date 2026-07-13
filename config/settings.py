@@ -68,9 +68,9 @@ COVERAGE_APPLICABLE_ROLES = ["L1", "L2"]
 
 # ── Grade eligibility ─────────────────────────────────────────────────────────
 GRADE_ELIGIBILITY = {
-    "L1":        ["2.1-INFRAOPS", "2.2-INFRAOPS"],
-    "L2":        ["2.3-INFRAOPS", "3.1-INFRAOPS"],
-    "L3":        ["3.2-INFRAOPS", "3.3-INFRAOPS"],
+    "L1":        ["2.1-INFRAOPS"],
+    "L2":        ["2.2-INFRAOPS", "2.3-INFRAOPS"],
+    "L3":        ["3.1-INFRAOPS", "3.2-INFRAOPS", "3.3-INFRAOPS"],
     "Architect": ["4.1-INFRAOPS"],
     "SDM":       ["4.1-DELIVERY-ITIL"],
 }
