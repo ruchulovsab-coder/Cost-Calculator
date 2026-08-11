@@ -3,6 +3,16 @@
 This repository is tagged at each stable release. A git tag is an immutable pointer
 to that exact snapshot, so you can always return to it no matter what changes later.
 
+> **New to the project?** This file is the **changelog** — long, newest-first, and best used
+> as a reference rather than read end to end. Start with **[HANDOVER.md](HANDOVER.md)**
+> (ownership, environments, open items), then **[README.md](README.md)** (what the app does)
+> and **[docs/architecture.md](docs/architecture.md)** (how it's built). Reading the entries
+> from **v1.60 down to v1.65** will explain most of the current code.
+>
+> **Current release: `v1.65`.** Note that `testing` currently carries **two commits not yet
+> promoted to `main`** — a grade-eligibility pricing fix and the CI resource-group repoint.
+> See HANDOVER.md §6.3 before assuming production matches the tip of `testing`.
+
 ## Way of working (dev & release flow)
 - **Two live environments.** Branch **`testing`** auto-deploys to **staging**
   (`nagarro-ops-estimator-test`); branch **`main`** deploys **production**
@@ -474,7 +484,11 @@ to that exact snapshot, so you can always return to it no matter what changes la
 
 > In the commands below, replace `v1.0` with the version you want (e.g. `v1.4`).
 
-## What `v1.29` contains (current stable)
+## What `v1.29` contains
+> ⚠️ Historical detail below. **`v1.29` is not current** — the current stable release is
+> **`v1.65`**, described at the top of this file under "Stable versions (latest first)".
+> The per-version sections from here down are kept for archaeology only.
+
 Everything in v1.28, plus the **single editable Inputs sheet** restructure of the Excel
 Workbook (`modules/outputs/excel_model.py`):
 - **One input register** — `Inputs` is the only editable sheet and holds *every* application
@@ -833,6 +847,8 @@ git tag -a v1.60 -m "v1.60: SDM Option A (fixed SDM FTE) + Shift Plan roster (P1
 git tag -a v1.61 -m "v1.61: Transition Strategy tab — first cut (deterministic, ITIL-aligned)"; git push origin v1.61
 git tag -a v1.62 -m "v1.62: Transition Strategy full (P2.1–P2.3: family-aware + woven ITIL process coverage, per-skill acceptance gate, RAID+governance) + Go-Live-driven Gantt + Steady-State=BAU + tab reorder"; git push origin v1.62
 git tag -a v1.63 -m "v1.63: Transition Cost tab (per-phase fractional resource grid) + real-time feedback capture + UX overview/summary-first quick wins"; git push origin v1.63
+git tag -a v1.64 -m "v1.64: global Save + Share (view/editor, per-recipient, revocable) + transition-config persistence"; git push origin v1.64
+git tag -a v1.65 -m "v1.65: post-demo hardening — zero-workload skill exclusion + roster save-persistence + tab reorder + fuller saved-version summary"; git push origin v1.65
 ```
 Optionally turn a tag into a downloadable GitHub Release:
 GitHub repo → **Releases** → **Draft a new release** → choose tag `v1.0` → Publish.

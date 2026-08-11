@@ -1,7 +1,10 @@
 # Multi-Skill Estimation — Strategy & Design Record
 
-> Status: **DESIGN APPROVED, NOT STARTED.** Captured 2026-06-30 from a multi-round
-> discussion. This is the blueprint to build against. No code written yet.
+> **Status: ✅ SHIPPED** — built out over v1.35–v1.57 and extended since; multi-skill is now
+> the app's primary flow. This document is the **original blueprint**, captured 2026-06-30
+> *before* implementation, and is preserved as a design record — it is **not** maintained as
+> a description of current behaviour. For that, see [architecture.md](architecture.md),
+> [../README.md](../README.md) and [../RESTORE.md](../RESTORE.md).
 
 ## 1. Objective
 Today the tool models **one tower**: a single pool of work split only by **level

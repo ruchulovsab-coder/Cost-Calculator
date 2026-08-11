@@ -1,5 +1,9 @@
 # Classification-driven estimation (multi mode)
 
+> **Status: ✅ SHIPPED in v1.57.** Design record kept for the reasoning; live defaults are in
+> `config/settings.py` (`MS_CLASSIFICATIONS`, `MS_DEFAULT_DIST`, `MS_DEFAULT_AHT`,
+> `MS_DEFAULT_ROUTING`) and may have been tuned since.
+
 Goal: **more accurate, less manual**. Instead of hand-entering the L1/L2/L3 split per category,
 the user enters a **monthly total** per category; the estimator seeds the **classification mix**,
 **handling time (AHT)** and the **recommended L1/L2/L3 routing pyramid** from industry defaults,

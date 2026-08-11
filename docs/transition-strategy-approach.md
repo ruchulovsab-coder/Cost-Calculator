@@ -1,5 +1,11 @@
 # Transition Strategy — approach
 
+> **Status: ✅ SHIPPED in v1.61–v1.62** (P2.1–P2.3: family-aware per-skill detail, woven ITIL
+> process coverage, per-skill exit/sign-off gate, RAID + governance/comms). The separate
+> **Transition Cost** tab followed in v1.63. **P3 — PPTX export — was never built.**
+> Implementation: `modules/transition/{builder,timeline,costing,catalog}.py`.
+> Design record; not maintained.
+
 A proposal-ready, ITIL-aligned **Transition Strategy** derived from the estimate and a small set
 of date inputs. Estimation/proposal artifact only — **not** a transition PM/tracking tool.
 

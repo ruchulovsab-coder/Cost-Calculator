@@ -1,5 +1,12 @@
 # UX / UI Improvement Plan
 
+> **Status: point-in-time design record**, last substantially updated around **v1.24**. The
+> design system and theme it describes are still in force (colours live in
+> `config.settings.THEME`, mirrored in `assets/styles.css :root`), but the "recently shipped"
+> log below stops well before the current release — see [RESTORE.md](RESTORE.md) for
+> everything from v1.25 onward, including the multi-skill tabs, transition, roster and
+> feedback UI. Not maintained as a description of the current UI.
+
 Constraint: keep the existing **mint/teal + navy** theme. Applies to the in-app
 screens, exported reports (Excel ×2, PDF), approval emails, and saved configs/imports.
 
