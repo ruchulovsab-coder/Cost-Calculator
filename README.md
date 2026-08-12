@@ -9,17 +9,17 @@ defensible **effort → FTE → cost → price** estimate, plus the delivery art
 proposal needs: transition plan, transition cost, shift roster, approval trail and
 client-ready Excel/PDF exports.
 
-**Current version: `1.65`** (`config.settings.APP_VERSION` is the source of truth).
+**Current version: `1.66`** (`config.settings.APP_VERSION` is the source of truth).
 
 | Environment | Branch | Container App | URL |
 |---|---|---|---|
-| **Production** | `main` | `nagarro-ops-estimator` | https://nagarro-ops-estimator.graystone-62d2702b.centralindia.azurecontainerapps.io/ |
-| **Staging** | `testing` | `nagarro-ops-estimator-test` | `https://nagarro-ops-estimator-test.<env-suffix>.centralindia.azurecontainerapps.io/` |
+| **Production** | `main` | `nagarro-ops-estimator` | https://nagarro-ops-estimator.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
+| **Staging** | `testing` | `nagarro-ops-estimator-test` | https://nagarro-ops-estimator-test.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
 
 > Both scale to zero — the first load after idle takes a few seconds.
-> ⚠️ The Azure resource group was repointed during the in-progress migration
-> (`AB-ms-cost-estimator`). If a URL above does not resolve, take the authoritative FQDN
-> from the deploy job's `App URL:` line in GitHub Actions. See **[HANDOVER.md](HANDOVER.md)**.
+> Hosted on the Nagarro **`AMS DevOps`** subscription, resource group `AB-ms-cost-estimator`.
+> ⚠️ Older `graystone-…` links are **dead** — the DNS suffix changed when the app migrated
+> onto the corporate tenant. See **[HANDOVER.md](HANDOVER.md)**.
 
 ---
 
@@ -278,6 +278,6 @@ Nearly all configuration lives in `config/settings.py`:
 | Transition phases & cost | `DEFAULT_TRANSITION_PHASES`, `TRANSITION_PARTICIPATION`, `TRANSITION_PHASE_UTILISATION` |
 | Draft orphan age | `DRAFT_ORPHAN_DAYS` |
 
-> ⚠️ `DEMO_SEED_DATA = True` is currently set — the app pre-fills a demo multi-skill
-> scenario. **This must be turned off before real client use.** See
-> **[HANDOVER.md](HANDOVER.md) → Open items**.
+> `DEMO_SEED_DATA` is **off** as of v1.66 — the app starts blank. Set it to `True` in
+> `config/settings.py` only if you want a scripted demo to pre-fill a sample 4-skill
+> scenario. See **[HANDOVER.md](HANDOVER.md) → Open items**.

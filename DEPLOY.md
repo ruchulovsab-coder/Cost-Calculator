@@ -6,51 +6,68 @@ against a trust *you* create. Do the one-time setup once; afterwards every `git 
 to `main` deploys automatically.
 
 - **Host:** Azure Container Apps, **min-replicas = 0** (runs only on request)
-- **Azure login:** `rjabhi77@gmail.com` (your Azure account / subscription owner)
+- **Subscription:** Nagarro **`AMS DevOps`**, tenant `nagarro.com`
 - **GitHub repo trusted:** `ruchulovsab-coder/Cost-Calculator` (branches `main` + `testing`)
 
 Use these **direct links** instead of hunting through menus.
 
 ---
 
-## 📍 Current state (read before following the steps below)
+## 📍 Current state — verified 2026-08-12
 
-Steps 1–10 are the **from-scratch setup recipe**. The environment already exists; these are
-the values it actually uses today:
+**Steps 1–11 below are the from-scratch setup recipe, written originally against a personal
+Azure account. The environment already exists on the Nagarro corporate tenant.** These are
+the values actually in use — prefer them over anything in the steps below:
 
 | Setting | Value | Set in |
 |---|---|---|
-| Resource group | **`AB-ms-cost-estimator`** | `.github/workflows/azure-deploy.yml` (`RESOURCE_GROUP`) |
+| Subscription | **`AMS DevOps`** · `942df1db-c183-4620-9bab-7d053f38277f` | repo Variable `AZURE_SUBSCRIPTION_ID` |
+| Tenant | `nagarro.com` · `a45fe71a-f480-4e42-ad5e-aff33165aa35` | repo Variable `AZURE_TENANT_ID` |
+| Resource group | **`AB-ms-cost-estimator`** | workflow (`RESOURCE_GROUP`) |
 | Location | `centralindia` | workflow (`LOCATION`) |
-| Container Apps environment | `env-ops-estimator` (**VNet-integrated**) | workflow (`CONTAINERAPP_ENV`) |
+| Container Apps environment | `env-ops-estimator` — **VNet-integrated** on `vnet-ops-estimator/snet-aca`, domain `mangoocean-c242351b.centralindia.azurecontainerapps.io` | workflow (`CONTAINERAPP_ENV`) |
 | Production app | `nagarro-ops-estimator` | workflow (`CONTAINERAPP_NAME`) |
 | Staging app | `nagarro-ops-estimator-test` | derived from the branch |
-| Container registry | `acr<first-12-chars-of-subscription-id>`, Basic, admin-enabled | derived in the workflow |
-| Storage account | `nagarroopsratecard` (rate card **and** estimates) | repo Variables |
+| Container registry | `acr942df1dbc183.azurecr.io` (Basic, admin-enabled) | derived from the subscription id |
+| Storage account | **`nagarromsestimator`** — containers `ratecards`, `estimates`, `estimates-test`. Public access **disabled**, network default **`Deny`** | repo Variables |
+| ACS resource | `nops-acs` | repo Variables/Secrets |
 | App registration | `github-cost-calculator-oidc`, federated creds `github-main` + `github-testing` | Entra ID |
 | Target port | `8000` | workflow (`TARGET_PORT`) |
 
-> ⚠️ **Two things the old text below no longer reflects:**
-> 1. The resource group was **`rg-ops-estimator`** and is now **`AB-ms-cost-estimator`**
->    (repointed in commit `da3804b` as part of the in-progress migration to the Nagarro
->    subscription — that migration is **paused**; see [HANDOVER.md](HANDOVER.md) §6.1).
->    If you follow Step 4 or Step 8 verbatim, use the current RG name.
-> 2. **Required tags.** The corporate subscription policy denies resources/resource groups
->    that lack four tags, so the workflow applies them on every create:
->    `Owner`, `Project`, `Purpose`, `Criticality`. **Do not remove them**, and add them to any
->    resource you create by hand:
+**Live URLs**
+
+| Environment | URL |
+|---|---|
+| Production | https://nagarro-ops-estimator.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
+| Staging | https://nagarro-ops-estimator-test.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
+
+> ⚠️ **Things the from-scratch steps below no longer reflect:**
+> 1. **The URLs moved.** The environment's DNS suffix changed during the migration
+>    (`graystone-62d2702b` → `mangoocean-c242351b`). Every older `graystone-…` link is dead,
+>    including approval/share links emailed before the migration.
+> 2. **The resource group** was `rg-ops-estimator`, now **`AB-ms-cost-estimator`**.
+> 3. **Storage is private.** `nagarromsestimator` has public access disabled and network
+>    default `Deny`; the app reaches it over the VNet. You **cannot** browse it with
+>    `az storage ...` from an off-VNet laptop — that failure is the policy working, not a
+>    misconfiguration.
+> 4. **Required tags.** Subscription policy denies resources/RGs lacking four tags, so the
+>    workflow applies them on every create — `Owner`, `Project`, `Purpose`, `Criticality`.
+>    **Do not remove them**; add them to anything you create by hand:
 >    ```bash
 >    --tags Owner="Abhishek Chaurasia" Project="ms-cost-estimator" \
 >           Purpose="AMS Cost Estimation Tool" Criticality="Medium"
 >    ```
-> A from-scratch recreate of the Container Apps *environment* would additionally need
-> `--infrastructure-subnet-resource-id` to stay compliant with the private-storage
-> landing-zone policy. The workflow's `env create` is a guarded fallback only.
+> 5. Recreating the Container Apps *environment* from scratch needs
+>    `--infrastructure-subnet-resource-id` to stay compliant with the private-storage
+>    landing-zone policy. The workflow's `env create` is a guarded fallback only.
+> 6. **Secrets hygiene:** the ACS connection string and Groq key are currently plain env
+>    vars, readable by anyone with Reader on the RG — see [HANDOVER.md](HANDOVER.md) §6.7.
 
 ---
 
 ## STEP 1 — Open Cloud Shell
-Go to **https://shell.azure.com** → sign in as `rjabhi77@gmail.com` → choose **Bash**.
+Go to **https://shell.azure.com** → sign in with your Nagarro account (the `AMS DevOps`
+subscription) → choose **Bash**.
 If asked about storage, pick **"No storage account required"** (or create one — either is fine).
 
 ## STEP 2 — Confirm a subscription exists
@@ -137,14 +154,14 @@ The **test** job runs first, then **deploy** (~5–8 min). The deploy job's last
 Lets the app load the rate card from the cloud (no per-session upload). Access uses
 the Container App's **managed identity** — no keys or connection strings in the app.
 
-Run in **Cloud Shell (Bash)** as `rjabhi77@gmail.com`:
+Run in **Cloud Shell (Bash)** signed in to the `AMS DevOps` subscription:
 
 ```bash
 RG=AB-ms-cost-estimator           # current RG (was rg-ops-estimator before the migration)
 APP=nagarro-ops-estimator
 LOC=centralindia
 STORAGE="opsratecard$RANDOM"      # 3-24 lowercase alphanumeric, globally unique
-                                  # (the existing one is: nagarroopsratecard)
+                                  # (the existing one is: nagarromsestimator)
 CONTAINER=ratecards
 BLOB=genus_rate_card.xlsx
 
