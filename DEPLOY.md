@@ -6,15 +6,68 @@ against a trust *you* create. Do the one-time setup once; afterwards every `git 
 to `main` deploys automatically.
 
 - **Host:** Azure Container Apps, **min-replicas = 0** (runs only on request)
-- **Azure login:** `rjabhi77@gmail.com` (your Azure account / subscription owner)
-- **GitHub repo trusted:** `ruchulovsab-coder/Cost-Calculator` (branch `main`)
+- **Subscription:** Nagarro **`AMS DevOps`**, tenant `nagarro.com`
+- **GitHub repo trusted:** `ruchulovsab-coder/Cost-Calculator` (branches `main` + `testing`)
 
 Use these **direct links** instead of hunting through menus.
 
 ---
 
+## 📍 Current state — verified 2026-08-12
+
+**Steps 1–11 below are the from-scratch setup recipe, written originally against a personal
+Azure account. The environment already exists on the Nagarro corporate tenant.** These are
+the values actually in use — prefer them over anything in the steps below:
+
+| Setting | Value | Set in |
+|---|---|---|
+| Subscription | **`AMS DevOps`** · `942df1db-c183-4620-9bab-7d053f38277f` | repo Variable `AZURE_SUBSCRIPTION_ID` |
+| Tenant | `nagarro.com` · `a45fe71a-f480-4e42-ad5e-aff33165aa35` | repo Variable `AZURE_TENANT_ID` |
+| Resource group | **`AB-ms-cost-estimator`** | workflow (`RESOURCE_GROUP`) |
+| Location | `centralindia` | workflow (`LOCATION`) |
+| Container Apps environment | `env-ops-estimator` — **VNet-integrated** on `vnet-ops-estimator/snet-aca`, domain `mangoocean-c242351b.centralindia.azurecontainerapps.io` | workflow (`CONTAINERAPP_ENV`) |
+| Production app | `nagarro-ops-estimator` | workflow (`CONTAINERAPP_NAME`) |
+| Staging app | `nagarro-ops-estimator-test` | derived from the branch |
+| Container registry | `acr942df1dbc183.azurecr.io` (Basic, admin-enabled) | derived from the subscription id |
+| Storage account | **`nagarromsestimator`** — containers `ratecards`, `estimates`, `estimates-test`. Public access **disabled**, network default **`Deny`** | repo Variables |
+| ACS resource | `nops-acs` | repo Variables/Secrets |
+| App registration | `github-cost-calculator-oidc`, federated creds `github-main` + `github-testing` | Entra ID |
+| Target port | `8000` | workflow (`TARGET_PORT`) |
+
+**Live URLs**
+
+| Environment | URL |
+|---|---|
+| Production | https://nagarro-ops-estimator.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
+| Staging | https://nagarro-ops-estimator-test.mangoocean-c242351b.centralindia.azurecontainerapps.io/ |
+
+> ⚠️ **Things the from-scratch steps below no longer reflect:**
+> 1. **The URLs moved.** The environment's DNS suffix changed during the migration
+>    (`graystone-62d2702b` → `mangoocean-c242351b`). Every older `graystone-…` link is dead,
+>    including approval/share links emailed before the migration.
+> 2. **The resource group** was `rg-ops-estimator`, now **`AB-ms-cost-estimator`**.
+> 3. **Storage is private.** `nagarromsestimator` has public access disabled and network
+>    default `Deny`; the app reaches it over the VNet. You **cannot** browse it with
+>    `az storage ...` from an off-VNet laptop — that failure is the policy working, not a
+>    misconfiguration.
+> 4. **Required tags.** Subscription policy denies resources/RGs lacking four tags, so the
+>    workflow applies them on every create — `Owner`, `Project`, `Purpose`, `Criticality`.
+>    **Do not remove them**; add them to anything you create by hand:
+>    ```bash
+>    --tags Owner="Abhishek Chaurasia" Project="ms-cost-estimator" \
+>           Purpose="AMS Cost Estimation Tool" Criticality="Medium"
+>    ```
+> 5. Recreating the Container Apps *environment* from scratch needs
+>    `--infrastructure-subnet-resource-id` to stay compliant with the private-storage
+>    landing-zone policy. The workflow's `env create` is a guarded fallback only.
+> 6. **Secrets hygiene:** the ACS connection string and Groq key are currently plain env
+>    vars, readable by anyone with Reader on the RG — see [HANDOVER.md](HANDOVER.md) §6.7.
+
+---
+
 ## STEP 1 — Open Cloud Shell
-Go to **https://shell.azure.com** → sign in as `rjabhi77@gmail.com` → choose **Bash**.
+Go to **https://shell.azure.com** → sign in with your Nagarro account (the `AMS DevOps`
+subscription) → choose **Bash**.
 If asked about storage, pick **"No storage account required"** (or create one — either is fine).
 
 ## STEP 2 — Confirm a subscription exists
@@ -37,7 +90,7 @@ echo "DONE"
 
 ```bash
 REPO="ruchulovsab-coder/Cost-Calculator"
-RG="rg-ops-estimator"
+RG="AB-ms-cost-estimator"     # current RG (was rg-ops-estimator before the migration)
 LOCATION="centralindia"
 
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
@@ -101,13 +154,14 @@ The **test** job runs first, then **deploy** (~5–8 min). The deploy job's last
 Lets the app load the rate card from the cloud (no per-session upload). Access uses
 the Container App's **managed identity** — no keys or connection strings in the app.
 
-Run in **Cloud Shell (Bash)** as `rjabhi77@gmail.com`:
+Run in **Cloud Shell (Bash)** signed in to the `AMS DevOps` subscription:
 
 ```bash
-RG=rg-ops-estimator
+RG=AB-ms-cost-estimator           # current RG (was rg-ops-estimator before the migration)
 APP=nagarro-ops-estimator
 LOC=centralindia
 STORAGE="opsratecard$RANDOM"      # 3-24 lowercase alphanumeric, globally unique
+                                  # (the existing one is: nagarromsestimator)
 CONTAINER=ratecards
 BLOB=genus_rate_card.xlsx
 
@@ -176,20 +230,31 @@ new timestamped version under the Step-1 Customer/RFP name) and *Open saved calc
 (browse projects → versions → load). Until configured, that panel says cloud storage
 isn't set up and you use the JSON **Scenarios** instead.
 
-> The **same `estimates` container** also stores the **approval** records
-> (`__approvals__/…`), the **drafts** auto-saved per user (`__drafts__/…`) and their
-> **orphans** (`__orphans__/…`). One container, one role assignment, covers all of them.
+> The **same `estimates` container** stores everything the app persists — one container, one
+> role assignment covers all of it:
+>
+> | Path | Contents |
+> |---|---|
+> | `<slug>__v<n>.json` | saved estimate versions |
+> | `__drafts__/…` | per-user autosaved work in progress |
+> | `__orphans__/…` | abandoned drafts awaiting token-gated deletion |
+> | `__approvals__/…` | approval requests + decisions |
+> | `__shares__/…` | per-recipient share tokens (view / editor) |
+> | `__feedback__/…` | in-app feedback capture (💬 popover) |
+>
+> Without `ESTIMATES_ACCOUNT_URL` **all** of these features disable silently — saved versions,
+> drafts/resume, approvals, sharing and feedback.
 
 > Equivalent CLI (Cloud Shell): create the container, then
 > `az role assignment create --assignee <app-principalId> --role "Storage Blob Data Contributor" --scope <estimates-container-resource-id>`.
 
 ---
 
-## STEP 10 (optional) — Approval & draft-cleanup emails (Azure Communication Services)
+## STEP 10 (optional) — Approval, share & draft-cleanup emails (Azure Communication Services)
 
-Powers the **approval workflow** (Step 10) and the **🧹 draft clean-up** deletion links.
-Without these the app still works and simply **shows a copyable link** instead of sending
-an email.
+Powers the three token-link emails — the **approval workflow**, the **🔗 Share** invitations
+(per-recipient view/editor links) and the **🧹 draft clean-up** deletion links. Without these
+the app still works and simply **shows a copyable link** instead of sending an email.
 
 1. Create an **Azure Communication Services** resource + an **Email Communication
    Service** with a verified sender (an Azure-managed subdomain is simplest). Note the
@@ -210,6 +275,41 @@ an email.
    a dead relative URL and shows the link to copy instead — so set it for both approval
    and cleanup emails to work end to end.
 4. Re-run the deploy (Actions → Run workflow).
+
+---
+
+## STEP 11 (optional) — Chat mode / AI narration (Groq)
+
+The **Chat to estimate** mode and the Optimize tab's optional narration call an LLM through
+Groq. Everything else in the app is deterministic and works without it.
+
+| Name | Where | Notes |
+|---|---|---|
+| `GROQ_API_KEY` | **Secret** (recommended) or Variable | The workflow accepts either. |
+| `GROQ_MODEL` | Variable | Optional — defaults to `llama-3.3-70b-versatile` in code. |
+
+Without a key, `chat_assist.llm_configured()` is false: the chat mode and the AI narrative
+degrade cleanly and the estimate itself is unaffected.
+
+---
+
+## Environment variable reference
+
+Everything the app reads at runtime. The deploy job injects each one into the Container App
+only if the corresponding GitHub Variable/Secret is set.
+
+| Variable | Kind | Required | Effect if missing |
+|---|---|---|---|
+| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | Variable | **Yes** | Deploy fails fast with an explicit error. |
+| `RATECARD_ACCOUNT_URL` / `RATECARD_CONTAINER` / `RATECARD_BLOB` | Variable | No | Rate card must be uploaded manually per session. |
+| `ESTIMATES_ACCOUNT_URL` / `ESTIMATES_CONTAINER` | Variable | No | No saved versions, drafts, approvals, shares or feedback. |
+| `APP_BASE_URL` | Variable | No | Emails are not sent; the app shows a copyable link instead of a dead relative one. Staging sets this automatically to its own FQDN. |
+| `ACS_ENDPOINT` + `ACS_SENDER` | Variable | No | No email dispatch (copyable links instead). |
+| `ACS_CONNECTION_STRING` | **Secret** | No | Alternative to `ACS_ENDPOINT` (key-based instead of managed identity). |
+| `GROQ_API_KEY` | **Secret**/Variable | No | Chat mode + AI narration disabled. |
+| `GROQ_MODEL` | Variable | No | Falls back to the in-code default. |
+
+Repo Variables: **https://github.com/ruchulovsab-coder/Cost-Calculator/settings/variables/actions**
 
 ---
 
@@ -257,6 +357,13 @@ There are two live, independent deployments driven by one workflow:
 
 ## Notes / tuning
 
+- **CI gates the deploy.** The workflow's `test` job runs `pytest -q` and the `deploy` job
+  `needs: test` — a failing test never reaches Azure.
+- **Deploys are serialized per branch** (`concurrency: deploy-${{ github.ref }}`,
+  `cancel-in-progress: true`) so two pushes in quick succession can't collide on the same
+  Container App (Azure rejects overlapping operations).
+- **The image is built on the GitHub runner**, not by ACR Tasks — ACR Tasks was blocked on the
+  original free subscription. The runner builds and pushes to ACR, then ACA pulls.
 - **Cold start:** first request after idle takes a few seconds (scale-from-zero). Set
   `--min-replicas 1` in the workflow if you want it always warm (you then pay while idle).
 - **Region:** `centralindia` chosen for low latency; change `LOCATION` to your preference.
@@ -264,3 +371,5 @@ There are two live, independent deployments driven by one workflow:
 - **Revoke access instantly:** delete the federated credential
   (`az ad app federated-credential delete`) or the role assignment.
 - **Run tests locally:** `pip install -r requirements-dev.txt && pytest`
+- **Ownership, access transfer and known infrastructure risks:** see
+  **[HANDOVER.md](HANDOVER.md)**.

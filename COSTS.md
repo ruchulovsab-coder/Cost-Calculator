@@ -1,5 +1,11 @@
 # Cost & Tool Stack
 
+> **Status: estimate, not a bill.** Figures were compiled for the original **personal** Azure
+> subscription. The tool is mid-migration to the Nagarro subscription
+> ([HANDOVER.md](HANDOVER.md) §6.1), where chargeback, the VNet-integrated Container Apps
+> environment and any private-endpoint requirements will change the picture. Re-confirm in
+> **Azure Portal → Cost Management** before quoting these numbers.
+
 > Approximate monthly cost for **light internal use** (a handful of users, occasional
 > sessions), **Central India** region, standard Azure list prices. Actual cost depends
 > on usage and current rates — confirm in **Azure Portal → Cost Management**.

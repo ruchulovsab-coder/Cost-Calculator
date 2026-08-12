@@ -4,15 +4,18 @@ Add new roles, grades, coverage models, currencies, or workload defaults here.
 No code changes needed anywhere else.
 """
 
-# ── TEMPORARY: sample-data seeding for testing ────────────────────────────────
-# TODO(REMOVE BEFORE PRODUCTION RELEASE): when True, modules/demo_seed.py pre-fills
-# a representative multi-skill AMS scenario into empty session fields so testers
-# don't re-enter data after every deployment. Seeds empty fields only (never
-# overwrites user input) and does not change the estimation mode.
-#   Quick disable : set DEMO_SEED_DATA = False
-#   Full revert   : delete this flag + modules/demo_seed.py + the call in main.py
-# Tracked in the "demo-seed-temporary" memory note.
-DEMO_SEED_DATA = True
+# ── Sample-data seeding (demo aid) ────────────────────────────────────────────
+# When True, modules/demo_seed.py pre-fills a representative multi-skill AMS scenario
+# into empty session fields so a demo/test session doesn't start from a blank form.
+# Seeds empty fields only (never overwrites user input) and does not change the
+# estimation mode.
+#
+# OFF as of v1.66 — the tool is now used for real estimates, where auto-filled demo
+# skills (Monitoring / Cloud Operations / DevOps / Linux Administration) would be
+# mistaken for the client's actual scope. Turn back on only for a scripted demo.
+#   Re-enable   : set DEMO_SEED_DATA = True
+#   Full remove : delete this flag + modules/demo_seed.py + the call in main.py
+DEMO_SEED_DATA = False
 
 # ── Transition cost (multi-skill) ─────────────────────────────────────────────
 # A leaner transition team (per skill × level) is derived from — and capped by — the
@@ -29,7 +32,7 @@ TRANSITION_PHASE_UTILISATION    = {"assessment": 25, "initiation": 50, "knowledg
                                    "shadow": 100, "reverse_shadow": 100}
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-APP_VERSION    = "1.65"   # bump on each promotion to prod; stamped onto captured feedback
+APP_VERSION    = "1.66"   # bump on each promotion to prod; stamped onto captured feedback
 APP_NAME       = "Cloud & Infrastructure Practices — Ops Effort Estimation Tool"
 APP_NAME_SHORT = "Cloud & Infra Ops Effort Estimator"
 ORG_NAME       = "Nagarro"
@@ -68,9 +71,9 @@ COVERAGE_APPLICABLE_ROLES = ["L1", "L2"]
 
 # ── Grade eligibility ─────────────────────────────────────────────────────────
 GRADE_ELIGIBILITY = {
-    "L1":        ["2.1-INFRAOPS", "2.2-INFRAOPS"],
-    "L2":        ["2.3-INFRAOPS", "3.1-INFRAOPS"],
-    "L3":        ["3.2-INFRAOPS", "3.3-INFRAOPS"],
+    "L1":        ["2.1-INFRAOPS"],
+    "L2":        ["2.2-INFRAOPS", "2.3-INFRAOPS"],
+    "L3":        ["3.1-INFRAOPS", "3.2-INFRAOPS", "3.3-INFRAOPS"],
     "Architect": ["4.1-INFRAOPS"],
     "SDM":       ["4.1-DELIVERY-ITIL"],
 }

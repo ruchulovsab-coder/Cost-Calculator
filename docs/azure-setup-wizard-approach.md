@@ -1,7 +1,8 @@
 # Azure Setup Wizard — Approach & Decision Record
 
-> Status: **DRAFT / not started.** Captured 2026-06-30 from a design discussion.
-> Decision is **pending** the open questions at the bottom. No code written yet.
+> **Status: ⏸️ PROPOSAL — not started, decision still pending as of v1.65.** Captured
+> 2026-06-30 from a design discussion; the open questions at the bottom were never resolved
+> and no code was written. Nothing in this document is implemented.
 
 ## Goal
 Give the operator a **web UI (wizard)** that takes all the inputs needed to deploy this

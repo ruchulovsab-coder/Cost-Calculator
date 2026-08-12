@@ -1,5 +1,10 @@
 # Shift Plan / Roster Designer — approach
 
+> **Status: ✅ SHIPPED in v1.60** — P1 (coverage design) and P2 (person×weekday rotational
+> calendar). Roster config persistence was fixed in v1.65. Implementation lives in
+> `modules/roster/scheduler.py` + `modules/outputs/roster_excel.py`; the tab sits **after**
+> the approval gate as an appendix. Design record; not maintained.
+
 A proposal-ready **coverage & shift plan** derived from the final multi-skill estimate. It
 demonstrates *how* the proposed team delivers the required coverage. It is **not** a workforce
 management / HR / scheduling / attendance / payroll system.

@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: rg-ops-estimator
+  RESOURCE_GROUP: AB-ms-cost-estimator
   LOCATION: centralindia
   CONTAINERAPP_ENV: env-ops-estimator
   CONTAINERAPP_NAME: nagarro-ops-estimator
@@ -96,6 +96,8 @@ jobs:
       - name: Build on runner, push to ACR, deploy to Container Apps
         run: |
           set -euo pipefail
+          # Corporate subscription policy denies resources/RGs missing these four tags.
+          TAGS=(Owner="Abhishek Chaurasia" Project="ms-cost-estimator" Purpose="AMS Cost Estimation Tool" Criticality="Medium")
           az extension add --name containerapp --upgrade --only-show-errors
 
           # Branch → target app. main = production (CONTAINERAPP_NAME); any other branch
@@ -112,12 +114,12 @@ jobs:
           ACR="acr$(echo "$AZURE_SUBSCRIPTION_ID" | tr -d '-' | cut -c1-12)"
           IMAGE_TAG="${GITHUB_SHA::12}"
 
-          az group create -n "$RESOURCE_GROUP" -l "$LOCATION" --only-show-errors >/dev/null
+          az group create -n "$RESOURCE_GROUP" -l "$LOCATION" --tags "${TAGS[@]}" --only-show-errors >/dev/null
 
           # Azure Container Registry (admin enabled so we can push + ACA can pull
           # without extra role assignments). ACR Tasks is NOT used — we build locally.
           az acr show -n "$ACR" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1 || \
-            az acr create -n "$ACR" -g "$RESOURCE_GROUP" --sku Basic --admin-enabled true --only-show-errors >/dev/null
+            az acr create -n "$ACR" -g "$RESOURCE_GROUP" --sku Basic --admin-enabled true --tags "${TAGS[@]}" --only-show-errors >/dev/null
 
           LOGIN_SERVER=$(az acr show -n "$ACR" -g "$RESOURCE_GROUP" --query loginServer -o tsv)
           ACR_USER=$(az acr credential show -n "$ACR" --query username -o tsv)
@@ -129,8 +131,11 @@ jobs:
           docker push "$LOGIN_SERVER/cost-calculator:$IMAGE_TAG"
 
           # Container Apps environment (shared by prod + staging; create if missing)
+          # NOTE: the env already exists as a VNet-integrated environment (created during the
+          # migration). This guarded create is a fallback only; a from-scratch recreate would need
+          # --infrastructure-subnet-resource-id to stay compliant with the private-storage policy.
           az containerapp env show -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1 || \
-            az containerapp env create -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" -l "$LOCATION" --only-show-errors >/dev/null
+            az containerapp env create -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" -l "$LOCATION" --tags "${TAGS[@]}" --only-show-errors >/dev/null
 
           # Create or update the app (prod or staging, per $APP_NAME)
           if az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --only-show-errors >/dev/null 2>&1; then
@@ -146,7 +151,8 @@ jobs:
               --registry-username "$ACR_USER" \
               --registry-password "$ACR_PASS" \
               --target-port "$TARGET_PORT" --ingress external \
-              --min-replicas 0 --max-replicas 1 --only-show-errors
+              --min-replicas 0 --max-replicas 1 --system-assigned \
+              --tags "${TAGS[@]}" --only-show-errors
           fi
 
           az containerapp ingress sticky-sessions set -n "$APP_NAME" \

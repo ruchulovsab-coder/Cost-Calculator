@@ -1,5 +1,9 @@
 # Multi-skill → default-mode lifecycle parity
 
+> **Status: ✅ SHIPPED.** P1–P3 delivered in v1.52–v1.54 (Customer/RFP name + autosave/draft/
+> resume, orphan recovery, Approve & Export, Saved Versions + Compare). **What-If in multi
+> mode remains deferred** — it exists only in single mode. Design record; not maintained.
+
 Multi-skill (the `estimation_mode == "multi"` flow) is a strong estimation **core** — engine,
 rates, buffer transparency, AI optimizer, Excel export — but was never wired into the app's
 estimate **lifecycle**. This doc tracks closing that gap to full parity with single mode.
